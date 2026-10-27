@@ -67,6 +67,12 @@ service cloud.firestore {
       allow create: if lvl() >= 2 && request.resource.data.uid == request.auth.uid;
       allow update, delete: if false;
     }
+    // 小姐寄放／預支帳本：幹部以上可看、可新增；修改／刪除限經理以上
+    match /ledger/{id} {
+      allow read: if lvl() >= 2;
+      allow create: if lvl() >= 2 && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if lvl() >= 3;
+    }
     // 操作紀錄：只能新增，不能改不能刪
     match /audit/{id} {
       allow read: if lvl() >= 3;

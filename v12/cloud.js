@@ -11,9 +11,9 @@ const DOMAIN='paitai-system.local',mail=id=>String(id).trim().toLowerCase()+'@'+
 const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'tv':0};
 const LOCAL=new Set(['cur','op','users','usersExample','impSnap','wsSeq']);
 const SETTINGS=['cfg','wines','catalog','cb','attVer','cutVer','cleanVer','imp1026','beerVer'];
-const isDayKey=k=>!LOCAL.has(k)&&!SETTINGS.includes(k)&&!['hist','wineStore','wsLog'].includes(k);
+const isDayKey=k=>!LOCAL.has(k)&&!SETTINGS.includes(k)&&!['hist','wineStore','wsLog','ledger'].includes(k);
 const J=v=>JSON.stringify(v===undefined?null:v);
-const st={user:null,prof:null,inited:null,dayId:null,unsub:[],dayUnsub:null,last:{set:{},day:{},hist:{},wine:{},wlog:new Set()},timer:null,pending:0,err:'',online:navigator.onLine};
+const st={user:null,prof:null,inited:null,dayId:null,unsub:[],dayUnsub:null,last:{set:{},day:{},hist:{},wine:{},led:{},wlog:new Set()},timer:null,pending:0,err:'',online:navigator.onLine};
 const lv=()=>st.prof&&!st.prof.disabled?RANK[st.prof.role]||0:0;
 // ---- 狀態指示 ----
 function status(){const el=document.getElementById('sync');if(!el)return;let t,c;
@@ -38,6 +38,7 @@ function startSync(){stopSync();
  if(lv()>=2){
   st.unsub.push(onSnapshot(collection(db,'hist'),qs=>{if(qs.metadata.hasPendingWrites)return;const h={};qs.forEach(d=>{h[d.id]=JSON.parse(d.data().json);st.last.hist[d.id]=d.data().json});S.hist=Object.assign(S.hist||{},h);for(const k of Object.keys(S.hist))if(!h[k]&&st.last.hist[k]){delete S.hist[k];delete st.last.hist[k]}rerender()},fail));
   st.unsub.push(onSnapshot(collection(db,'wine'),qs=>{if(qs.metadata.hasPendingWrites)return;const L=[];qs.forEach(d=>{L.push(JSON.parse(d.data().json));st.last.wine[d.id]=d.data().json});L.sort((a,b)=>a.id-b.id);S.wineStore=L;rerender()},fail));
+  st.unsub.push(onSnapshot(collection(db,'ledger'),qs=>{if(qs.metadata.hasPendingWrites)return;const L=[];qs.forEach(d=>{L.push(JSON.parse(d.data().json));st.last.led[d.id]=d.data().json});S.ledger=L;rerender()},fail));
   st.unsub.push(onSnapshot(query(collection(db,'wineLog'),orderBy('t','desc'),limit(200)),qs=>{if(qs.metadata.hasPendingWrites)return;const L=[];qs.forEach(d=>{st.last.wlog.add(d.id);L.push(JSON.parse(d.data().json))});S.wsLog=L;rerender()},fail))}
  status()}
 function stopSync(){st.unsub.forEach(u=>u());st.unsub=[];if(st.dayUnsub)st.dayUnsub();st.dayUnsub=null}
@@ -56,6 +57,8 @@ function flush(){st.timer=null;if(!st.user||st.inited!==true||lv()<1){status();r
  // 寄酒
  if(lv()>=2){for(const w of S.wineStore||[]){const j=J(w);if(st.last.wine[w.id]===j)continue;st.last.wine[w.id]=j;ok(setDoc(doc(db,'wine',String(w.id)),{json:j}))}
   if(lv()>=3)for(const wid of Object.keys(st.last.wine))if(!(S.wineStore||[]).some(w=>String(w.id)==wid)){delete st.last.wine[wid];ok(deleteDoc(doc(db,'wine',wid)))}
+  for(const e of S.ledger||[]){const j=J(e);if(st.last.led[e.id]===j)continue;if(st.last.led[e.id]!==undefined&&lv()<3)continue;st.last.led[e.id]=j;ok(setDoc(doc(db,'ledger',String(e.id)),{json:j,uid:st.user.uid,at:Date.now()}))}
+  if(lv()>=3)for(const k of Object.keys(st.last.led))if(!(S.ledger||[]).some(e=>String(e.id)==k)){delete st.last.led[k];ok(deleteDoc(doc(db,'ledger',k)))}
   for(const e of S.wsLog||[]){const k=`${e.t}-${e.id}-${(e.act||'').length}`;if(st.last.wlog.has(k))continue;st.last.wlog.add(k);ok(setDoc(doc(db,'wineLog',k),{uid:st.user.uid,t:e.t,json:J(e)}))}}
  status()}
 function audit(m){if(!st.user||TVMODE||lv()<1||st.inited!==true)return;addDoc(collection(db,'audit'),{uid:st.user.uid,name:st.prof.name,role:st.prof.role,t:Date.now(),msg:String(m).slice(0,500)}).catch(()=>{})}
@@ -110,7 +113,7 @@ function banner(){if(document.getElementById('fbBan'))return;const b=document.cr
 async function migrate(){if(lv()<4)return alert('只有老闆可以上傳');if(!confirm('把「這台裝置」的資料上傳到雲端？\n（名冊、設定、訊息卡、當日營業、歷史、寄酒）\n雲端已有的同名資料會被覆蓋。'))return;
  const ops=[];const dd={};for(const k of Object.keys(S))if(isDayKey(k))dd[k]=J(S[k]);const ss={};for(const k of SETTINGS)ss[k]=J(S[k]);
  const id=S.openDay||bizDay(now());ops.push(['set','days/'+id,dd]);for(const [d,v] of Object.entries(S.hist||{}))ops.push(['set','hist/'+d,{json:J(v),by:st.user.uid,at:Date.now()}]);
- for(const w of S.wineStore||[])ops.push(['set','wine/'+w.id,{json:J(w)}]);for(const e of S.wsLog||[]){const k=`${e.t}-${e.id}-${(e.act||'').length}`;ops.push(['set','wineLog/'+k,{uid:st.user.uid,t:e.t,json:J(e)}])}
+ for(const w of S.wineStore||[])ops.push(['set','wine/'+w.id,{json:J(w)}]);for(const e of S.ledger||[])ops.push(['set','ledger/'+e.id,{json:J(e),uid:st.user.uid,at:Date.now()}]);for(const e of S.wsLog||[]){const k=`${e.t}-${e.id}-${(e.act||'').length}`;ops.push(['set','wineLog/'+k,{uid:st.user.uid,t:e.t,json:J(e)}])}
  ops.push(['set','config/settings',ss]);
  try{for(let i=0;i<ops.length;i+=400){const b=writeBatch(db);ops.slice(i,i+400).forEach(([,p,v])=>b.set(doc(db,...p.split('/')),v));await b.commit()}
   Object.assign(st.last.day,dd);Object.assign(st.last.set,ss);log(`上傳本機資料到雲端（${ops.length} 筆）`);document.getElementById('fbBan')?.remove();alert('上傳完成（'+ops.length+' 份文件）');startSync()}catch(e){alert('上傳失敗：'+(e.code||e.message))}}
