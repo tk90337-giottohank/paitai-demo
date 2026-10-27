@@ -508,8 +508,8 @@ function undoImport(){if(!needRole(2)||!S.impSnap)return;if(!confirm('復原最�
 
 // ===== v9：叫檯看板（仿磁鐵白板） =====
 if(!S.cb){S.cb={msgs:[
- {id:'over',zh:'時間到',vi:'Hết giờ'},{id:'bill',zh:'小姐回檯買單',vi:'Các em về phòng tính tiền'},{id:'ret',zh:'回檯',vi:'Quay lại phòng'},{id:'find',zh:'外找',vi:'Có người tìm em'},
- {id:'add',zh:'續單',vi:'Thêm giờ'},{id:'bao',zh:'報檯',vi:'Báo phòng gấp'},{id:'wait',zh:'客人正在等包廂',vi:'Khách đang chờ phòng'},{id:'dance',zh:'小姐熱舞（帶動氣氛）',vi:'Các em ơi, lên nhảy khuấy động không khí nào!'}],cbVer:4,cards:[],dis:{},seen:{},log:[]}}
+ {id:'over',zh:'時間到',vi:'Hết giờ'},{id:'bill',zh:'小姐回檯買單',vi:'Các em quay lại phòng, khách chuẩn bị tính tiền'},{id:'ret',zh:'回檯',vi:'Các em quay lại phòng'},{id:'find',zh:'外找',vi:'Có người tìm em'},
+ {id:'add',zh:'續單',vi:'Thêm giờ'},{id:'bao',zh:'報檯',vi:'Gấp! Em đã được chọn, vào phòng ngay'},{id:'wait',zh:'客人正在等包廂',vi:'Khách đang chờ phòng'},{id:'dance',zh:'小姐熱舞（帶動氣氛）',vi:'Các em ơi, lên nhảy khuấy động không khí nào!'}],cbVer:5,cards:[],dis:{},seen:{},log:[]}}
 if(S.cb.cbVer!=3){const ms=S.cb.msgs,F=id=>ms.find(m=>m.id==id),VI={over:['HẾT GiỜ','Hết giờ'],bill:['Hũy THÃi Mãi TAN','Các em về phòng tính tiền'],ret:['HUỹ THÃi','Quay lại phòng'],find:['','Có người tìm em'],wait:['KHÁCH CHỜ PHONG','Khách chờ phòng']};
  for(const id in VI){const m=F(id);if(m&&(m.vi==VI[id][0]||m.vi==VI[id][1]))m.vi=VI[id][1]}
  let ad=F('add');if(!ad){ad={id:'add',zh:'續單',vi:'Thêm giờ'};const i=ms.findIndex(m=>m.id=='bao');ms.splice(i>=0?i:ms.length,0,ad)}else{if(ad.zh=='加時')ad.zh='續單';if(ad.vi=='THÊM GiỜ')ad.vi='Thêm giờ'}
@@ -521,6 +521,8 @@ if(S.cb.cbVer!=4){const w=S.cb.msgs.find(m=>m.id=='wait'),d=S.cb.msgs.find(m=>m.
  if(w){if(w.zh=='客人等房')w.zh='客人正在等包廂';if(['KHÁCH CHỜ PHONG','Khách chờ phòng'].includes(w.vi))w.vi='Khách đang chờ phòng'}
  if(d){if(['放音樂跳舞啦妹妹們','放音樂跳舞（客人要求，待確認）'].includes(d.zh))d.zh='小姐熱舞（帶動氣氛）';if(['Bấm nhạc nhảy mấy em ơi','Bật nhạc nhảy nào các em ơi','Bật nhạc nhảy nào các em ơi! Khách kêu'].includes(d.vi))d.vi='Các em ơi, lên nhảy khuấy động không khí nào!'}
  S.cb.cbVer=4;(S.cb.log=S.cb.log||[]).unshift(t(now())+' 訊息卡更新：客人正在等包廂、小姐熱舞');save()}
+if(S.cb.cbVer!=5){const U={bill:['Các em về phòng tính tiền','Các em quay lại phòng, khách chuẩn bị tính tiền'],ret:['Quay lại phòng','Các em quay lại phòng'],bao:['Báo phòng gấp','Gấp! Em đã được chọn, vào phòng ngay']};
+ S.cb.msgs.forEach(m=>{const u=U[m.id];if(u&&m.vi==u[0])m.vi=u[1]});S.cb.cbVer=5;(S.cb.log=S.cb.log||[]).unshift(t(now())+' 訊息卡更新：回檯買單、回檯、報檯越南文');save()}
 function cbLogSafe(m){(S.cb.log=S.cb.log||[]).unshift(t(now())+' '+m)}
 const CBM=id=>S.cb.msgs.find(m=>m.id==id)||{zh:id,vi:''};
 let CBsel={room:'',msg:'',girls:[],custom:'',all:false};
@@ -528,6 +530,7 @@ function cbLog(m){S.cb.log.unshift(t(now())+' '+m);S.cb.log=S.cb.log.slice(0,300
 function cbAuto(){const out=[],n=now();
  for(const r in S.rooms){const x=S.rooms[r];if(x.end<n)out.push({key:'over|'+r+'|'+x.end,room:r,msg:'over',girls:[],t:x.end,auto:1});
   else if(x.billCall){const gs=S.girls.filter(g=>g.room==r&&g.inRoom===false).map(g=>g.id);out.push({key:'bill|'+r+'|'+x.end,room:r,msg:'bill',girls:gs,t:x.end-C().billMin*60000,auto:1})}}
+ {const bg={};(S.calls||[]).filter(c=>c.type=='報到').forEach(c=>{(bg[c.room]=bg[c.room]||[]).push(c)});for(const r in bg){const cs=bg[r];out.push({key:'bao|'+r+'|'+cs.map(c=>c.girl).sort().join(','),room:r,msg:'bao',girls:cs.map(c=>c.girl),t:Math.max(...cs.map(c=>c.t)),auto:1})}}
  (S.calls||[]).forEach(c=>{if(c.type=='外找')out.push({key:'find|'+c.id,room:/^\d|VIP/.test(c.room)&&roomList().includes(c.room)?c.room:'',msg:'find',girls:[c.girl],t:c.t,auto:1,note:c.room+(c.who?'・'+c.who:'')});
   if(c.type=='回檯')out.push({key:'ret|'+c.id,room:c.room,msg:'ret',girls:[c.girl],t:c.t,auto:1})});
  const live=out.filter(c=>!S.cb.dis[c.key]);live.forEach(c=>{if(!S.cb.seen[c.key]){S.cb.seen[c.key]=n;cbLog(`自動：${c.room||''} ${CBM(c.msg).zh} ${c.girls.join(',')}`)}});return live}
