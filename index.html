@@ -509,7 +509,7 @@ function undoImport(){if(!needRole(2)||!S.impSnap)return;if(!confirm('復原最�
 // ===== v9：叫檯看板（仿磁鐵白板） =====
 if(!S.cb){S.cb={msgs:[
  {id:'over',zh:'時間到',vi:'Hết giờ'},{id:'bill',zh:'小姐回檯買單',vi:'Các em về phòng tính tiền'},{id:'ret',zh:'回檯',vi:'Quay lại phòng'},{id:'find',zh:'外找',vi:'Có người tìm em'},
- {id:'add',zh:'續單',vi:'Thêm giờ'},{id:'bao',zh:'報檯',vi:'Báo phòng gấp'},{id:'wait',zh:'客人等房',vi:'Khách chờ phòng'},{id:'dance',zh:'放音樂跳舞（客人要求，待確認）',vi:'Bật nhạc nhảy nào các em ơi! Khách kêu'}],cbVer:3,cards:[],dis:{},seen:{},log:[]}}
+ {id:'add',zh:'續單',vi:'Thêm giờ'},{id:'bao',zh:'報檯',vi:'Báo phòng gấp'},{id:'wait',zh:'客人正在等包廂',vi:'Khách đang chờ phòng'},{id:'dance',zh:'小姐熱舞（帶動氣氛）',vi:'Các em ơi, lên nhảy khuấy động không khí nào!'}],cbVer:4,cards:[],dis:{},seen:{},log:[]}}
 if(S.cb.cbVer!=3){const ms=S.cb.msgs,F=id=>ms.find(m=>m.id==id),VI={over:['HẾT GiỜ','Hết giờ'],bill:['Hũy THÃi Mãi TAN','Các em về phòng tính tiền'],ret:['HUỹ THÃi','Quay lại phòng'],find:['','Có người tìm em'],wait:['KHÁCH CHỜ PHONG','Khách chờ phòng']};
  for(const id in VI){const m=F(id);if(m&&(m.vi==VI[id][0]||m.vi==VI[id][1]))m.vi=VI[id][1]}
  let ad=F('add');if(!ad){ad={id:'add',zh:'續單',vi:'Thêm giờ'};const i=ms.findIndex(m=>m.id=='bao');ms.splice(i>=0?i:ms.length,0,ad)}else{if(ad.zh=='加時')ad.zh='續單';if(ad.vi=='THÊM GiỜ')ad.vi='Thêm giờ'}
@@ -517,6 +517,10 @@ if(S.cb.cbVer!=3){const ms=S.cb.msgs,F=id=>ms.find(m=>m.id==id),VI={over:['HẾT
  S.cb.msgs=ms.filter(m=>m.id!='urgent');S.cb.cards.forEach(c=>{if(c.msg=='urgent')c.msg='bao'});
  const dn=S.cb.msgs.find(m=>m.id=='dance');if(dn){if(dn.zh=='放音樂跳舞啦妹妹們')dn.zh='放音樂跳舞（客人要求，待確認）';if(['Bấm nhạc nhảy mấy em ơi','Bật nhạc nhảy nào các em ơi'].includes(dn.vi))dn.vi='Bật nhạc nhảy nào các em ơi! Khách kêu'}
  S.cb.cbVer=3;cbLogSafe('訊息卡更新：標準越南文；續單獨立；急報檯併入報檯');save()}
+if(S.cb.cbVer!=4){const w=S.cb.msgs.find(m=>m.id=='wait'),d=S.cb.msgs.find(m=>m.id=='dance');
+ if(w){if(w.zh=='客人等房')w.zh='客人正在等包廂';if(['KHÁCH CHỜ PHONG','Khách chờ phòng'].includes(w.vi))w.vi='Khách đang chờ phòng'}
+ if(d){if(['放音樂跳舞啦妹妹們','放音樂跳舞（客人要求，待確認）'].includes(d.zh))d.zh='小姐熱舞（帶動氣氛）';if(['Bấm nhạc nhảy mấy em ơi','Bật nhạc nhảy nào các em ơi','Bật nhạc nhảy nào các em ơi! Khách kêu'].includes(d.vi))d.vi='Các em ơi, lên nhảy khuấy động không khí nào!'}
+ S.cb.cbVer=4;(S.cb.log=S.cb.log||[]).unshift(t(now())+' 訊息卡更新：客人正在等包廂、小姐熱舞');save()}
 function cbLogSafe(m){(S.cb.log=S.cb.log||[]).unshift(t(now())+' '+m)}
 const CBM=id=>S.cb.msgs.find(m=>m.id==id)||{zh:id,vi:''};
 let CBsel={room:'',msg:'',girls:[],custom:'',all:false};
