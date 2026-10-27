@@ -1,18 +1,20 @@
 rules_version = '2';
 // 排檯系統 paitai-system — Firestore 安全規則（v12）
-// 角色：小姐/少爺=1 < 幹部=2 < 經理=3 < 老闆=4；tv=唯讀看板（0）
+// 角色：小姐/少爺=1 < 幹部=2 < 經理=3 < 老闆=4 < 特殊（冠廷）=5；tv=唯讀看板（0）
+    // users 文件需帶 rank 欄位且必須等於 rank(role)（供查詢過濾）
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function hasProfile() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
     function active() { return hasProfile() && me().get('disabled', false) != true; }
-    function rank(r) { return r == '老闆' ? 4 : r == '經理' ? 3 : r == '幹部' ? 2 : (r == '少爺' || r == '小姐') ? 1 : 0; }
+    function rank(r) { return r == '特殊' ? 5 : r == '老闆' ? 4 : r == '經理' ? 3 : r == '幹部' ? 2 : (r == '少爺' || r == '小姐') ? 1 : 0; }
     function lvl() { return active() ? rank(me().role) : 0; }
     function isTV() { return active() && me().role == 'tv'; }
     function staff() { return lvl() >= 1; }
     function reader() { return staff() || isTV(); }
-    function validRole(r) { return r in ['小姐', '少爺', '幹部', '經理', '老闆', 'tv']; }
+    function validRole(r) { return r in ['小姐', '少爺', '幹部', '經理', '老闆', '特殊', 'tv']; }
+    function rankOk(d) { return d.rank == rank(d.role); }
 
     // 店家設定、訊息卡、酒單：所有登入人員可讀，經理/老闆可寫
     match /config/settings {
@@ -24,24 +26,25 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn() && !exists(/databases/$(database)/documents/config/boot)
         && request.resource.data.uid == request.auth.uid
-        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == '老闆';
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['特殊', '老闆'];
       allow update, delete: if false;
     }
     // 人員帳號與角色
     match /users/{uid} {
-      allow read: if (signedIn() && request.auth.uid == uid) || lvl() >= 3;
-      // 第一位老闆（首次啟用）
+      allow read: if (signedIn() && request.auth.uid == uid) || (lvl() >= 3 && resource.data.rank <= lvl());
+      // 第一位帳號（首次啟用）：特殊（冠廷）或老闆
       allow create: if signedIn() && request.auth.uid == uid
         && !exists(/databases/$(database)/documents/config/boot)
         && getAfter(/databases/$(database)/documents/config/boot).data.uid == uid
-        && request.resource.data.role == '老闆' && request.resource.data.get('disabled', false) == false;
-      // 老闆建立其他人員
-      allow create: if lvl() >= 4 && request.auth.uid != uid && validRole(request.resource.data.role);
+        && request.resource.data.role in ['特殊', '老闆'] && rankOk(request.resource.data) && request.resource.data.get('disabled', false) == false;
+      // 老闆以上建立其他人員；不能建立比自己高的角色（只有特殊能建立特殊）
+      allow create: if lvl() >= 4 && request.auth.uid != uid && validRole(request.resource.data.role)
+        && rank(request.resource.data.role) <= lvl() && rankOk(request.resource.data);
       // 經理/老闆改角色或停用：不能改自己、不能改比自己高的人、不能給超過自己的角色
       allow update: if lvl() >= 3 && request.auth.uid != uid
         && rank(resource.data.role) <= lvl()
         && validRole(request.resource.data.role) && rank(request.resource.data.role) <= lvl()
-        && request.resource.data.staffId == resource.data.staffId;
+        && request.resource.data.staffId == resource.data.staffId && rankOk(request.resource.data);
       allow delete: if false;
     }
     // 當日營業資料（每個營業日一份文件）
