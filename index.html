@@ -509,11 +509,14 @@ function undoImport(){if(!needRole(2)||!S.impSnap)return;if(!confirm('復原最�
 // ===== v9：叫檯看板（仿磁鐵白板） =====
 if(!S.cb){S.cb={msgs:[
  {id:'over',zh:'時間到',vi:'Hết giờ'},{id:'bill',zh:'小姐回檯買單',vi:'Các em về phòng tính tiền'},{id:'ret',zh:'回檯',vi:'Quay lại phòng'},{id:'find',zh:'外找',vi:'Có người tìm em'},
- {id:'bao',zh:'報檯',vi:'Báo phòng',sub:'加時／急報檯・Thêm giờ / Gấp'},{id:'wait',zh:'客人等房',vi:'Khách chờ phòng'},{id:'dance',zh:'放音樂跳舞啦妹妹們',vi:'Bật nhạc nhảy nào các em ơi'}],cbVer:2,cards:[],dis:{},seen:{},log:[]}}
-if(S.cb.cbVer!=2){const OLD={over:'HẾT GiỜ',bill:'Hũy THÃi Mãi TAN',ret:'HUỹ THÃi',find:'',bao:'BÁO THÃi',wait:'KHÁCH CHỜ PHONG',dance:'Bấm nhạc nhảy mấy em ơi'},NEW={over:'Hết giờ',bill:'Các em về phòng tính tiền',ret:'Quay lại phòng',find:'Có người tìm em',bao:'Báo phòng',wait:'Khách chờ phòng',dance:'Bật nhạc nhảy nào các em ơi'},OZH={add:'加時',urgent:'急報檯',bao:'報檯'};
- S.cb.msgs=S.cb.msgs.filter(m=>!((m.id=='add'||m.id=='urgent')));S.cb.msgs.forEach(m=>{if(OLD[m.id]!==undefined&&m.vi==OLD[m.id])m.vi=NEW[m.id];if(m.id=='bao'){if(m.zh==OZH.bao&&m.sub===undefined)m.sub='加時／急報檯・Thêm giờ / Gấp'}});
- if(!S.cb.msgs.some(m=>m.id=='bao'))S.cb.msgs.splice(4,0,{id:'bao',zh:'報檯',vi:'Báo phòng',sub:'加時／急報檯・Thêm giờ / Gấp'});
- S.cb.cards.forEach(c=>{if(c.msg=='add'||c.msg=='urgent')c.msg='bao'});S.cb.cbVer=2;cbLogSafe('訊息卡更新：標準越南文、加時／急報檯併入報檯');save()}
+ {id:'add',zh:'續單',vi:'Thêm giờ'},{id:'bao',zh:'報檯',vi:'Báo phòng gấp'},{id:'wait',zh:'客人等房',vi:'Khách chờ phòng'},{id:'dance',zh:'放音樂跳舞（客人要求，待確認）',vi:'Bật nhạc nhảy nào các em ơi! Khách kêu'}],cbVer:3,cards:[],dis:{},seen:{},log:[]}}
+if(S.cb.cbVer!=3){const ms=S.cb.msgs,F=id=>ms.find(m=>m.id==id),VI={over:['HẾT GiỜ','Hết giờ'],bill:['Hũy THÃi Mãi TAN','Các em về phòng tính tiền'],ret:['HUỹ THÃi','Quay lại phòng'],find:['','Có người tìm em'],wait:['KHÁCH CHỜ PHONG','Khách chờ phòng']};
+ for(const id in VI){const m=F(id);if(m&&(m.vi==VI[id][0]||m.vi==VI[id][1]))m.vi=VI[id][1]}
+ let ad=F('add');if(!ad){ad={id:'add',zh:'續單',vi:'Thêm giờ'};const i=ms.findIndex(m=>m.id=='bao');ms.splice(i>=0?i:ms.length,0,ad)}else{if(ad.zh=='加時')ad.zh='續單';if(ad.vi=='THÊM GiỜ')ad.vi='Thêm giờ'}
+ let bo=F('bao');if(!bo){bo={id:'bao',zh:'報檯',vi:'Báo phòng gấp'};ms.push(bo)}if(['BÁO THÃi','Báo phòng'].includes(bo.vi))bo.vi='Báo phòng gấp';if(bo.sub=='加時／急報檯・Thêm giờ / Gấp')delete bo.sub;
+ S.cb.msgs=ms.filter(m=>m.id!='urgent');S.cb.cards.forEach(c=>{if(c.msg=='urgent')c.msg='bao'});
+ const dn=S.cb.msgs.find(m=>m.id=='dance');if(dn){if(dn.zh=='放音樂跳舞啦妹妹們')dn.zh='放音樂跳舞（客人要求，待確認）';if(['Bấm nhạc nhảy mấy em ơi','Bật nhạc nhảy nào các em ơi'].includes(dn.vi))dn.vi='Bật nhạc nhảy nào các em ơi! Khách kêu'}
+ S.cb.cbVer=3;cbLogSafe('訊息卡更新：標準越南文；續單獨立；急報檯併入報檯');save()}
 function cbLogSafe(m){(S.cb.log=S.cb.log||[]).unshift(t(now())+' '+m)}
 const CBM=id=>S.cb.msgs.find(m=>m.id==id)||{zh:id,vi:''};
 let CBsel={room:'',msg:'',girls:[],custom:'',all:false};
@@ -525,11 +528,11 @@ function cbAuto(){const out=[],n=now();
   if(c.type=='回檯')out.push({key:'ret|'+c.id,room:c.room,msg:'ret',girls:[c.girl],t:c.t,auto:1})});
  const live=out.filter(c=>!S.cb.dis[c.key]);live.forEach(c=>{if(!S.cb.seen[c.key]){S.cb.seen[c.key]=n;cbLog(`自動：${c.room||''} ${CBM(c.msg).zh} ${c.girls.join(',')}`)}});return live}
 function cbCards(){return[...S.cb.cards,...cbAuto()].sort((a,b)=>b.t-a.t)}
-function cbPost(){const s=CBsel;if(!s.msg&&!s.custom.trim())return alert('請選訊息或輸入自訂文字');const c={key:'m|'+now(),room:s.room,msg:s.msg||'',custom:s.msg?'':s.custom.trim(),girls:s.girls.slice(),t:now(),by:S.op||''};S.cb.cards.unshift(c);cbLog(`張貼：${c.room||''} ${c.msg?CBM(c.msg).zh:c.custom} ${c.girls.join(',')}（${S.op||'未登入'}）`);CBsel={room:'',msg:'',girls:[],custom:'',all:s.all};save();openCallBoard()}
+function cbPost(){const s=CBsel;if(!s.msg&&!s.custom.trim()&&!s.girls.length)return alert('請選訊息、小姐，或輸入自訂文字');const c={key:'m|'+now(),room:s.room,msg:s.msg||'',custom:s.msg?'':s.custom.trim(),girls:s.girls.slice(),t:now(),by:S.op||''};S.cb.cards.unshift(c);cbLog(`張貼：${c.room||''} ${c.msg?CBM(c.msg).zh:c.custom} ${c.girls.join(',')}（${S.op||'未登入'}）`);CBsel={room:'',msg:'',girls:[],custom:'',all:s.all};save();openCallBoard()}
 function cbRemove(key){const i=S.cb.cards.findIndex(c=>c.key==key);if(i>=0){const c=S.cb.cards.splice(i,1)[0];cbLog(`移除：${c.room||''} ${c.msg?CBM(c.msg).zh:c.custom}`)}else{S.cb.dis[key]=now();cbLog('移除自動卡：'+key.split('|').slice(0,2).join(' '))}save();if(document.getElementById('page').style.display=='block')openCallBoard();else render()}
 function cbMove(key,d){const a=S.cb.cards,i=a.findIndex(c=>c.key==key),j=i+d;if(i<0||j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];a.forEach((c,k)=>c.t=now()-k*1000);save();openCallBoard()}
-function cbCardHTML(c,big){const m=c.msg?CBM(c.msg):{zh:c.custom,vi:''},fresh=now()-c.t<15000;
- return`<div class="cbc ${fresh?'cbnew':''} ${c.auto?'cbauto':''}">${c.room?`<div class=cbr>${esc(c.room)}</div>`:''}<div class=cbm>${m.vi?`<div class=cbvi>${esc(m.vi)}</div>`:''}<div class=cbzh>${esc(m.zh)}</div>${m.sub?`<div class=cbsub>${esc(m.sub)}</div>`:''}${c.note?`<div class=cbnote>${esc(c.note)}</div>`:''}</div>${c.girls.length?`<div class=cbgs>${c.girls.map(id=>{const g=G(id);return`<div class=cbg><span>${esc(g?g.name.replace(/^\S+\s/,''):'')}</span><b>${id}</b></div>`}).join('')}</div>`:''}${big?'':`<div class=cbx><button class=s onclick="cbRemove('${c.key}')">移除</button>${c.auto?' <small>自動</small>':` <button class=s onclick="cbMove('${c.key}',-1)">↑</button><button class=s onclick="cbMove('${c.key}',1)">↓</button>`}</div>`}</div>`}
+function cbCardHTML(c,big){const m=c.msg?CBM(c.msg):{zh:c.custom||'',vi:''},fresh=now()-c.t<15000;
+ return`<div class="cbc ${fresh?'cbnew':''} ${c.auto?'cbauto':''}">${c.room?`<div class=cbr>${esc(c.room)}</div>`:''}${m.zh||m.vi?`<div class=cbm>`:'<div style="display:none">'}${m.vi?`<div class=cbvi>${esc(m.vi)}</div>`:''}<div class=cbzh>${esc(m.zh)}</div>${m.sub?`<div class=cbsub>${esc(m.sub)}</div>`:''}${c.note?`<div class=cbnote>${esc(c.note)}</div>`:''}</div>${c.girls.length?`<div class=cbgs>${c.girls.map(id=>{const g=G(id);return`<div class=cbg><span>${esc(g?g.name.replace(/^\S+\s/,''):'')}</span><b>${id}</b></div>`}).join('')}</div>`:''}${big?'':`<div class=cbx><button class=s onclick="cbRemove('${c.key}')">移除</button>${c.auto?' <small>自動</small>':` <button class=s onclick="cbMove('${c.key}',-1)">↑</button><button class=s onclick="cbMove('${c.key}',1)">↓</button>`}</div>`}</div>`}
 const girlCard=(g,sel,fn)=>`<button class="cbg cbtray ${sel?'cbsel':''}" onclick="${fn}"><span>${esc(g.name.replace(/^\S+\s/,''))}</span><b>${g.id}</b></button>`;
 function openCallBoard(){const s=CBsel,cs=cbCards(),pool=s.all?S.girls:S.girls.filter(g=>g.on);
  pageOpen(`<h2>叫檯看板 <button onclick="openCallTV()">📺 全螢幕（本機）</button> <button class=s onclick="window.open(location.pathname+'#tv','cbtv')">🖥 開新視窗給休息室電視</button></h2>
