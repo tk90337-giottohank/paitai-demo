@@ -48,7 +48,7 @@ dialog input[type=text]{width:100%;box-sizing:border-box}#sugg{width:100%}#guest
 .hcal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:560px}.hw{text-align:center;color:#aaa;font-size:13px}.hd{padding:8px 0;font-size:18px;font-weight:bold;min-height:52px}.hd small{display:block;font-size:10px;font-weight:normal}.hdim{opacity:.35}.htoday{outline:3px solid #fc3}.hhol{color:#fc6}
 @media print{.hcal{display:none}}
 </style></head><body>
-<header><h1 id="store"></h1><span id="clock"></span><button onclick="openSettings()">⚙ 店家設定</button><button id=userBtn class=s onclick="openLogin()">👤</button><input id=op type=hidden><button id=modeBtn onclick="setMode(S.mode=='忙'?'閒':'忙')"></button><span id=sugg style="font-size:13px;color:#fc6"></span><button class="s" onclick="openGuest()">客人點檯（包廂平板）</button><button class="s" onclick="openReport()">月出勤報表</button><button class="s" onclick="openRevenue()">今日營收</button><button class="s" onclick="openSheet()">今日排檯表</button><button class="s" onclick="openHistory()">📅 歷史紀錄</button><button id=mimpBtn class="s" onclick="openManualImport()">手動匯入</button><button class="s" onclick="openSched()">少爺排班</button><button class="s" onclick="openPayroll()">少爺薪資</button><button class="s" onclick="openGirlPay()">小姐台數</button><button class="s" onclick="openFind()">外找</button><button onclick="openBoard()" style="background:#a3c">📺 控台大螢幕</button><button onclick="openCallBoard()" style="background:#c80">🧲 叫檯看板</button><button class="s" onclick="openAuto()">同台互轉 auto</button><button class="s" onclick="if(confirm('重設示範資料？')){localStorage.removeItem(K);location.reload()}">重設</button></header>
+<header><h1 id="store"></h1><span id="clock"></span><button onclick="openSettings()">⚙ 店家設定</button><button id=userBtn class=s onclick="openLogin()">👤</button><input id=op type=hidden><button id=modeBtn onclick="setMode(S.mode=='忙'?'閒':'忙')"></button><span id=sugg style="font-size:13px;color:#fc6"></span><button class="s" onclick="openGuest()">客人點檯（包廂平板）</button><button class="s" onclick="openReport()">月出勤報表</button><button class="s" onclick="openRevenue()">今日營收</button><button class="s" onclick="openSheet()">今日排檯表</button><button class="s" onclick="openHistory()">📅 歷史紀錄</button><button class="s" onclick="openWine()">🍾 寄酒</button><button id=mimpBtn class="s" onclick="openManualImport()">手動匯入</button><button class="s" onclick="openSched()">少爺排班</button><button class="s" onclick="openPayroll()">少爺薪資</button><button class="s" onclick="openGirlPay()">小姐台數</button><button class="s" onclick="openFind()">外找</button><button onclick="openBoard()" style="background:#a3c">📺 控台大螢幕</button><button onclick="openCallBoard()" style="background:#c80">🧲 叫檯看板</button><button class="s" onclick="openAuto()">同台互轉 auto</button><button class="s" onclick="if(confirm('重設示範資料？')){Store.clear();location.reload()}">重設</button></header>
 <main><div><section id=callsec></section><section id=qsec></section><div id="rooms"></div></div><div>
 <section><b>紅筆點檯請求</b><div id=reqs></div></section><section><b>女孩名冊</b><span id=cnt></span><br><input id=q placeholder='搜尋編號/名字' oninput=render() size=12> <select id=fl onchange=render()><option value=''>全部</option><option>休息室</option><option>在檯</option><option>休息</option><option>未到</option><option>請假</option></select><div id="girls" style='max-height:340px;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:4px'></div></section>
 <section><b>模擬感應（門口讀卡器）</b><br>包廂 <select id=sr></select><select id=sa><option value=''>（包廂門）</option><option value=R-LOUNGE>休息室讀卡器</option><option value=R-DINE>餐廳讀卡器</option></select> 標籤 <input id=stag value="TAG08" size=7> <select id=sd><option value=in>進</option><option value=out>出</option><option value="">未知</option></select> <button onclick="handleDoorEvent({readerId:sa.value||'R-'+sr.value,roomId:sr.value,tagId:stag.value.trim(),timestamp:Date.now(),direction:sd.value||null})">送出感應</button></section>
@@ -60,8 +60,10 @@ const K='hostessMVP_v5';const ROSTER=[["01", "甜蜜"], ["02", "喬喬"], ["05",
 const now=()=>Date.now();
 const seed=()=>({cfg:{store:'我的店',rooms:'206,207,208,VIP,111,201,202,203,205',sessionMin:120,tableMin:20,renewMin:20,holdMin:10,breakMin:10,autoFill:'開',pkg1:5000,pkg2:6800,pkgInc:1000,pkgGirls:2,tablePrice:600,privTai:5,privInclDeduct:'是',privLegacy:'否',renewPkg:'是',renewDrink:'是',offDays:5,bonus:5000,noShowCounts:'是',bookedMax:3,freeWithinMin:5,privPrice:1800,privBlockMin:120,busyRotMin:30,visitMin:10,baoRules:'5保2,7保3,9保4,10保5',tagMap:ROSTER.map(([x])=>'TAG'+x+'='+x+'=手環').join(',')},
 rooms:{},mode:'閒',waiting:0,op:'',decisions:[],att:{},reqs:[],redLog:[],blueLog:[],girls:ROSTER.map(([x,nm])=>({id:x,name:x+' '+nm,leave:false,on:false,status:'休息室',room:null,start:0,until:0,src:''})),autos:[],log:[]});
-let S=JSON.parse(localStorage.getItem(K)||'null')||seed();
-const TVMODE=location.hash=='#tv';const save=()=>{if(!TVMODE)localStorage.setItem(K,JSON.stringify(S))};const C=()=>S.cfg;const roomList=()=>C().rooms.split(',').map(s=>s.trim()).filter(Boolean);
+// ---- Store：資料存取層（日後換 Firebase Firestore 只改這裡） ----
+const Store={load(){try{return JSON.parse(localStorage.getItem(K)||'null')}catch(e){return null}},save(o){localStorage.setItem(K,JSON.stringify(o))},clear(){localStorage.removeItem(K)},onChange(cb){addEventListener('storage',e=>{if(e.key==K)cb()})}};
+let S=Store.load()||seed();
+const TVMODE=location.hash=='#tv';const save=()=>{if(!TVMODE)Store.save(S)};const C=()=>S.cfg;const roomList=()=>C().rooms.split(',').map(s=>s.trim()).filter(Boolean);
 const t=ts=>new Date(ts).toLocaleTimeString('zh-TW',{hour12:false});const mmss=ms=>{ms=Math.max(0,ms);const m=Math.floor(ms/60000),s=Math.floor(ms%60000/1000);return m+':'+String(s).padStart(2,'0')};
 function log(m){S.log.unshift(t(now())+' '+m);S.log=S.log.slice(0,200);save()}
 const G=id=>S.girls.find(g=>g.id==id);
@@ -105,7 +107,7 @@ if(dir=='in'){if(g.room==r){toast(`${num} 已在 ${r}（重複讀取）`);return
  seat(g,r,'tag');toast(`${num} 進入 ${r}（${(C().tagMap.split(',').map(x=>x.trim().split('=')).find(([k])=>k==ev.tagId)||[])[2]||'手環'}）`)}
 else{if(g.room!=r)toast(`${num} 離開 ${r}，但登記在 ${g.room||'無'}`,true);else{leave(g,'感應離開');toast(`${num} 離開 ${r}`)}}
 render()}
-function openSettings0(){const c=C();const f=document.getElementById('dform');f.innerHTML='<h3>店家設定</h3>'+[['store','店名','text'],['rooms','包廂清單（逗號分隔）','text'],['sessionMin','一節長度（分）','number'],['tableMin','每檯時間（分）','number'],['renewMin','續番提醒（剩幾分）','number'],['holdMin','保檯保留時間（分，規則待確認）','number'],['breakMin','休息時間（分）','number'],['tagMap','標籤對應（標籤=編號=裝置類型，預設手環，逗號分隔）','text'],['privTai','私檯台數（原 1 台＋私檯 4 台）','number'],['privInclDeduct','套餐內小姐私檯只加 4 台（是/否，待確認）','text'],['privLegacy','使用舊制私檯固定價（是/否）','text'],['privPrice','舊制私檯價格（元/段）','number'],['privBlockMin','私檯計費段（分）','number'],['busyRotMin','忙時私檯轉檯間隔（分）','number'],['visitMin','訪客時間（分）','number'],['pkg1','套餐 1 人價','number'],['pkg2','套餐 2 人價','number'],['pkgInc','每多 1 人加價','number'],['pkgInclPlus','套餐含公轉小姐＝人數＋幾位','number'],['tablePrice','每台價格','number'],['holidayDays','假日（星期幾，0=日 5=五 6=六，逗號分隔）','text'],['holidayEarlyMin','假日每番提早結束（分）','number'],['cleanMin','清潔緩衝（分，待確認）','number'],['renewWindowSec','續番小姐重排等待秒數（逾時＝原班留下）','number'],['discount','預設折扣（元，待確認）','number'],['serviceRate','服務費 %（預設 0，待確認）','number'],['payMethods','付款方式（逗號分隔，待確認）','text'],['reportMin','報到逾時提醒（分）','number'],['returnMin','離房多久提醒回檯（分）','number'],['billMin','剩幾分鐘回檯買單','number'],['beep','叫號提示音（開/關）','text'],['visitorMin','訪客時間（分，待確認）','number'],['visitCountsFull','訪客中計入點滿（是/否，待確認）','text'],['areaReaders','區域讀卡器（讀卡器ID=休息室/餐廳，逗號分隔）','text'],['doorOutLeaves','門口感應「出」＝結束該檯（是/否；否＝暫離）','text'],['orderGirlBonus','訂番獎金：小姐（元）','number'],['orderStaffBonus','訂番獎金：幹部（元）','number'],['girlTaiRate','小姐每台抽成（元，範例 0，待確認）','number'],['dayCut','營業日換日時間（幾點，待確認）','number'],['shifts','少爺班別（逗號分隔，待確認）','text'],['staffDefOff','少爺每月可休天數預設（待確認）','number'],['renewPkg','續番再收套餐（是/否，待確認）','text'],['renewDrink','續番再含酒水（是/否，待確認）','text'],['offDays','每月可休天數','number'],['bonus','全勤獎金（元）','number'],['noShowCounts','未到是否計入休假（是/否，待確認）','text'],['bookedMax','點滿：同時被點包廂數上限','number'],['freeWithinMin','幾分鐘內會空出仍可點（待確認）','number'],['autoFill','保檯不足自動補人（開/關）','text'],['baoRules','保檯規則預設（N保M：送進N位、保留M位）','text']].map(([k,l,ty])=>`<label>${l}<br><input name="${k}" type="${ty}" value="${c[k]}" size=40 style="max-width:100%"></label>`).join('')+'<button value="ok">儲存</button> <button class="s" value="">取消</button>';
+function openSettings0(){const c=C();const f=document.getElementById('dform');f.innerHTML='<h3>店家設定</h3>'+[['store','店名','text'],['rooms','包廂清單（逗號分隔）','text'],['sessionMin','一節長度（分）','number'],['tableMin','每檯時間（分）','number'],['renewMin','續番提醒（剩幾分）','number'],['holdMin','保檯保留時間（分，規則待確認）','number'],['breakMin','休息時間（分）','number'],['tagMap','標籤對應（標籤=編號=裝置類型，預設手環，逗號分隔）','text'],['privTai','私檯台數（原 1 台＋私檯 4 台）','number'],['privInclDeduct','套餐內小姐私檯只加 4 台（是/否，待確認）','text'],['privLegacy','使用舊制私檯固定價（是/否）','text'],['privPrice','舊制私檯價格（元/段）','number'],['privBlockMin','私檯計費段（分）','number'],['busyRotMin','忙時私檯轉檯間隔（分）','number'],['visitMin','訪客時間（分）','number'],['pkg1','套餐 1 人價','number'],['pkg2','套餐 2 人價','number'],['pkgInc','每多 1 人加價','number'],['pkgInclPlus','套餐含公轉小姐＝人數＋幾位','number'],['pkgHands1','1 人套餐含啤酒（手）','number'],['pkgHands','2 人以上套餐含啤酒（手）','number'],['beerAddPrice','套餐外啤酒每手（待設定，0＝未設）','number'],['liquorSupplier','酒類供應商','text'],['tablePrice','每台價格','number'],['holidayDays','假日（星期幾，0=日 5=五 6=六，逗號分隔）','text'],['holidayEarlyMin','假日每番提早結束（分）','number'],['cleanMin','清潔緩衝（分，待確認）','number'],['renewWindowSec','續番小姐重排等待秒數（逾時＝原班留下）','number'],['discount','預設折扣（元，待確認）','number'],['serviceRate','服務費 %（預設 0，待確認）','number'],['payMethods','付款方式（逗號分隔，待確認）','text'],['reportMin','報到逾時提醒（分）','number'],['returnMin','離房多久提醒回檯（分）','number'],['billMin','剩幾分鐘回檯買單','number'],['beep','叫號提示音（開/關）','text'],['visitorMin','訪客時間（分，待確認）','number'],['visitCountsFull','訪客中計入點滿（是/否，待確認）','text'],['areaReaders','區域讀卡器（讀卡器ID=休息室/餐廳，逗號分隔）','text'],['doorOutLeaves','門口感應「出」＝結束該檯（是/否；否＝暫離）','text'],['orderGirlBonus','訂番獎金：小姐（元）','number'],['orderStaffBonus','訂番獎金：幹部（元）','number'],['girlTaiRate','小姐每台抽成（元，範例 0，待確認）','number'],['dayCut','營業日換日／自動存檔時間（HH:MM，營業 14:00–07:00）','text'],['shifts','少爺班別（逗號分隔，待確認）','text'],['staffDefOff','少爺每月可休天數預設（待確認）','number'],['renewPkg','續番再收套餐（是/否，待確認）','text'],['renewDrink','續番再含酒水（是/否，待確認）','text'],['offDays','每月可休天數','number'],['bonus','全勤獎金（元）','number'],['noShowCounts','未到是否計入休假（是/否，待確認）','text'],['bookedMax','點滿：同時被點包廂數上限','number'],['freeWithinMin','幾分鐘內會空出仍可點（待確認）','number'],['autoFill','保檯不足自動補人（開/關）','text'],['baoRules','保檯規則預設（N保M：送進N位、保留M位）','text']].map(([k,l,ty])=>`<label>${l}<br><input name="${k}" type="${ty}" value="${c[k]}" size=40 style="max-width:100%"></label>`).join('')+'<button value="ok">儲存</button> <button class="s" value="">取消</button>';
 const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue!='ok')return;f.querySelectorAll('input').forEach(i=>c[i.name]=i.type=='number'?+i.value:i.value);log('店家設定已更新');render()};d.showModal()}
 function setPriv(g){{const x=S.rooms[g.room];if(x){x.privBans=x.privBans||[];const i=(x.bans||[[]]).length-1;x.privBans[i]=x.privBans[i]||[];if(!x.privBans[i].includes(g.id))x.privBans[i].push(g.id)}}g.priv={room:g.room,start:now(),nextRot:now()+C().busyRotMin*60000,visiting:false};log(`${g.name} 於 ${g.room} 設為私檯`)}
 const privCharge=p=>Math.max(1,Math.ceil((now()-p.start)/(C().privBlockMin*60000)))*C().privPrice;
@@ -163,7 +165,7 @@ const sr=document.getElementById('sr');if(sr.options.length!=roomList().length)s
  S.wines=S.wines||[['範例洋酒 A（請匯入真實酒款）',0],['範例洋酒 B（請匯入真實酒款）',0],['範例洋酒 C（請匯入真實酒款）',0]].map(([name,price])=>({name,price}));}
 const hm=ts=>{const d=new Date(ts);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
 const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const isHoliday=ts=>String(C().holidayDays).split(',').map(x=>+x.trim()).includes(new Date(ts).getDay());
+const isHoliday=ts=>{const [Y,M,D]=bizDay(ts).split('-').map(Number);return String(C().holidayDays).split(',').map(x=>+x.trim()).includes(new Date(Y,M-1,D).getDay())};
 const sessLen=ts=>(C().sessionMin-(isHoliday(ts)?C().holidayEarlyMin:0))*60000;
 function timeInfo(x){const n=now(),st=x.sesStart||x.start,left=x.end-n,ov=left<0,soon=left<=C().renewMin*60000;
  return `<span style="font-weight:bold;${ov?'color:#f55':soon?'color:#fc3':''}">${hm(st)}–${hm(x.end)}・${ov?'超時 '+Math.ceil(-left/60000)+' 分':'剩 '+Math.ceil(left/60000)+' 分'}</span>${x.holiday?' <span class=pen style="background:#a50">假日</span>':''}`}
@@ -173,7 +175,7 @@ function emptyCard(r){const c=S.cleaning[r];if(c)return`<div style="color:#fc3">
 function checkIn(r){const rules=C().baoRules.split(',').map(x=>x.trim());const f=document.getElementById('dform'),hol=isHoliday(now());
  f.innerHTML=`<h3>${r} 開番（${sessLen(now())/60000} 分${hol?'・假日提早 '+C().holidayEarlyMin+' 分':''}）</h3><label>客人人數 <input id=ciN type=number value=2 min=1 style="width:60px"></label><label>開番酒款 <select id=ciD><option value="pkg:啤酒一手">套餐：一手啤酒</option><option value="pkg:高粱一瓶">套餐：一瓶高粱</option>${S.wines.map((w,i)=>`<option value="w:${i}">洋酒：${esc(w.name)}（${w.price} 元${w.price?'':'・未設價'}）</option>`).join('')}</select></label><label>保檯 <select id=ciB><option value="">不保（套餐 ${C().pkgGirls} 位）</option>${rules.map(x=>`<option>${x}</option>`).join('')}</select></label><button value=ok>開番</button> <button class=s value="">取消</button>`;
  const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue=='ok')doCheckIn(r,+ciN.value,ciD.value,ciB.value)};d.showModal()}
-function doCheckIn(r,n,dv,br){let drink=dv,wine=null;if(dv.startsWith('pkg:'))drink=dv.slice(4);else if(dv.startsWith('w:')){const w=S.wines[+dv.slice(2)];wine={name:w.name,price:+w.price||0};drink='洋酒：'+w.name}
+function doCheckInA(r,n,dv,br){let drink=dv,wine=null;if(dv.startsWith('pkg:'))drink=dv.slice(4);else if(dv.startsWith('w:')){const w=S.wines[+dv.slice(2)];wine={name:w.name,price:+w.price||0};drink='洋酒：'+w.name}
  doCheckIn0(r,n,drink,br);const x=S.rooms[r];x.wine=wine;x.orders=[];x.sesStart=x.start;x.holiday=isHoliday(x.start);x.end=x.start+sessLen(x.start);
  const qi=S.queue.findIndex(q=>q.room==r);if(qi>=0){log(`候位 ${S.queue[qi].name} 入 ${r}`);S.queue.splice(qi,1)}delete S.cleaning[r];save();render()}
 // 帳單：加洋酒、加點
@@ -222,7 +224,7 @@ function importCat(txt){const rs=parseCSV(txt).filter(r=>r.length>=3);if(!rs.len
 function importWine(txt){const rs=parseCSV(txt);if(!rs.length)return alert('格式：品名,價格');S.wines=rs.map(r=>({name:r[0],price:+r[1]||0}));log(`匯入洋酒 ${rs.length} 項`);alert('已匯入 '+rs.length+' 項');save()}
 const readFile=(inp,fn)=>{const fl=inp.files[0];if(fl)fl.text().then(fn)};
 function openSettings(){openSettings0();rosterUI();document.getElementById('dform').insertAdjacentHTML('afterbegin',`<details style="margin-bottom:10px"><summary><b>加點價目表 / 洋酒清單（匯入・匯出）</b></summary><p>加點 CSV：<code>類別,品名,單價,單位</code>（目前 ${S.catalog.length} 項）</p><textarea id=catT rows=4 style="width:100%">${esc(S.catalog.map(c=>[c.cat,c.name,c.price,c.unit].join(',')).join('\n'))}</textarea><br><button type=button onclick="importCat(catT.value)">匯入貼上內容</button> <input type=file accept=".csv,text/csv" onchange="readFile(this,importCat)"> <button type=button class=s onclick="dl('加點價目表.csv',[['類別','品名','單價','單位'],...S.catalog.map(c=>[c.cat,c.name,c.price,c.unit])])">匯出</button>
-<p>洋酒 CSV：<code>品名,價格</code>（目前 ${S.wines.length} 項）</p><textarea id=wT rows=3 style="width:100%">${esc(S.wines.map(w=>w.name+','+w.price).join('\n'))}</textarea><br><button type=button onclick="importWine(wT.value)">匯入貼上內容</button> <input type=file accept=".csv,text/csv" onchange="readFile(this,importWine)"> <button type=button class=s onclick="dl('洋酒清單.csv',[['品名','價格'],...S.wines.map(w=>[w.name,w.price])])">匯出</button></details><p style="font-size:12px;color:#fc6">待確認：清潔緩衝時間、折扣／服務費、付款方式、洋酒是否另計或補差價</p>`)}
+<p>供應商：<b>${esc(C().liquorSupplier||'國泰洋酒')}</b></p><p>洋酒 CSV：<code>品名,價格</code>（目前 ${S.wines.length} 項）</p><textarea id=wT rows=3 style="width:100%">${esc(S.wines.map(w=>w.name+','+w.price).join('\n'))}</textarea><br><button type=button onclick="importWine(wT.value)">匯入貼上內容</button> <input type=file accept=".csv,text/csv" onchange="readFile(this,importWine)"> <button type=button class=s onclick="dl('洋酒清單.csv',[['品名','價格'],...S.wines.map(w=>[w.name,w.price])])">匯出</button></details><p style="font-size:12px;color:#fc6">待確認：清潔緩衝時間、折扣／服務費、付款方式、洋酒是否另計或補差價</p>`)}
 
 // ===== v3：報到看板／外找／回檯／回檯買單 =====
 {const d={reportMin:5,returnMin:15,billMin:20,beep:'開',extFee:0,areaReaders:'R-LOUNGE=休息室,R-DINE=餐廳',doorOutLeaves:'否'};for(const k in d)if(C()[k]===undefined)C()[k]=d[k];S.calls=S.calls||[];}
@@ -286,7 +288,7 @@ function importRoster(txt){const lines=txt.split(/\r?\n/).map(l=>l.trim()).filte
 if(S.attVer!=2){S.att={};S.attVer=2;S.girls.forEach(todayRec);log('出勤紀錄已清空，從今天開始計算');save()}
 // ===== v5：白板檢視 =====
 {const d={orderGirlBonus:300,orderStaffBonus:500};for(const k in d)if(C()[k]===undefined)C()[k]=d[k];S.orderBonus=S.orderBonus||[];if(S.boardNote===undefined)S.boardNote='';}
-function seedPhoto(){const T=(h,m,add)=>{const d=new Date();if(d.getHours()<6)d.setDate(d.getDate()-1);d.setHours(h,m,0,0);return d.getTime()+(add||0)};
+function seedPhoto(){const T=(h,m,add)=>{const d=new Date();if(d.getHours()*60+d.getMinutes()<cutM())d.setDate(d.getDate()-1);d.setHours(h,m,0,0);return d.getTime()+(add||0)};
  const mk=(r,guests,beer,order,start,ins,outs,priv,note)=>{const st=T(start[0],start[1]);S.rooms[r]={drink:'啤酒一手',bans:[[...ins,...outs]],privBans:[priv],bao:null,sent:ins.length+outs.length,guests,start:st,sesStart:st,end:st+120*60000,sessions:1,warned:false,orders:[],beer,order,note:note||'',demo:true};
   [...ins,...outs].forEach(id=>{const g=G(id);if(!g)return;g.on=true;g.leave=false;g.status='在檯';g.room=r;g.start=st;g.until=now()+20*60000;g.src='blue';g.tables=(g.tables||0)+1;g.inRoom=ins.includes(id);if(!g.inRoom){g.loc='休息室';g.outSince=now()}});
   priv.forEach(id=>{G(id).priv={room:r,start:st,nextRot:now()+C().busyRotMin*60000,visiting:false}});order.forEach(id=>S.orderBonus.push({t:st,room:r,girl:id,girlAmt:C().orderGirlBonus||300,staffAmt:C().orderStaffBonus||500,staff:"示範"}))};
@@ -294,7 +296,7 @@ function seedPhoto(){const T=(h,m,add)=>{const d=new Date();if(d.getHours()<6)d.
  mk('208',2,{百威:2,金牌:0},['81'],[21,40],['81','30','60','01','63'],[],['81'],'');
  mk('205',3,{百威:2,金牌:0},['31'],[22,15],['31'],['19','76','85','62','70','93'],[],'人數為示範');}
 const tally=n=>n==null?'待補':'正'.repeat(Math.floor(n/5))+['','一','丅','下','止'][n%5];
-function wbCell(r){const x=S.rooms[r],n=now();const lab=`<span class=wl>${esc(r)}</span>`;
+function wbCellA(r){const x=S.rooms[r],n=now();const lab=`<span class=wl>${esc(r)}</span>`;
  if(!x)return`<div class=wc>${lab}<div class=wempty>${S.cleaning[r]?'清潔中':''}${(p=>p?'預備 '+esc(p.name):'')(prepFor(r))}</div></div>`;
  const b=x.beer||{},ids=[...new Set([...(x.bans||[[]]).flat(),...S.girls.filter(g=>g.room==r).map(g=>g.id)])].filter(id=>G(id)&&G(id).room==r),left=Math.ceil((x.end-n)/60000);
  return`<div class="wc ${left<=C().billMin?'wsoon':''} ${left<0?'wended':''}">${lab}<span class=wh title="${x.guests} 人">${tally(x.guests)}<small>${x.guests??'待補'}人</small></span>${(x.order||[]).map(id=>`<span class=wo>${id}</span>`).join('')}${b.百威?`<span class=wb>百${b.百威}</span>`:''}${b.金牌?`<span class=wb>金${b.金牌}</span>`:''}
@@ -311,7 +313,9 @@ function openRevenue(){openRevenue0();const ob=todayOB(),f=document.getElementBy
 
 // ===== v6：少爺排班／少爺薪資／小姐台數 =====
 {const d={girlTaiRate:0,dayCut:6,shifts:'早,晚,全',staffDefOff:4};for(const k in d)if(C()[k]===undefined)C()[k]=d[k];S.staff=S.staff||[];S.sched=S.sched||{};S.staffAdj=S.staffAdj||{};S.girlAdj=S.girlAdj||{};S.taiLog=S.taiLog||[];}
-const bizDay=ts=>dkey(ts-C().dayCut*3600000);
+if(!S.cutVer){C().dayCut='07:10';S.cutVer=1}
+const cutM=()=>{const m=String(C().dayCut).match(/^(\d{1,2})(?::(\d{2}))?$/);return m?+m[1]*60+(+m[2]||0):430},cutTxt=()=>{const m=cutM();return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
+const bizDay=ts=>dkey(ts-cutM()*60000);
 const curMonth=()=>bizDay(now()).slice(0,7);
 let pgMonth=null,pgDay=null,schedMode='狀態';
 function pageOpen(html){const p=document.getElementById('page');p.innerHTML=`<div class=ph><button class=s onclick="pageClose()">✕ 關閉</button> <button class=s onclick="window.print()">🖨 列印</button></div>`+html;p.style.display='block'}
@@ -354,7 +358,7 @@ function girlMonth(id,m){const s={tai:0,pv:0,red:0,blue:0,obN:0,obAmt:0,adjAmt:0
 function openGirlPay(){pgDay=pgDay||bizDay(now());pgMonth=pgMonth||curMonth();const isD=gpMode=='日';const rows=S.girls.map(g=>[g,isD?girlDay(g.id,pgDay):girlMonth(g.id,pgMonth)]).filter(([g,r])=>gpAll||r.tai||r.red||r.blue||r.obN||r.adjAmt);
  const sum=rows.reduce((a,[,r])=>a+r.total,0),tsum=rows.reduce((a,[,r])=>a+r.tai,0);
  pageOpen(`<h2>小姐台數計算金額</h2><p><select onchange="gpMode=this.value;openGirlPay()"><option ${isD?'selected':''}>日</option><option ${isD?'':'selected'}>月</option></select> ${isD?`<input type=date value="${pgDay}" onchange="pgDay=this.value;openGirlPay()">`:monthSel('openGirlPay')} <label style="display:inline"><input type=checkbox ${gpAll?'checked':''} onchange="gpAll=this.checked;openGirlPay()"> 顯示全部小姐</label></p>
- <p style="color:#fc6">每台抽成 ${C().girlTaiRate} 元（範例，待確認；與客人每台 ${C().tablePrice} 元分開）・私檯＝${C().privTai} 台・每番在房＝1 台・訂番獎金 ${C().orderGirlBonus} 元・營業日以 ${C().dayCut}:00 換日（待確認）</p>
+ <p style="color:#fc6">每台抽成 ${C().girlTaiRate} 元（範例，待確認；與客人每台 ${C().tablePrice} 元分開）・私檯＝${C().privTai} 台・每番在房＝1 台・訂番獎金 ${C().orderGirlBonus} 元・營業日以 ${cutTxt()} 換日（營業 14:00–07:00）</p>
  <h3>${isD?pgDay+' 日結算':pgMonth+' 月彙總'}：共 ${tsum} 台・${sum.toLocaleString()} 元（${rows.length} 位）</h3><div class=tw><table class=sch><tr><th>編號</th><th>藝名</th>${isD?'':'<th>上班日</th>'}<th>台數</th><th>私檯次</th><th>紅筆(客點)</th><th>藍筆(店派)</th><th>訂番</th><th>台數金額</th><th>訂番獎金</th><th>預支/扣款</th><th>合計</th></tr>
  ${rows.map(([g,r])=>`<tr><td>${g.id}</td><td>${esc(g.name.replace(/^\S+\s/,''))}</td>${isD?'':`<td>${r.days}</td>`}<td><b>${r.tai}</b></td><td>${r.pv}</td><td>${r.red}</td><td>${r.blue}</td><td>${r.obN}</td><td>${r.taiAmt}</td><td>${r.obAmt}</td><td>${isD?(r.adj.map(a=>esc(a.type)+' '+a.amt).join('<br>')+` <button class=s onclick="girlAdj('${g.id}')">＋</button>`):r.adjAmt}</td><td><b>${r.total.toLocaleString()}</b></td></tr>`).join('')||'<tr><td colspan=12>無資料</td></tr>'}</table></div><p><button onclick="girlPayCSV()">匯出 CSV</button></p>`)}
 function girlPayCSV(){const isD=gpMode=='日';dl((isD?'小姐日結-'+pgDay:'小姐月結-'+pgMonth)+'.csv',[['編號','藝名','台數','私檯次','紅筆','藍筆','訂番','台數金額','訂番獎金','預支/扣款','合計'],...S.girls.map(g=>[g,isD?girlDay(g.id,pgDay):girlMonth(g.id,pgMonth)]).filter(([g,r])=>r.tai||r.obN||r.adjAmt||r.red||r.blue).map(([g,r])=>[g.id,g.name.replace(/^\S+\s/,''),r.tai,r.pv,r.red,r.blue,r.obN,r.taiAmt,r.obAmt,r.adjAmt,r.total])])}
@@ -376,7 +380,7 @@ function openSheet(){shDay=shDay||bizDay(now());const rows=sheetRows(shDay),inRo
 function sheetCSV(){const rows=sheetRows(shDay),ids=[...new Set(rows.flatMap(e=>e.girls))];dl('排檯表-'+shDay+'.csv',[['包廂','進場','人數','番','狀態',...ids],...rows.map(e=>[e.room,hm(e.start),e.guests,e.ban,e.ended?'已結束('+e.why+')':'進行中',...ids.map(id=>!e.girls.includes(id)?'':(e.privs.includes(id)?'私檯':'')+(e.order.includes(id)?'訂番':S.redLog.some(z=>z.girl==id&&z.room==e.room&&z.t>=e.start-60000)?'客點':'幹部派'))])])}
 
 // ===== v7：清空舊資料＋排檯表匯入 =====
-if(S.cleanVer!=1){Object.assign(S,{rooms:{},sheetLog:[],taiLog:[],att:{},orderBonus:[],revenue:[],queue:[],calls:[],reqs:[],redLog:[],blueLog:[],autos:[],cleaning:{},girlAdj:{},finds:[],visitLog:[],decisions:[],waiting:0,boardNote:'',log:[]});
+if(!S.cleanVer){Object.assign(S,{rooms:{},sheetLog:[],taiLog:[],att:{},orderBonus:[],revenue:[],queue:[],calls:[],reqs:[],redLog:[],blueLog:[],autos:[],cleaning:{},girlAdj:{},finds:[],visitLog:[],decisions:[],waiting:0,boardNote:'',log:[]});
  S.girls.forEach(g=>Object.assign(g,{on:false,leave:false,status:'休息室',room:null,start:0,until:0,src:'',priv:null,visit:null,holds:[],tables:0,inRoom:undefined,loc:null,outSince:0,clockAt:null,idleSince:0,visits:0,picked:0,gov:null,warned:false}));
  S.cleanVer=1;S.attVer=2;log('已清空舊排檯資料（名冊、包廂、設定、少爺資料保留）');save()}
 function importSheet(txt,day,quiet){const rows={},marks=[],bad=[];let d=day;
@@ -388,7 +392,7 @@ function importSheet(txt,day,quiet){const rows={},marks=[],bad=[];let d=day;
  const um=marks.filter(m=>!rows[m[0]]);if(bad.length||um.length)return quiet?console.warn(bad):alert('無法匯入，請檢查這些行：\n'+bad.concat(um.map(m=>m.join(',')+'（找不到序 '+m[0]+'）')).join('\n'));
  S.sheetLog=S.sheetLog.filter(e=>!(e.imp&&e.day==d));S.taiLog=S.taiLog.filter(e=>!(e.imp&&e.day==d));S.orderBonus=S.orderBonus.filter(e=>!(e.imp&&e.day==d));S.redLog=S.redLog.filter(e=>!(e.imp&&e.day==d));S.blueLog=S.blueLog.filter(e=>!(e.imp&&e.day==d));
  const [Y,M,D]=d.split('-').map(Number),cnt={};let n=0;
- Object.keys(rows).sort((a,b)=>+a-+b).forEach(k=>{const r=rows[k],dt=new Date(Y,M-1,D,r.h,r.mi);if(r.h<C().dayCut)dt.setDate(dt.getDate()+1);const st=dt.getTime();cnt[r.room]=(cnt[r.room]||0)+1;
+ Object.keys(rows).sort((a,b)=>+a-+b).forEach(k=>{const r=rows[k],dt=new Date(Y,M-1,D,r.h,r.mi);if(r.h*60+r.mi<cutM())dt.setDate(dt.getDate()+1);const st=dt.getTime();cnt[r.room]=(cnt[r.room]||0)+1;
   const mk={};marks.filter(m=>m[0]==k).forEach(([,id,ty])=>{(mk[id]=mk[id]||[]).push(ty)});const girls=Object.keys(mk),privs=girls.filter(id=>mk[id].includes('私檯')),order=girls.filter(id=>mk[id].includes('訂番'));
   if(!r.ended&&roomList().includes(r.room)&&!S.rooms[r.room]&&!girls.length){S.rooms[r.room]={drink:'待補',bans:[[]],privBans:[],bao:null,sent:0,guests:r.guests,start:st,sesStart:st,end:st+sessLen(st),sessions:1,warned:false,orders:[],beer:{百威:0,金牌:0},order:[],note:'',holiday:isHoliday(st),imp:true};n++;return}
   S.sheetLog.push({day:d,room:r.room,ban:cnt[r.room],start:st,guests:r.guests,girls,privs,order,marks:mk,ended:r.ended,why:r.ended?'匯入':'',imp:true});
@@ -408,7 +412,7 @@ function openSheetImport(){pageOpen(`<h2>匯入排檯表</h2><p>貼上文字或 
 
 
 function editRow(ref){if(ref[0]=='L'){const e=S.sheetLog[+ref.slice(1)];const room=prompt('包廂號',e.room);if(room===null)return;const tm=prompt('進場時間（HH:MM）',hm(e.start));if(tm===null)return;const gu=prompt('人數（空白＝待補）',e.guests??'');if(gu===null)return;
-  const m=tm.match(/^(\d{1,2}):?(\d{2})$/);if(!m)return alert('時間格式錯誤');const [Y,M,D]=e.day.split('-').map(Number),dt=new Date(Y,M-1,D,+m[1],+m[2]);if(+m[1]<C().dayCut)dt.setDate(dt.getDate()+1);
+  const m=tm.match(/^(\d{1,2}):?(\d{2})$/);if(!m)return alert('時間格式錯誤');const [Y,M,D]=e.day.split('-').map(Number),dt=new Date(Y,M-1,D,+m[1],+m[2]);if(+m[1]*60+ +m[2]<cutM())dt.setDate(dt.getDate()+1);
   S.taiLog.forEach(z=>{if(z.room==e.room&&z.t==e.start){z.room=room.trim();z.t=dt.getTime()}});e.room=room.trim()||'?';e.start=dt.getTime();e.guests=+gu>0?+gu:null;log(`修改排檯表：${e.room} ${tm} ${e.guests??'待補'} 人`)}
  else{const [,r,i]=ref.split('|'),x=S.rooms[r];const tm=prompt(`${r} 第 ${+i+1} 番進場時間（HH:MM）`,hm((x.banStart||[])[+i]||x.start));if(tm===null)return;const gu=prompt('人數（空白＝待補）',x.guests??'');if(gu===null)return;const m=tm.match(/^(\d{1,2}):?(\d{2})$/);if(!m)return alert('時間格式錯誤');
   const d=new Date(x.start);d.setHours(+m[1],+m[2],0,0);if(d.getTime()-x.start>12*3600000)d.setDate(d.getDate()-1);if(x.start-d.getTime()>12*3600000)d.setDate(d.getDate()+1);if(+i==0&&x.sessions==1){x.start=x.sesStart=d.getTime();x.end=x.start+sessLen(x.start)}else{(x.banStart=x.banStart||[x.start])[+i]=d.getTime()}x.guests=+gu>0?+gu:null;log(`修改 ${r}：${tm} ${x.guests??'待補'} 人`)}
@@ -443,7 +447,7 @@ function openUsers(){if(!needRole(4,'只有老闆可以管理帳號'))return;con
  const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue!='ok')return;const us=usT.value.split(/\r?\n/).map(l=>l.split(/[,，]/).map(x=>x.trim())).filter(c=>c[0]);const bad=us.filter(c=>!ROLES[c[1]]||!/^\d{4,8}$/.test(c[2]||''));if(bad.length)return alert('格式錯誤（角色或 4–8 位數 PIN）：\n'+bad.map(c=>c.join(',')).join('\n'));if(!us.some(c=>c[1]=='老闆'))return alert('至少要保留一位老闆');S.users=us.map(c=>({name:c[0],role:c[1],pin:c[2]}));S.usersExample=false;log('帳號清單已更新（'+S.cur.name+'）');save()};setTimeout(()=>d.showModal(),0)}
 // ---- 解析 ----
 const parseTime=s=>{const m=String(s||'').match(/^(\d{1,2})[:：]?(\d{2})$/);return m&&+m[1]<30&&+m[2]<60?[+m[1],+m[2]]:null};
-function dayTs(day,h,mi){const [Y,M,D]=day.split('-').map(Number),dt=new Date(Y,M-1,D,h,mi);if(h<C().dayCut)dt.setDate(dt.getDate()+1);return dt.getTime()}
+function dayTs(day,h,mi){const [Y,M,D]=day.split('-').map(Number),dt=new Date(Y,M-1,D,h,mi);if(h*60+mi<cutM())dt.setDate(dt.getDate()+1);return dt.getTime()}
 const nid=x=>{const n=+x;return n>=1&&n<=100&&/^\d+$/.test(String(x).trim())?String(n).padStart(2,'0'):null};
 function parseSheetTxt(txt,defDay){const rows={},marks=[],bad=[],unk=[],tbd=[];let d=defDay;
  txt.split(/\r?\n/).map(l=>l.trim()).filter(l=>l&&!l.startsWith('#')).forEach(l=>{const c=l.split(/[,，\t]/).map(x=>x.trim());if(c[0]=='日期'){d=c[1];return}if(c[0]=='序')return;
@@ -492,7 +496,7 @@ function miCommit(){if(!needRole(2))return;const reason=(document.getElementById
  S.impSnap=snap;S.impAudit.unshift(Object.assign({t:now(),by:S.cur.name,role:S.cur.role,type:p.type,day:p.day||p.month,reason,policy:p.type=='排檯表'?pol:''},stat));log(`【手動匯入】${p.type} ${p.day||p.month}（${S.cur.name}／${S.cur.role}）原因：${reason}`);MI.parsed=null;MI.text='';MI.reason='';MI.grid=[];MI.ck=[];save();render();alert('匯入完成：'+Object.entries(stat).map(([k,v])=>k+' '+v).join('、'));openImpAudit()}
 function applySheet(p,pol){const d=p.day;const old=S.sheetLog.filter(e=>e.imp&&e.day==d).length;
  ['sheetLog','taiLog','orderBonus','redLog','blueLog'].forEach(k=>S[k]=S[k].filter(e=>!(e.imp&&e.day==d)));const cnt={};let add=0,skip=0,merge=0,rep=0,live=0;
- Object.values(p.rows).sort((a,b)=>(a.tm?dayTs(d,...a.tm):0)-(b.tm?dayTs(d,...b.tm):0)).forEach(r=>{const st=r.tm?dayTs(d,...r.tm):dayTs(d,C().dayCut,0),mk={};p.marks.filter(m=>m[0]==r.seq).forEach(([,id,ty])=>{(mk[id]=mk[id]||[]).push(ty)});const girls=Object.keys(mk),privs=girls.filter(id=>mk[id].includes('私檯')),order=girls.filter(id=>mk[id].includes('訂番'));
+ Object.values(p.rows).sort((a,b)=>(a.tm?dayTs(d,...a.tm):0)-(b.tm?dayTs(d,...b.tm):0)).forEach(r=>{const st=r.tm?dayTs(d,...r.tm):dayTs(d,Math.floor(cutM()/60),cutM()%60),mk={};p.marks.filter(m=>m[0]==r.seq).forEach(([,id,ty])=>{(mk[id]=mk[id]||[]).push(ty)});const girls=Object.keys(mk),privs=girls.filter(id=>mk[id].includes('私檯')),order=girls.filter(id=>mk[id].includes('訂番'));
   const cf=liveConflict(r,r.tm?st:null);
   if(cf){if(pol=='skip'){skip++;return}const x=S.rooms[cf.room],i=cf.ban;x.bans[i]=x.bans[i]||[];x.privBans=x.privBans||[];x.privBans[i]=x.privBans[i]||[];
    if(pol=='replace'){x.bans[i]=girls.slice();x.privBans[i]=privs.slice();x.order=order.slice();if(r.guests)x.guests=r.guests;if(r.tm){if(i==0&&x.sessions==1){x.start=x.sesStart=st;x.end=st+sessLen(st)}else(x.banStart=x.banStart||[x.start])[i]=st}rep++}
@@ -567,7 +571,7 @@ function renderTV(){const el=document.getElementById('cbtv');if(!el||el.style.di
  el.innerHTML=`<div class=tvh><span>${esc(C().store)}・叫檯看板</span><span>${t(now())}</span><span>${cbSound?'':'<button onclick="cbSound=true;beep();renderTV()">🔔 點此啟用提示音</button>'} ${TVMODE?'':'<button class=s onclick="closeTV()">關閉</button>'}</span></div>
  <div class=tvwrap><div class=tvboard>${cs.map(c=>cbCardHTML(c,1)).join('')||'<div class=tvempty>目前沒有叫檯</div>'}</div><div class=tvrooms>${free.map(r=>`<div class=cbr>${esc(r)}</div>`).join('')}</div></div>
  <div class=tvtray>${lounge.map(g=>`<div class=cbg><span>${esc(g.name.replace(/^\S+\s/,''))}</span><b>${g.id}</b></div>`).join('')}</div>`}
-window.addEventListener('storage',e=>{if(e.key==K&&e.newValue){S=JSON.parse(e.newValue);render();renderTV()}});
+Store.onChange(()=>{const n=Store.load();if(n){S=n;render();renderTV()}});
 
 if(TVMODE){document.body.style.overflow='hidden';document.getElementById('cbtv').style.display='block'}
 // ===== v10：公轉／加點帳單、清空營業資料、歷史紀錄、當月報表 =====
@@ -598,7 +602,7 @@ function buildDay(d){const rows=sheetRows(d).map(e=>Object.assign({},e,{mk:Objec
  const live={};for(const r in S.rooms){const x=S.rooms[r];if(bizDay(x.start)==d){x.id=r;live[r]={guests:x.guests,start:x.start,end:x.end,sessions:x.sessions,wine:x.wine,orders:x.orders,bill:bill(x)}}}
  return{day:d,rows,checkin:(S.checkin||{})[d]||[],att:S.att[d]||{},clockOut:(S.clockOut||{})[d]||{},revenue:S.revenue.filter(inD),orderBonus:S.orderBonus.filter(inD),girls,staff,live,
   finds:(S.finds||[]).filter(inD),visits:(S.visitLog||[]).filter(inD),audit:(S.impAudit||[]).filter(a=>bizDay(a.t)==d),log:S.log.slice(),cbLog:S.cb.log.slice()}}
-function closeDay(d,how){const rec=buildDay(d);rec.closedAt=now();rec.closedBy=how=='自動'?'系統（06:00 自動）':(S.cur?S.cur.name:'未登入');S.hist[d]=rec;log(`日結 ${d}（${rec.closedBy}）`);if(how=='自動'){S.log=S.log.slice(0,1);S.cb.log=[]}save()}
+function closeDay(d,how){const rec=buildDay(d);rec.closedAt=now();rec.closedBy=how=='自動'?`系統（${cutTxt()} 自動）`:(S.cur?S.cur.name:'未登入');S.hist[d]=rec;log(`日結 ${d}（${rec.closedBy}）`);if(how=='自動'){S.log=S.log.slice(0,1);S.cb.log=[]}save()}
 function dayTick(){const d=bizDay(now());if(S.openDay!=d){if(!TVMODE)closeDay(S.openDay,'自動');S.openDay=d}}
 function manualClose(){if(!needRole(2,'日結'))return;if(!confirm(`日結／關帳 ${S.openDay}？（之後仍可再按一次更新歸檔）`))return;closeDay(S.openDay,'手動');alert('已歸檔 '+S.openDay);openHistory()}
 // ---- 歷史頁 ----
@@ -609,7 +613,7 @@ function openHistory(){if(!needRole(2,'歷史紀錄'))return;HM=HM||bizDay(now()
  const mv=k=>{const d=new Date(Y,M-1+k,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
  pageOpen(`<h2>歷史紀錄</h2><p><button class=s onclick="HM='${mv(-1)}';openHistory()">‹</button> <b style="font-size:20px">${HM}</b> <button class=s onclick="HM='${mv(1)}';openHistory()">›</button> <button onclick="openMonthReport()">📊 當月報表</button> <button class=s onclick="manualClose()">日結／關帳（${S.openDay}）</button> ${lvl()>=3?'<button class=s style="background:#933" onclick="clearOpsUI()">清空營業資料</button>':''}</p>
  <div class=hcal>${'日一二三四五六'.split('').map(w=>`<div class=hw>${w}</div>`).join('')}${'<div></div>'.repeat(off)}${Array.from({length:N},(_,i)=>{const d=HM+'-'+String(i+1).padStart(2,'0'),r=dayData(d),has=hasData(r);return`<button class="hd ${has?'':'hdim'} ${d==today?'htoday':''} ${isHoliday(new Date(Y,M-1,i+1).getTime())?'hhol':''}" onclick="HD='${d}';openDay()">${i+1}${S.hist[d]?'<small>已結</small>':d==today?'<small>今日</small>':''}</button>`}).join('')}</div>
- <p style="font-size:12px;color:#aaa">每天 ${C().dayCut}:00 自動日結歸檔，也可手動日結。過去的資料只能用「手動匯入」修改（需填原因並留紀錄）。資料目前只存在這台裝置，正式版需伺服器。</p>`)}
+ <p style="font-size:12px;color:#aaa">每天 ${cutTxt()} 自動日結歸檔，也可手動日結。過去的資料只能用「手動匯入」修改（需填原因並留紀錄）。資料目前只存在這台裝置，正式版需伺服器。</p>`)}
 function openDay(){const r=dayData(HD);if(!r){pageOpen(`<h2>${HD}</h2><p>這天沒有資料</p><button class=s onclick="openHistory()">← 回月曆</button>`);return}
  const tabs=['排檯表','包廂與帳單','小姐台數','少爺','紀錄'],money=lvl()>=3;let body='';
  if(HT=='排檯表'){const ids=[...new Set([...r.checkin.map(c=>c.id),...r.rows.flatMap(e=>e.girls),...Object.keys(r.clockOut)])].filter(id=>G(id));
@@ -645,7 +649,7 @@ function defaultBT(g,r){const x=S.rooms[r];if(!x)return;const i=(x.bans||[[]]).l
  if(gz<inclGirls(x))setBT(r,g.id,'公轉');else toast(`${r}：${g.id}號 請選擇計費（公轉／加點／私檯）`,true)}
 function seat(g,r,src){seat1(g,r,src);if(g.room==r)defaultBT(g,r)}
 function btChip(g){const x=S.rooms[g.room];if(!x)return'';const v=btOf(x,x.bans.length-1,g.id);return`<a class="btc ${v?'':'btn0'}" onclick="cycleBT('${g.id}')">${v||'選計費'}</a>`}
-function bill0(x){const items=[],pk=pkgPrice(x.guests||1),bans=x.bans||[[]],nPk=C().renewPkg=='是'?x.sessions:1,tp=C().tablePrice;
+function bill0B(x){const items=[],pk=pkgPrice(x.guests||1),bans=x.bans||[[]],nPk=C().renewPkg=='是'?x.sessions:1,tp=C().tablePrice;
  items.push([`套餐 ${x.guests??'待補'} 人 × ${nPk} 番`,pk*nPk]);items.push([`含酒水：${x.drink||'—'} × ${C().renewDrink=='是'?x.sessions:1}`,0]);
  bans.forEach((b,i)=>{const pv=(x.privBans||[])[i]||[],gz=[],add=[],pr=[],un=[];b.forEach(id=>{const v=btOf(x,i,id)||(pv.includes(id)?'私檯':null);(v=='公轉'?gz:v=='加點'?add:v=='私檯'?pr:un).push(id)});
   const inc=inclGirls(x),ex=Math.max(0,gz.length-inc),P=bans.length>1?`第 ${i+1} 番 `:'';
@@ -655,6 +659,47 @@ function bill0(x){const items=[],pk=pkgPrice(x.guests||1),bans=x.bans||[[]],nPk=
   if(un.length)items.push([`${P}⚠ 未選計費 ${un.length} 位（${un.join(',')}），請在包廂卡片選擇`,0])});
  if((x.order||[]).length)items.push([`訂番 ${x.order.join(',')}（店家獎金，不向客人收費）`,0]);
  return{items,total:items.reduce((a,i)=>a+i[1],0)}}
+
+// ===== v11：套餐酒水・寄酒・供應商 =====
+(()=>{const c=C();if(c.pkgHands1===undefined)c.pkgHands1=1;if(c.pkgHands===undefined)c.pkgHands=2;if(c.beerAddPrice===undefined)c.beerAddPrice=0;if(!c.liquorSupplier)c.liquorSupplier='國泰洋酒';S.wineStore=S.wineStore||[];S.wsLog=S.wsLog||[];S.wsSeq=S.wsSeq||1})();
+const pkgHands=n=>(n||1)<=1?+C().pkgHands1:+C().pkgHands;
+function pkgLine(x){const n=x.guests||1;return`${x.guests??'待補'}人套餐 ${pkgPrice(n)}（含${inclGirls(x)}位公轉小姐＋${pkgHands(n)}手啤酒或金高一瓶）`}
+function pkgDrinkTxt(x){const p=x.pkgDrink;if(!p)return x.drink||'—';return p.kind=='金高'?'金高一瓶':`${p.kind} ${pkgHands(x.guests)} 手`}
+const doCheckIn2=doCheckInA;
+function doCheckIn(r,n,dv,br){let k=null;const m=(dv||'').match(/^pk:(.+)$/);if(m){k=m[1];dv='pkg:'+(k=='金高'?'金高一瓶':`啤酒（${k}）${pkgHands(n)}手`)}
+ doCheckIn2(r,n,dv,br);const x=S.rooms[r];if(x&&k){x.pkgDrink={kind:k};x.beer=x.beer||{百威:0,金牌:0};if(k!='金高')x.beer[k]=(x.beer[k]||0)+pkgHands(n);log(`${r} 套餐酒：${pkgDrinkTxt(x)}`);save();render()}}
+const bill0v10=bill0B;
+function bill0(x){const b=bill0v10(x),it=b.items;const i=it.findIndex(z=>/^套餐 /.test(z[0]));if(i>=0)it[i][0]=pkgLine(x)+(x.sessions>1&&C().renewPkg=='是'?` × ${x.sessions} 番`:'');
+ const j=it.findIndex(z=>/^含酒水/.test(z[0]));if(j>=0)it[j][0]=`套餐酒：${pkgDrinkTxt(x)}`;
+ if(x.pkgDrink){const bb=x.beer||{},tot=(bb.百威||0)+(bb.金牌||0),inc=x.pkgDrink.kind=='金高'?0:pkgHands(x.guests),ex=Math.max(0,tot-inc);
+  if(ex){const p=+C().beerAddPrice||0;it.push([`啤酒加點 ${ex} 手 × ${p}${p?'':'（單價待設定）'}`,ex*p])}}
+ b.total=it.reduce((a,z)=>a+z[1],0);return b}
+// 開番視窗酒款選項
+const ciPatch=()=>{const s=document.getElementById('ciD');if(!s||s.dataset.v11)return;s.dataset.v11=1;[...s.options].filter(o=>o.value.startsWith('pkg:')).forEach(o=>o.remove());
+ ['金高','金牌','百威'].forEach(k=>{const o=document.createElement('option');o.value='pk:'+k;o.textContent=k=='金高'?'套餐：金高一瓶':`套餐：啤酒（${k}）`;s.insertBefore(o,s.firstChild)});s.value='pk:百威'};
+new MutationObserver(ciPatch).observe(document.getElementById('dform'),{childList:true,subtree:true});
+// 白板：金高標記
+const wbCell0=wbCellA;function wbCell(r){const h=wbCell0(r),x=S.rooms[r];return x&&x.pkgDrink&&x.pkgDrink.kind=='金高'?h.replace('</span>','</span><span class=wb>金高</span>'):h}
+// ---- 寄酒 ----
+const WSDAY=86400000;const wsExp=w=>w.stored+30*WSDAY;
+function wsState(w){if(w.status!='寄存')return w.status;const l=wsExp(w)-now();return l<0?'逾期':l<=7*WSDAY?'將到期':'寄存'}
+function wsAct(w,a){const e={t:now(),id:w.id,act:a,who:S.cur?S.cur.name:(S.op||'未填'),txt:`寄酒#${w.id} ${w.guest} ${w.brand}：${a}`};S.wsLog.unshift(e);(w.hist=w.hist||[]).push(e);log(e.txt)}
+function openWine(){if(!needRole(2,'寄酒'))return;const L=S.wineStore,g=k=>L.filter(w=>wsState(w)==k),d=x=>new Date(x).toLocaleDateString('zh-TW');
+ const row=w=>`<tr><td>#${w.id}</td><td>${esc(w.guest)}${w.phone?'<br><small>'+esc(w.phone)+'</small>':''}</td><td>${esc(w.brand)}</td><td>${esc(w.left)}</td><td>${d(w.stored)}</td><td>${d(wsExp(w))}</td><td>${esc(w.staff)}</td><td>${w.status=='寄存'?`<button type=button onclick="wsOut(${w.id})">取出</button>${wsState(w)=='逾期'?` <button type=button class=s onclick="wsDiscard(${w.id})">淘汰</button>`:''}`:esc(w.status)}</td></tr>`;
+ const tb=(t,a)=>`<h3>${t}（${a.length}）</h3><div class=tw><table class=sch><tr><th>#</th><th>客人</th><th>酒款</th><th>剩餘</th><th>寄存日</th><th>到期</th><th>經手</th><th></th></tr>${a.map(row).join('')||'<tr><td colspan=8>無</td></tr>'}</table></div>`;
+ pageOpen(`<h2>🍾 寄酒（以一個月為限，逾期淘汰）</h2><p style="font-size:12px;color:#fc6">電話只存在本機。供應商：${esc(C().liquorSupplier)}</p>
+ <details open><summary>登記寄酒</summary><label>客人姓名/暱稱 <input id=wsG></label> <label>電話（選填） <input id=wsP type=tel></label> <label>酒款 <input id=wsB list=wsBL></label><datalist id=wsBL>${['金高',...S.wines.map(w=>w.name)].map(n=>`<option value="${esc(n)}">`).join('')}</datalist> <label>剩餘量 <input id=wsL placeholder="例：半瓶、7分"></label> <label>寄存日 <input id=wsD type=date value="${new Date(now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)}"></label> <button type=button onclick="wsAdd()">登記</button></details>
+ ${tb('⚠ 7 天內到期',g('將到期'))}${tb('逾期淘汰（待處理）',g('逾期'))}${tb('寄存中',g('寄存'))}${tb('已取出／已淘汰',L.filter(w=>w.status!='寄存').slice(-30).reverse())}
+ <h3>寄酒紀錄</h3><div style="font-size:13px">${S.wsLog.slice(0,100).map(e=>`${new Date(e.t).toLocaleString('zh-TW',{hour12:false})} ${esc(e.txt)}（${esc(e.who)}）`).join('<br>')||'無'}</div>`)}
+function wsAdd(){const v=i=>document.getElementById(i).value.trim();if(!v('wsG')||!v('wsB'))return alert('請填客人與酒款');const dd=v('wsD')?new Date(v('wsD')+'T12:00').getTime():now();
+ const w={id:S.wsSeq++,guest:v('wsG'),phone:v('wsP'),brand:v('wsB'),left:v('wsL')||'—',stored:dd,staff:S.cur?S.cur.name:(S.op||'未填'),status:'寄存'};S.wineStore.push(w);wsAct(w,`登記寄存（剩 ${w.left}）`);save();openWine()}
+function wsOut(id){const w=S.wineStore.find(z=>z.id==id);if(!w)return;const r=prompt(`取出 #${id} ${w.brand}（${w.guest}）\n要帶進哪個包廂？（空白＝不入房）`,'');if(r===null)return;
+ w.status='已取出';w.outAt=now();w.outRoom=r.trim();const x=S.rooms[w.outRoom];if(x){(x.orders=x.orders||[]).push({name:'寄酒取出：'+w.brand,price:0,t:now()})}wsAct(w,'取出'+(w.outRoom?'→'+w.outRoom:''));save();openWine()}
+function wsDiscard(id){const w=S.wineStore.find(z=>z.id==id);if(!w||!confirm(`#${id} ${w.brand} 逾期淘汰？`))return;w.status='逾期淘汰';wsAct(w,'逾期淘汰');save();openWine()}
+// 清空時保留寄酒（預設）
+function clearOpsUI(){if(!needRole(3,'清空營業資料需經理以上'))return;{const b=new Blob([JSON.stringify(S)],{type:'application/json'}),l=document.createElement('a');l.href=URL.createObjectURL(b);l.download='排檯備份-'+dkey(now())+'.json';l.click()}
+ if(!confirm('已下載備份檔。確定清空所有營業資料？（名冊、帳號、設定、訊息卡、少爺名冊、寄酒會保留）'))return;const keep=!confirm('是否「同時清除寄酒資料」？\n按「取消」＝保留寄酒（建議）');
+ const ws=[S.wineStore,S.wsLog,S.wsSeq];clearOps();if(keep){[S.wineStore,S.wsLog,S.wsSeq]=ws}else{S.wineStore=[];S.wsLog=[]}log(`清空營業資料（${S.cur.name}，寄酒${keep?'保留':'清除'}）`);save();render();openHistory()}
 
 document.getElementById('op').value=S.op||'';render();setInterval(tick,1000);
 </script></body></html>
