@@ -76,6 +76,14 @@ service cloud.firestore {
       allow create: if lvl() >= 2 && request.resource.data.uid == request.auth.uid;
       allow update, delete: if lvl() >= 3;
     }
+    // 員工密碼副本：冠廷（5）可看全部；老闆（4）只能看老闆以下；其他人不能讀。本人改密碼時可寫自己的。
+    match /secrets/{uid} {
+      function targetRank() { return get(/databases/$(database)/documents/users/$(uid)).data.rank; }
+      allow read: if lvl() >= 5 || (lvl() == 4 && targetRank() < 4);
+      allow create, update: if (hasProfile() && request.auth.uid == uid)
+        || lvl() >= 5 || (lvl() == 4 && targetRank() < 4);
+      allow delete: if false;
+    }
     // 操作紀錄：只能新增，不能改不能刪
     match /audit/{id} {
       allow read: if lvl() >= 3;

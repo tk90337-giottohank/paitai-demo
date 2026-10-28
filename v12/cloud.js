@@ -1,3 +1,4 @@
+// v12.1（員工密碼可查看）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
@@ -77,7 +78,7 @@ function bootUI(msg){ov.innerHTML=`<div style="max-width:380px;margin:6vh auto">
  bBack.onclick=e=>{e.preventDefault();loginUI()};
  bGo.onclick=async()=>{const id=bId.value.trim(),pw=bPw.value;if(!/^[A-Za-z0-9._-]+$/.test(id))return bootUI('員工編號只能用英文、數字');if(pw.length<6)return bootUI('密碼至少 6 碼');bGo.disabled=true;
   let cred;try{cred=await createUserWithEmailAndPassword(auth,mail(id),pw)}catch(e){return bootUI(e.code=='auth/email-already-in-use'?'這個編號已存在，請直接登入':'建立失敗：'+e.code)}
-  try{const b=writeBatch(db);const br=bRole.value=='老闆'?'老闆':'特殊';b.set(doc(db,'users',cred.user.uid),{staffId:id.toLowerCase(),name:bNm.value.trim()||RL(br),role:br,rank:RANK[br],disabled:false,createdAt:Date.now()});b.set(doc(db,'config','boot'),{uid:cred.user.uid,at:Date.now()});await b.commit()}
+  try{const b=writeBatch(db);const br=bRole.value=='老闆'?'老闆':'特殊';b.set(doc(db,'users',cred.user.uid),{staffId:id.toLowerCase(),name:bNm.value.trim()||RL(br),role:br,rank:RANK[br],disabled:false,createdAt:Date.now()});b.set(doc(db,'config','boot'),{uid:cred.user.uid,at:Date.now()});await b.commit();await savePw(cred.user.uid,pw).catch(()=>{})}
   catch(e){try{await cred.user.delete()}catch(_){}await signOut(auth).catch(()=>{});return bootUI('系統已經啟用過，不能再建立。請用老闆給你的帳號登入。')}}}
 onAuthStateChanged(auth,async u=>{stopSync();st.user=u;st.prof=null;st.inited=null;
  if(!u){S.cur=null;status();loginUI();return}
@@ -92,19 +93,30 @@ function openAccount(){const f=document.getElementById('dform'),p=st.prof||{};
  <button type=button onclick="Cloud.changePw()">改密碼</button> ${lv()>=3?'<button type=button onclick="Cloud.openStaff()">人員帳號管理</button> ':''}${lv()>=4?'<button type=button class=s onclick="Cloud.migrate()">上傳本機資料到雲端（一次性）</button> ':''}<button type=button class=s onclick="openHelp()">登入教學</button>
  <p><button value=out>登出／切換人員</button> <button class=s value="">關閉</button></p>`;
  const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue=='out'){log(`登出：${p.name}`);signOut(auth)}};if(d.open)d.close();d.showModal()}
-async function changePw(){const pw=prompt('新密碼（至少 6 碼）');if(!pw)return;if(pw.length<6)return alert('至少 6 碼');try{await updatePassword(auth.currentUser,pw);alert('已更新密碼')}catch(e){alert(e.code=='auth/requires-recent-login'?'為了安全，請先登出再登入一次後再改密碼':'失敗：'+e.code)}}
-let usersUnsub=null,USERS=[];
+async function changePw(){const pw=prompt('新密碼（至少 6 碼）');if(!pw)return;if(pw.length<6)return alert('至少 6 碼');try{await updatePassword(auth.currentUser,pw);await savePw(auth.currentUser.uid,pw).catch(()=>{});alert('已更新密碼')}catch(e){alert(e.code=='auth/requires-recent-login'?'為了安全，請先登出再登入一次後再改密碼':'失敗：'+e.code)}}
+let usersUnsub=null,USERS=[];const PW={},PWshow={};
+const canPw=u=>u&&(lv()>=5||(lv()==4&&(RANK[u.role]||0)<4));
+const savePw=(uid,pw)=>setDoc(doc(db,'secrets',uid),{pw,updatedAt:Date.now(),updatedBy:st.user?st.user.uid:uid});
+async function loadPw(uid){if(PW[uid]!==undefined)return PW[uid];try{const d=await getDoc(doc(db,'secrets',uid));PW[uid]=d.exists()?d.data().pw:null}catch(e){PW[uid]=null}return PW[uid]}
+async function togglePw(uid){PWshow[uid]=!PWshow[uid];if(PWshow[uid])await loadPw(uid);redrawTbl()}
+async function copyPw(uid){const pw=await loadPw(uid);if(!pw)return alert('未記錄');try{await navigator.clipboard.writeText(pw);alert('已複製')}catch(e){prompt('複製這個密碼',pw)}}
+function redrawTbl(){const t=document.getElementById('stTbl');if(t)t.outerHTML=staffTbl()}
+async function resetPw(uid){const u=USERS.find(x=>x.uid==uid);if(!canPw(u))return;const old=await loadPw(uid);if(!old)return alert('這個帳號沒有記錄密碼，無法在網頁上重設。\n請先停用舊帳號，再建立新編號。');
+ const np=prompt(`替 ${u.name} 設定新密碼（至少 6 碼）`);if(!np)return;if(np.length<6)return alert('至少 6 碼');
+ const sec=initializeApp(firebaseConfig,'rs'+Date.now()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
+ try{const c=await signInWithEmailAndPassword(sa,mail(u.staffId),old);await updatePassword(c.user,np);await signOut(sa);await savePw(uid,np);PW[uid]=np;log(`重設密碼：${u.staffId}`);alert('已重設密碼');redrawTbl()}
+ catch(e){alert(e.code=='auth/invalid-credential'||e.code=='auth/wrong-password'?'記錄的密碼已不正確（可能本人在別處改過），無法重設。請停用後重建。':'重設失敗：'+(e.code||e.message))}finally{deleteApp(sec).catch(()=>{})}}
 function openStaff(){if(lv()<3)return alert('需經理以上');document.getElementById('dlg').close();
- if(!usersUnsub)usersUnsub=onSnapshot(query(collection(db,'users'),where('rank','<=',lv())),qs=>{USERS=[];qs.forEach(d=>USERS.push({uid:d.id,...d.data()}));USERS.sort((a,b)=>(RANK[b.role]||0)-(RANK[a.role]||0)||a.staffId.localeCompare(b.staffId));const t=document.getElementById('stTbl');if(t)t.outerHTML=staffTbl()},fail);drawStaff()}
-function staffTbl(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv());return`<table class=sch id=stTbl><tr><th>編號</th><th>名字</th><th>角色</th><th>狀態</th><th></th></tr>${USERS.map(u=>{const mine=u.uid==st.user.uid,can=!mine&&(RANK[u.role]||0)<=lv();
-  return`<tr><td>${esc(u.staffId)}</td><td>${esc(u.name)}</td><td>${can?`<select onchange="Cloud.setRole('${u.uid}',this.value)">${roles.map(r=>`<option value="${r}" ${r==u.role?'selected':''}>${r=='特殊'?'冠廷（最高）':r}</option>`).join('')}</select>`:esc(RL(u.role))+(mine?'（自己）':'')}</td><td>${u.disabled?'<b style="color:#e44">停用</b>':'啟用'}</td><td>${can?`<button type=button class=s onclick="Cloud.setDisabled('${u.uid}',${!u.disabled})">${u.disabled?'啟用':'停用'}</button>`:''}</td></tr>`}).join('')}</table>`}
+ if(!usersUnsub)usersUnsub=onSnapshot(query(collection(db,'users'),where('rank','<=',lv())),qs=>{USERS=[];qs.forEach(d=>USERS.push({uid:d.id,...d.data()}));USERS.sort((a,b)=>(RANK[b.role]||0)-(RANK[a.role]||0)||a.staffId.localeCompare(b.staffId));redrawTbl()},fail);drawStaff()}
+function staffTbl(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv());return`<table class=sch id=stTbl><tr><th>編號</th><th>名字</th><th>角色</th><th>狀態</th>${lv()>=4?'<th>密碼</th>':''}<th></th></tr>${USERS.map(u=>{const mine=u.uid==st.user.uid,can=!mine&&(RANK[u.role]||0)<=lv();
+  return`<tr><td>${esc(u.staffId)}</td><td>${esc(u.name)}</td><td>${can?`<select onchange="Cloud.setRole('${u.uid}',this.value)">${roles.map(r=>`<option value="${r}" ${r==u.role?'selected':''}>${r=='特殊'?'冠廷（最高）':r}</option>`).join('')}</select>`:esc(RL(u.role))+(mine?'（自己）':'')}</td><td>${u.disabled?'<b style="color:#e44">停用</b>':'啟用'}</td>${lv()>=4?`<td>${canPw(u)?(PWshow[u.uid]?(PW[u.uid]?`<code>${esc(PW[u.uid])}</code>`:'<span style="color:#aaa">未記錄</span>'):'••••')+` <button type=button class=s onclick="Cloud.togglePw('${u.uid}')">${PWshow[u.uid]?'隱藏':'👁 顯示'}</button> <button type=button class=s onclick="Cloud.copyPw('${u.uid}')">複製</button> <button type=button class=s onclick="Cloud.resetPw('${u.uid}')">重設密碼</button>`:'—'}</td>`:''}<td>${can?`<button type=button class=s onclick="Cloud.setDisabled('${u.uid}',${!u.disabled})">${u.disabled?'啟用':'停用'}</button>`:''}</td></tr>`}).join('')}</table>`}
 function drawStaff(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv());
  pageOpen(`<h2>人員帳號管理</h2>${lv()>=4?`<details open><summary>新增帳號（老闆以上）</summary><label>員工編號（英數）<input id=nId autocapitalize=none></label> <label>名字<input id=nNm></label> <label>角色 <select id=nRole>${roles.map(r=>`<option value="${r}" ${r=='少爺'?'selected':''}>${r=='特殊'?'冠廷（最高）':r}</option>`).join('')}</select></label> <label>初始密碼（≥6）<input id=nPw></label> <button type=button onclick="Cloud.createStaff()">建立</button><p style="font-size:12px;color:#aaa">TV 看板請建立角色「tv」的帳號（只能看不能改）。</p></details>`:''}
  <div class=tw>${staffTbl()}</div>
- <p style="font-size:12px;color:#aaa">忘記密碼：先停用舊帳號，再建立新編號（網頁端無法替別人重設密碼）。</p>`)}
+ <p style="font-size:12px;color:#aaa">密碼：老闆可看老闆以下的人；冠廷可看全部。有記錄密碼的帳號可按「重設密碼」；顯示「未記錄」的舊帳號忘記密碼時，請先停用再建立新編號。</p>`)}
 async function createStaff(){const id=nId.value.trim(),nm=nNm.value.trim()||id,role=nRole.value,pw=nPw.value;if(!/^[A-Za-z0-9._-]+$/.test(id))return alert('員工編號只能用英文、數字');if(pw.length<6)return alert('密碼至少 6 碼');
  const sec=initializeApp(firebaseConfig,'sec'+Date.now()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
- try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid});await signOut(sa);log(`建立帳號 ${id}（${nm}・${RL(role)}）`);alert(`已建立：${id}（${RL(role)}）`)}
+ try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}）`);alert(`已建立：${id}（${RL(role)}）`)}
  catch(e){alert(e.code=='auth/email-already-in-use'?'此編號已被使用':'建立失敗：'+(e.code||e.message))}finally{deleteApp(sec).catch(()=>{})}}
 async function setRole(uid,role){const u=USERS.find(x=>x.uid==uid);await ok(updateDoc(doc(db,'users',uid),{role,rank:RANK[role]||0}));log(`變更角色 ${u&&u.staffId} → ${RL(role)}`)}
 async function setDisabled(uid,v){const u=USERS.find(x=>x.uid==uid);if(!confirm(`${v?'停用':'啟用'} ${u&&u.name}？`))return;await ok(updateDoc(doc(db,'users',uid),{disabled:v}));log(`${v?'停用':'啟用'}帳號 ${u&&u.staffId}`)}
@@ -130,5 +142,5 @@ const HELP=`<h2>📖 登入教學</h2>
 function helpOverlay(){ov.innerHTML=`<div style="max-width:560px;margin:3vh auto">${HELP}<p><button id=hBack style="font-size:18px;padding:10px">← 返回登入</button></p></div>`;hBack.onclick=()=>loginUI()}
 window.openHelp=()=>pageOpen(HELP);
 window.openLogin=()=>st.user?openAccount():loginUI();
-window.Cloud={push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
+window.Cloud={ver:"v12.1",togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
 status();
