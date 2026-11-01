@@ -13,7 +13,8 @@ service cloud.firestore {
     function isTV() { return active() && me().role == 'tv'; }
     function staff() { return lvl() >= 1; }
     function reader() { return staff() || isTV(); }
-    function validRole(r) { return r in ['小姐', '少爺', '幹部', '經理', '老闆', '特殊', 'tv']; }
+    function validRole(r) { return r in ['小姐', '少爺', '幹部', '經理', '老闆', '特殊', 'tv', 'kitchen']; }
+    function isKitchen() { return active() && me().role == 'kitchen'; }
     function rankOk(d) { return d.rank == rank(d.role); }
 
     // 店家設定、訊息卡、酒單：所有登入人員可讀，經理/老闆可寫
@@ -83,6 +84,28 @@ service cloud.firestore {
       allow create, update: if (hasProfile() && request.auth.uid == uid)
         || lvl() >= 5 || (lvl() == 4 && targetRank() < 4);
       allow delete: if false;
+    }
+    // 餐點菜單（v12.2）：登入人員與廚房可讀；經理以上可改
+    match /menu/{id} {
+      allow read: if reader() || isKitchen();
+      allow write: if lvl() >= 3;
+    }
+    // 點餐單（v12.2）：少爺以上點餐；廚房只能改狀態（製作中／已出餐）
+    match /orders/{id} {
+      allow read: if reader() || isKitchen();
+      allow create: if staff() && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == '待做'
+        && request.resource.data.room is string && request.resource.data.items is list
+        && request.resource.data.items.size() > 0 && request.resource.data.items.size() <= 60
+        && request.resource.data.businessDay is string && request.resource.data.createdAt is number;
+      allow update: if (staff()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusAt', 'statusBy', 'items', 'note'])
+          && request.resource.data.status in ['待做', '製作中', '已出餐', '取消'])
+        || (isKitchen()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusAt', 'statusBy'])
+          && request.resource.data.status in ['製作中', '已出餐']
+          && request.resource.data.statusBy == request.auth.uid);
+      allow delete: if lvl() >= 3;
     }
     // 操作紀錄：只能新增，不能改不能刪
     match /audit/{id} {
