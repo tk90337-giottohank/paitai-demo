@@ -1,4 +1,4 @@
-// v12.2（餐點系統＋廚房收單）
+// v12.2.1（餐點系統＋廚房收單；移除白板 D 區預設品項）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
@@ -146,27 +146,29 @@ const FOOD_ROOMS=['201','202','203','205','111','206','207','208','VIP'];
 const KIT_ST=['待做','製作中','已出餐'];
 const MENU_SEED=[
  ['炒泡麵','Mì xào',0,'套餐內含'],['炒飯','Cơm chiên',0,'套餐內含'],['水餃','Sủi cảo',0,'套餐內含'],['蛋湯','Canh trứng',0,'套餐內含'],['桌面','Đồ ăn bàn（待確認）',0,'套餐內含'],
- ['D 炸（待確認）','',0,'套餐內含'],['D 肚（待確認）','',0,'套餐內含'],['D 烏（待確認）','',0,'套餐內含'],['D 魷（待確認）','',0,'套餐內含'],
- ['鹹豬肉','Thịt heo muối',300,'加點'],['乾煎虱目魚肚','Cá đối phi lê chiên',300,'加點'],['炸物拼盤','Món chiên tổng hợp',500,'加點'],['炸斑鳩','Chim cút chiên',300,'加點'],
- ['香腸','Lạp sườn chiên',300,'加點'],['烤魷魚','Mực nướng',300,'加點'],['炸魚下巴','Mang cá chiên',300,'加點'],['虱目魚肚湯','Bụng cá đối nấu canh',300,'加點'],
- ['烤扁魚','Nướng cá chỉ vàng',300,'加點'],['和風洋蔥','Nộm hành tây',300,'加點'],['炸雞翅（待確認）','Cánh gà rán',300,'加點'],['烤五花（待確認）','Thịt ba chỉ quay',300,'加點']];
-const F={menu:[],orders:[],seen:new Set(),first:true,day:null,unsub:[],sound:false,fo:{room:'',q:{},note:''}};
+ ['鹹豬肉','Thịt heo muối',300,'加點'],['乾煎虱目魚肚','Cá đối phi lê chiên',300,'加點','肚'],['炸物拼盤','Món chiên tổng hợp',500,'加點','炸'],['炸斑鳩','Chim cút chiên',300,'加點'],
+ ['香腸','Lạp sườn chiên',300,'加點'],['烤魷魚','Mực nướng',300,'加點','魷'],['炸魚下巴','Mang cá chiên',300,'加點'],['虱目魚肚湯','Bụng cá đối nấu canh',300,'加點'],
+ ['烤扁魚','Nướng cá chỉ vàng',300,'加點','烏'],['和風洋蔥','Nộm hành tây',300,'加點'],['炸雞翅（待確認）','Cánh gà rán',300,'加點'],['烤五花（待確認）','Thịt ba chỉ quay',300,'加點']];
+const OLD_D={m06:'D 炸（待確認）',m07:'D 肚（待確認）',m08:'D 烏（待確認）',m09:'D 魷（待確認）'};
+const F={dFix:false,menu:[],orders:[],seen:new Set(),first:true,day:null,unsub:[],sound:false,fo:{room:'',q:{},note:''}};
 const isKit=()=>st.prof&&!st.prof.disabled&&st.prof.role=='kitchen';
 function foodSub(){F.unsub.forEach(u=>u());F.unsub=[];F.first=true;F.day=bizDay(now());
  F.unsub.push(onSnapshot(collection(db,'menu'),qs=>{const L=[];qs.forEach(d=>L.push({id:d.id,...d.data()}));L.sort((a,b)=>(a.ord||0)-(b.ord||0));F.menu=L;
-  if(!L.length&&lv()>=3&&!qs.metadata.fromCache)seedMenu();foodDraw()},fail));
+  if(!L.length&&lv()>=3&&!qs.metadata.fromCache)seedMenu();
+  if(L.length&&lv()>=3&&!F.dFix){F.dFix=true;const bad=L.filter(m=>OLD_D[m.id]&&m.zh==OLD_D[m.id]&&!m.vn&&!m.price&&m.cat=='套餐內含');if(bad.length){bad.forEach(m=>ok(deleteDoc(doc(db,'menu',m.id))));log('餐點：移除白板 D 區預設品項（冠廷確認非套餐內含）')}
+   const SH={'炸物拼盤':'炸','乾煎虱目魚肚':'肚','烤扁魚':'烏','烤魷魚':'魷'};L.forEach(m=>{if(SH[m.zh]&&m.short===undefined)ok(setDoc(doc(db,'menu',m.id),{short:SH[m.zh]},{merge:true}))})}foodDraw()},fail));
  F.unsub.push(onSnapshot(query(collection(db,'orders'),where('businessDay','==',F.day)),qs=>{const L=[];qs.forEach(d=>L.push({id:d.id,...d.data()}));L.sort((a,b)=>a.createdAt-b.createdAt);
   const fresh=L.filter(o=>!F.seen.has(o.id)&&o.status=='待做');L.forEach(o=>F.seen.add(o.id));
   F.orders=L;if(!F.first&&fresh.length)ding(fresh);F.first=false;foodDraw();try{render()}catch(e){}},fail))}
 setInterval(()=>{if(st.user&&F.day&&bizDay(now())!=F.day)foodSub();kitDraw()},30000);
-async function seedMenu(){const b=writeBatch(db);MENU_SEED.forEach((m,i)=>b.set(doc(db,'menu','m'+String(i+1).padStart(2,'0')),{zh:m[0],vn:m[1],price:m[2],cat:m[3],on:true,ord:i+1}));await ok(b.commit());log('餐點：載入預設菜單（待確認）')}
+async function seedMenu(){const b=writeBatch(db);MENU_SEED.forEach((m,i)=>{const n=i<5?i+1:i+5;b.set(doc(db,'menu','m'+String(n).padStart(2,'0')),{zh:m[0],vn:m[1],price:m[2],cat:m[3],short:m[4]||'',on:true,ord:n})});await ok(b.commit());log('餐點：載入預設菜單（待確認）')}
 // 帳單：本番已點的「加點」餐點
 function foodBill(r,x){const L=[];for(const o of F.orders)if(o.room==r&&o.status!='取消'&&o.createdAt>=(x.start||0))for(const it of o.items||[])if(it.cat=='加點'&&it.price>0)L.push([`餐點 ${it.name} × ${it.qty}`,it.price*it.qty]);return L}
 // ---- 點餐 ----
 function openOrder(room){if(lv()<1)return alert('需要少爺以上');if(room!==undefined){F.fo={room,q:{},note:''}}pageOpen('<div id=foodPg></div>');F.pg='order';foodDraw()}
 function foQ(id,d){const q=F.fo.q;q[id]=Math.max(0,(q[id]||0)+d);if(!q[id])delete q[id];foodDraw()}
 async function foSend(){const fo=F.fo;if(!fo.room)return alert('請先選包廂');const nt=document.getElementById('foNote');fo.note=nt?nt.value.trim():'';
- const items=Object.entries(fo.q).map(([id,qty])=>{const m=F.menu.find(z=>z.id==id);return m&&{id,name:m.zh,vn:m.vn||'',qty,price:m.cat=='加點'?+m.price||0:0,cat:m.cat}}).filter(Boolean);
+ const items=Object.entries(fo.q).map(([id,qty])=>{const m=F.menu.find(z=>z.id==id);return m&&{id,name:m.zh,vn:m.vn||'',short:m.short||'',qty,price:m.cat=='加點'?+m.price||0:0,cat:m.cat}}).filter(Boolean);
  if(!items.length)return alert('請點選餐點');
  const o={room:fo.room,items,note:fo.note,status:'待做',createdBy:st.user.uid,createdByName:st.prof.name,createdAt:Date.now(),businessDay:bizDay(now())};
  ok(addDoc(collection(db,'orders'),o));log(`點餐 ${fo.room}：${items.map(i=>i.name+'×'+i.qty).join('、')}${fo.note?'（'+fo.note+'）':''}`);if(nt)nt.value='';F.fo={room:fo.room,q:{},note:''};foodDraw();toastF('已送出到廚房')}
@@ -175,7 +177,7 @@ async function foCancel(id){const o=F.orders.find(z=>z.id==id);if(!o||!confirm(`
 const ago=t=>{const m=Math.floor((Date.now()-t)/60000);return m<1?'剛剛':m+' 分'};
 const stC={'待做':'#e44','製作中':'#e90','已出餐':'#2b8','取消':'#777'};
 function orderHtml(){const fo=F.fo,rooms=[...new Set([...roomList(),...FOOD_ROOMS])];
- const grp=c=>F.menu.filter(m=>m.on!==false&&m.cat==c).map(m=>{const n=fo.q[m.id]||0;return`<div class=foIt style="display:flex;align-items:center;gap:6px;padding:8px;border-bottom:1px solid #333${n?';background:#234':''}"><div style="flex:1"><b style="font-size:17px">${esc(m.zh)}</b>${m.price&&c=='加點'?` <span style="color:#fc6">$${m.price}</span>`:''}<div style="font-size:12px;color:#9ab">${esc(m.vn||'')}</div></div><button type=button style="width:44px;height:44px;font-size:22px" onclick="Food.q('${m.id}',-1)">−</button><b style="min-width:28px;text-align:center;font-size:20px">${n}</b><button type=button style="width:44px;height:44px;font-size:22px" onclick="Food.q('${m.id}',1)">＋</button></div>`}).join('');
+ const grp=c=>F.menu.filter(m=>m.on!==false&&m.cat==c).map(m=>{const n=fo.q[m.id]||0;return`<div class=foIt style="display:flex;align-items:center;gap:6px;padding:8px;border-bottom:1px solid #333${n?';background:#234':''}"><div style="flex:1"><b style="font-size:17px">${m.short?`<span style="color:#fc6">[${esc(m.short)}]</span> `:''}${esc(m.zh)}</b>${m.price&&c=='加點'?` <span style="color:#fc6">$${m.price}</span>`:''}<div style="font-size:12px;color:#9ab">${esc(m.vn||'')}</div></div><button type=button style="width:44px;height:44px;font-size:22px" onclick="Food.q('${m.id}',-1)">−</button><b style="min-width:28px;text-align:center;font-size:20px">${n}</b><button type=button style="width:44px;height:44px;font-size:22px" onclick="Food.q('${m.id}',1)">＋</button></div>`}).join('');
  const sum=Object.entries(fo.q).reduce((a,[id,q])=>{const m=F.menu.find(z=>z.id==id);return a+(m&&m.cat=='加點'?(+m.price||0)*q:0)},0);
  const mine=F.orders.filter(o=>o.room==fo.room).slice().reverse();
  return`<h2>🍽 點餐</h2><p>包廂：${rooms.map(r=>`<button type=button class=s style="min-width:56px;height:40px;${r==fo.room?'background:#4af;color:#000':''}" onclick="Food.room('${r}')">${esc(r)}${S.rooms&&S.rooms[r]?'●':''}</button>`).join(' ')}</p>
@@ -186,9 +188,9 @@ function orderHtml(){const fo=F.fo,rooms=[...new Set([...roomList(),...FOOD_ROOM
  ${fo.room?`<h3>${esc(fo.room)} 今日點單</h3>${mine.map(o=>`<div style="padding:6px;border-left:4px solid ${stC[o.status]};margin:4px 0">${new Date(o.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} <b style="color:${stC[o.status]}">${o.status}</b> ${o.items.map(i=>esc(i.name)+'×'+i.qty).join('、')}${o.note?' 📝'+esc(o.note):''} <small>${esc(o.createdByName||'')}</small> ${o.status=='待做'||lv()>=2&&o.status!='取消'?`<button type=button class=s onclick="Food.cancel('${o.id}')">取消</button>`:''}</div>`).join('')||'<p>尚無</p>'}`:''}`}
 // ---- 餐點設定（經理以上）----
 function menuHtml(){return`<h2>⚙ 餐點設定</h2><p style="font-size:12px;color:#aaa">「套餐內含」＝免費（$0），「加點」＝計價並加進該包廂買單。品名、越南文、價格、分類都可改（待冠廷確認）。</p>
- <div class=tw><table><tr><th>序</th><th>中文名</th><th>越南文</th><th>價格</th><th>分類</th><th>啟用</th><th></th></tr>${F.menu.map(m=>`<tr><td><input id=mo_${m.id} value="${m.ord||0}" style="width:40px"></td><td><input id=mz_${m.id} value="${esc(m.zh)}"></td><td><input id=mv_${m.id} value="${esc(m.vn||'')}"></td><td><input id=mp_${m.id} value="${m.price||0}" inputmode=numeric style="width:60px"></td><td><select id=mc_${m.id}>${['套餐內含','加點'].map(c=>`<option ${c==m.cat?'selected':''}>${c}</option>`).join('')}</select></td><td><input type=checkbox id=me_${m.id} ${m.on!==false?'checked':''}></td><td><button type=button class=s onclick="Food.mSave('${m.id}')">儲存</button> <button type=button class=s onclick="Food.mDel('${m.id}')">刪除</button></td></tr>`).join('')}</table></div>
+ <div class=tw><table><tr><th>序</th><th>中文名</th><th>白板簡寫</th><th>越南文</th><th>價格</th><th>分類</th><th>啟用</th><th></th></tr>${F.menu.map(m=>`<tr><td><input id=mo_${m.id} value="${m.ord||0}" style="width:40px"></td><td><input id=mz_${m.id} value="${esc(m.zh)}"></td><td><input id=ms_${m.id} value="${esc(m.short||'')}" style="width:40px"></td><td><input id=mv_${m.id} value="${esc(m.vn||'')}"></td><td><input id=mp_${m.id} value="${m.price||0}" inputmode=numeric style="width:60px"></td><td><select id=mc_${m.id}>${['套餐內含','加點'].map(c=>`<option ${c==m.cat?'selected':''}>${c}</option>`).join('')}</select></td><td><input type=checkbox id=me_${m.id} ${m.on!==false?'checked':''}></td><td><button type=button class=s onclick="Food.mSave('${m.id}')">儲存</button> <button type=button class=s onclick="Food.mDel('${m.id}')">刪除</button></td></tr>`).join('')}</table></div>
  <p><button type=button onclick="Food.mAdd()">＋ 新增品項</button> <button type=button class=s onclick="Food.order()">← 回點餐</button></p>`}
-function mSave(id){if(lv()<3)return;const g=k=>document.getElementById(k+'_'+id);const d={zh:g('mz').value.trim(),vn:g('mv').value.trim(),price:Math.max(0,+g('mp').value||0),cat:g('mc').value,on:g('me').checked,ord:+g('mo').value||0};if(!d.zh)return alert('請填中文名');ok(setDoc(doc(db,'menu',id),d));log(`餐點設定：${d.zh} ${d.cat} $${d.price}${d.on?'':'（停用）'}`);toastF('已儲存')}
+function mSave(id){if(lv()<3)return;const g=k=>document.getElementById(k+'_'+id);const d={zh:g('mz').value.trim(),short:g('ms').value.trim(),vn:g('mv').value.trim(),price:Math.max(0,+g('mp').value||0),cat:g('mc').value,on:g('me').checked,ord:+g('mo').value||0};if(!d.zh)return alert('請填中文名');ok(setDoc(doc(db,'menu',id),d));log(`餐點設定：${d.zh} ${d.cat} $${d.price}${d.on?'':'（停用）'}`);toastF('已儲存')}
 function mDel(id){const m=F.menu.find(z=>z.id==id);if(lv()<3||!m||!confirm(`刪除 ${m.zh}？`))return;ok(deleteDoc(doc(db,'menu',id)));log(`餐點設定：刪除 ${m.zh}`)}
 function mAdd(){if(lv()<3)return;const zh=prompt('中文名');if(!zh)return;const id='m'+Date.now().toString(36);ok(setDoc(doc(db,'menu',id),{zh,vn:'',price:300,cat:'加點',on:true,ord:(F.menu.length?Math.max(...F.menu.map(m=>m.ord||0)):0)+1}));log(`餐點設定：新增 ${zh}`)}
 function foodDraw(){const p=document.getElementById('foodPg');if(p){const a=document.activeElement&&document.activeElement.id;const nt=document.getElementById('foNote');if(nt)F.fo.note=nt.value;if(a&&a.startsWith('m')&&a.includes('_')&&F.pg=='menu')return;p.innerHTML=F.pg=='menu'?menuHtml():orderHtml()}kitDraw()}
@@ -200,7 +202,7 @@ function kitDraw(){if(!kitEl||kitEl.style.display=='none')return;const open=F.or
  const rooms=[...FOOD_ROOMS,...[...new Set(F.orders.map(o=>o.room))].filter(r=>!FOOD_ROOMS.includes(r))];
  kitEl.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><b style="font-size:22px">🍳 廚房收單 Bếp</b><span>待做 ${open.filter(o=>o.status=='待做').length}・製作中 ${open.filter(o=>o.status=='製作中').length}</span><span style="flex:1"></span>${F.sound?'🔔':`<button onclick="Food.snd()" style="font-size:16px">🔔 啟用聲音 Bật âm thanh</button>`} <span id=kclk>${new Date().toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})}</span>${isKit()?' <button onclick="Cloud.logout&&Cloud.logout()" style="font-size:12px">登出</button>':' <button onclick="Food.closeK()">✕ 關閉</button>'}</div>
  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px">${rooms.map(r=>{const os=open.filter(o=>o.room==r),ds=done.filter(o=>o.room==r);return`<div class=kcard data-room="${esc(r)}" style="border:3px solid ${os.some(o=>o.status=='待做')?'#e44':os.length?'#e90':'#333'};border-radius:10px;padding:8px;min-height:150px;background:#151923${os.some(o=>F.flash&&F.flash.has(o.id))?';animation:kfl 1s 4':''}"><div style="font-size:26px;font-weight:bold">${esc(r)}${S.rooms&&S.rooms[r]?' <small style="font-size:13px;color:#2b8">●在番</small>':''}</div>
-  ${os.map(o=>`<div onclick="Food.next('${o.id}')" style="cursor:pointer;margin:6px 0;padding:6px;border-radius:8px;background:${o.status=='待做'?'#3a1518':'#3a2a10'}"><div style="display:flex;justify-content:space-between"><b style="color:${stC[o.status]}">${o.status=='待做'?'待做 Chờ':'製作中 Đang làm'}</b><span>${ago(o.createdAt)}</span></div>${o.items.map(i=>`<div style="font-size:20px">${esc(i.name)} <b style="color:#fc6">×${i.qty}</b><div style="font-size:13px;color:#9ab;margin-top:-2px">${esc(i.vn||'')}</div></div>`).join('')}${o.note?`<div style="color:#fc6">📝 ${esc(o.note)}</div>`:''}<div style="font-size:12px;color:#aaa;text-align:right">點一下 → ${o.status=='待做'?'製作中':'已出餐 Xong'}</div></div>`).join('')}
+  ${os.map(o=>`<div onclick="Food.next('${o.id}')" style="cursor:pointer;margin:6px 0;padding:6px;border-radius:8px;background:${o.status=='待做'?'#3a1518':'#3a2a10'}"><div style="display:flex;justify-content:space-between"><b style="color:${stC[o.status]}">${o.status=='待做'?'待做 Chờ':'製作中 Đang làm'}</b><span>${ago(o.createdAt)}</span></div>${o.items.map(i=>`<div style="font-size:20px">${i.short?`<b style="background:#fc6;color:#000;border-radius:4px;padding:0 5px;margin-right:4px">${esc(i.short)}</b>`:''}${esc(i.name)} <b style="color:#fc6">×${i.qty}</b><div style="font-size:13px;color:#9ab;margin-top:-2px">${esc(i.vn||'')}</div></div>`).join('')}${o.note?`<div style="color:#fc6">📝 ${esc(o.note)}</div>`:''}<div style="font-size:12px;color:#aaa;text-align:right">點一下 → ${o.status=='待做'?'製作中':'已出餐 Xong'}</div></div>`).join('')}
   ${ds.map(o=>`<div style="opacity:.45;font-size:13px">✓ ${o.items.map(i=>esc(i.name)+'×'+i.qty).join('、')}</div>`).join('')}</div>`}).join('')}</div><style>@keyframes kfl{50%{background:#7a1d22}}</style>`}
 function kitNext(id){const o=F.orders.find(z=>z.id==id);if(!o)return;const n=o.status=='待做'?'製作中':'已出餐';ok(updateDoc(doc(db,'orders',id),{status:n,statusAt:Date.now(),statusBy:st.user.uid}));o.status=n;o.statusAt=Date.now();kitDraw()}
 function ding(fresh){F.flash=new Set(fresh.map(o=>o.id));setTimeout(()=>{F.flash=null;kitDraw()},4500);if(!F.sound||!kitEl||kitEl.style.display=='none')return;try{const a=F.ac||(F.ac=new AudioContext());[0,.25,.5].forEach(t=>{const o=a.createOscillator(),g=a.createGain();o.frequency.value=880;o.connect(g);g.connect(a.destination);g.gain.setValueAtTime(.3,a.currentTime+t);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+t+.2);o.start(a.currentTime+t);o.stop(a.currentTime+t+.22)})}catch(e){}}
@@ -210,5 +212,5 @@ addEventListener('hashchange',()=>{if(location.hash=='#kitchen'&&st.user)openKit
 
 window.openHelp=()=>pageOpen(HELP);
 window.openLogin=()=>st.user?openAccount():loginUI();
-window.Cloud={ver:"v12.2",logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
+window.Cloud={ver:"v12.2.1",logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
 status();
