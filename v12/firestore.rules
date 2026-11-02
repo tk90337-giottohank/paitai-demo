@@ -107,6 +107,15 @@ service cloud.firestore {
           && request.resource.data.statusBy == request.auth.uid);
       allow delete: if lvl() >= 3;
     }
+    // 登入紀錄（v12.3）：本人建立自己的紀錄；冠廷（5）看全部、可刪；老闆（4）只看老闆以下
+    match /loginLogs/{id} {
+      allow create: if hasProfile() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.rank == rank(me().role)
+        && request.resource.data.atMs is number;
+      allow read: if lvl() >= 5 || (lvl() == 4 && resource.data.rank < 4);
+      allow update: if false;
+      allow delete: if lvl() >= 5;
+    }
     // 操作紀錄：只能新增，不能改不能刪
     match /audit/{id} {
       allow read: if lvl() >= 3;

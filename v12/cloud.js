@@ -1,9 +1,9 @@
-// v12.2.1（餐點系統＋廚房收單；移除白板 D 區預設品項）
+// v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單；移除白板 D 區預設品項）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,browserLocalPersistence,setPersistence} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
 const app=initializeApp(firebaseConfig),auth=getAuth(app);
 const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
@@ -71,13 +71,13 @@ function loginUI(msg){ov.style.display='block';ov.innerHTML=`<div style="max-wid
  <label>密碼<br><input id=fbPw type=password autocomplete=current-password style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <button id=fbGo style="width:100%;font-size:20px;padding:12px">登入</button>
  <p style="font-size:14px"><a href="#" id=fbBoot style="color:#9cf">首次啟用：建立最高權限帳號</a>・<a href="#" id=fbHelp style="color:#9cf">登入教學</a>${EMU?'・<b style="color:#e90">模擬器</b>':''}</p></div>`;
- const go=async()=>{const id=fbId.value,pw=fbPw.value;if(!id||!pw)return;fbGo.disabled=true;fbGo.textContent='登入中…';try{await signInWithEmailAndPassword(auth,mail(id),pw)}catch(e){loginUI(e.code=='auth/network-request-failed'?'網路連不上，請稍後再試':'員工編號或密碼錯誤')}};
+ const go=async()=>{const id=fbId.value,pw=fbPw.value;if(!id||!pw)return;st.manual=true;fbGo.disabled=true;fbGo.textContent='登入中…';try{await signInWithEmailAndPassword(auth,mail(id),pw)}catch(e){loginUI(e.code=='auth/network-request-failed'?'網路連不上，請稍後再試':'員工編號或密碼錯誤')}};
  fbGo.onclick=go;fbPw.onkeydown=e=>{if(e.key=='Enter')go()};fbHelp.onclick=e=>{e.preventDefault();helpOverlay()};fbBoot.onclick=e=>{e.preventDefault();bootUI()}}
 function bootUI(msg){ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>首次啟用：建立最高權限帳號</h2><p style="font-size:14px">只能做一次。之後所有帳號都在系統內建立。</p><label>帳號類型<br><select id=bRole style="width:100%;font-size:20px;padding:8px"><option value="特殊" selected>冠廷（最高權限）</option><option value="老闆">老闆</option></select></label><br><br>${msg?`<p style="color:#f88">${msg}</p>`:''}
  <label>員工編號（英數）<br><input id=bId autocapitalize=none value="guanting" style="width:100%;font-size:20px;padding:8px"></label><br><br><label>名字<br><input id=bNm value="冠廷" style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <label>密碼（至少 6 碼）<br><input id=bPw type=password autocomplete=new-password style="width:100%;font-size:20px;padding:8px"></label><br><br><button id=bGo style="width:100%;font-size:20px;padding:12px">建立並登入</button> <p><a href="#" id=bBack style="color:#9cf">← 返回登入</a></p></div>`;
  bBack.onclick=e=>{e.preventDefault();loginUI()};
- bGo.onclick=async()=>{const id=bId.value.trim(),pw=bPw.value;if(!/^[A-Za-z0-9._-]+$/.test(id))return bootUI('員工編號只能用英文、數字');if(pw.length<6)return bootUI('密碼至少 6 碼');bGo.disabled=true;
+ bGo.onclick=async()=>{st.manual=true;const id=bId.value.trim(),pw=bPw.value;if(!/^[A-Za-z0-9._-]+$/.test(id))return bootUI('員工編號只能用英文、數字');if(pw.length<6)return bootUI('密碼至少 6 碼');bGo.disabled=true;
   let cred;try{cred=await createUserWithEmailAndPassword(auth,mail(id),pw)}catch(e){return bootUI(e.code=='auth/email-already-in-use'?'這個編號已存在，請直接登入':'建立失敗：'+e.code)}
   try{const b=writeBatch(db);const br=bRole.value=='老闆'?'老闆':'特殊';b.set(doc(db,'users',cred.user.uid),{staffId:id.toLowerCase(),name:bNm.value.trim()||RL(br),role:br,rank:RANK[br],disabled:false,createdAt:Date.now()});b.set(doc(db,'config','boot'),{uid:cred.user.uid,at:Date.now()});await b.commit();await savePw(cred.user.uid,pw).catch(()=>{})}
   catch(e){try{await cred.user.delete()}catch(_){}await signOut(auth).catch(()=>{});return bootUI('系統已經啟用過，不能再建立。請用老闆給你的帳號登入。')}}}
@@ -86,7 +86,7 @@ onAuthStateChanged(auth,async u=>{stopSync();st.user=u;st.prof=null;st.inited=nu
  let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null}catch(e){p=null}
  if(!p||p.disabled){await signOut(auth);loginUI(p&&p.disabled?'此帳號已停用，請找老闆':'此帳號沒有權限資料，請找老闆');return}
  st.prof=p;S.cur={name:p.name,role:p.role,uid:u.uid,staffId:p.staffId};S.op=p.name;const op=document.getElementById('op');if(op)op.value=p.name;
- ov.style.display='none';startSync();if(location.hash=='#kitchen')openKitchen();rerender();log(`登入：${p.name}${p.role=='特殊'?'':'（'+p.role+'）'}`)});
+ ov.style.display='none';startSync();if(location.hash=='#kitchen')openKitchen();rerender();log(`登入：${p.name}${p.role=='特殊'?'':'（'+RL(p.role)+'）'}`);const ty=st.manual?'登入':'自動登入';st.manual=false;loginLog(ty)});
 setPersistence(auth,browserLocalPersistence).catch(()=>{});
 // ---- 帳號選單 / 人員管理 ----
 function openAccount(){const f=document.getElementById('dform'),p=st.prof||{};
@@ -210,7 +210,35 @@ window.Food={q:foQ,send:foSend,cancel:foCancel,room:r=>{const nt=document.getEle
 window.openOrder=()=>openOrder();window.openKitchen=openKitchen;
 addEventListener('hashchange',()=>{if(location.hash=='#kitchen'&&st.user)openKitchen()});
 
+// ===== v12.3 登入紀錄 =====
+function devSum(){const u=navigator.userAgent;const os=/iPhone/.test(u)?'iPhone':/iPad/.test(u)||(/Macintosh/.test(u)&&navigator.maxTouchPoints>1)?'iPad':/Android/.test(u)?'Android':/Windows/.test(u)?'Windows 電腦':/Macintosh/.test(u)?'Mac 電腦':/Linux/.test(u)?'Linux 電腦':'其他裝置';
+ const br=/Edg\//.test(u)?'Edge':/Line\//.test(u)?'LINE 內建瀏覽器':/CriOS|Chrome\//.test(u)?'Chrome':/FxiOS|Firefox\//.test(u)?'Firefox':/Safari\//.test(u)?'Safari':'瀏覽器';return os+' '+br+(matchMedia('(display-mode: standalone)').matches||navigator.standalone?'（主畫面 App）':'')}
+const tmo=(u,ms)=>Promise.race([fetch(u,{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(r.status)),new Promise((_,j)=>setTimeout(()=>j('timeout'),ms))]);
+async function ipInfo(){let ip='未知',city='',country='';
+ try{const j=await tmo('https://ipapi.co/json/',3500);if(j&&j.ip){ip=j.ip;city=j.city||'';country=j.country_name||''}}catch(e){}
+ if(ip=='未知')try{const j=await tmo('https://api.ipify.org?format=json',3500);if(j&&j.ip)ip=j.ip}catch(e){}
+ return {ip,city,country}}
+async function loginLog(type){try{const u=st.user,p=st.prof;if(!u||!p)return;const k='ll_'+u.uid;if(type=='自動登入'&&sessionStorage.getItem(k))return;sessionStorage.setItem(k,'1');
+ const g=await ipInfo();await addDoc(collection(db,'loginLogs'),{uid:u.uid,staffId:p.staffId||'',name:p.name||'',role:p.role,rank:RANK[p.role]||0,at:serverTimestamp(),atMs:Date.now(),ip:g.ip,city:g.city,country:g.country,userAgent:navigator.userAgent.slice(0,300),device:devSum(),type})}catch(e){console.warn('loginLog',e)}}
+const LL={rows:[],who:'',d1:'',d2:''};
+const tpe=ms=>new Date(ms).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const tpeDay=ms=>new Date(ms).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
+async function openLoginLogs(){if(lv()<4)return alert('只有老闆以上可以看登入紀錄');
+ pageOpen('<h2>🔐 登入紀錄</h2><div id=llPg>載入中…</div>');
+ try{const q=lv()>=5?query(collection(db,'loginLogs'),orderBy('atMs','desc'),limit(1000)):query(collection(db,'loginLogs'),where('rank','<',4),limit(3000));
+  const qs=await getDocs(q);LL.rows=[];qs.forEach(d=>LL.rows.push({id:d.id,...d.data()}));LL.rows.sort((a,b)=>b.atMs-a.atMs);llDraw()}
+ catch(e){const el=document.getElementById('llPg');if(el)el.innerHTML='讀取失敗：'+(e.code=='permission-denied'?'權限不足（規則可能尚未發布）':e.code||e.message)}}
+function llDraw(){const el=document.getElementById('llPg');if(!el)return;const ppl=[...new Map(LL.rows.map(r=>[r.uid,r.name+'（'+r.staffId+'）'])).entries()];
+ const R=LL.rows.filter(r=>(!LL.who||r.uid==LL.who)&&(!LL.d1||tpeDay(r.atMs)>=LL.d1)&&(!LL.d2||tpeDay(r.atMs)<=LL.d2));
+ el.innerHTML=`<p>人員 <select onchange="Cloud.llF('who',this.value)"><option value="">全部</option>${ppl.map(([u,n])=>`<option value="${u}" ${u==LL.who?'selected':''}>${esc(n)}</option>`).join('')}</select>
+ 日期 <input type=date value="${LL.d1}" onchange="Cloud.llF('d1',this.value)"> ～ <input type=date value="${LL.d2}" onchange="Cloud.llF('d2',this.value)"> <span style="color:#aaa">共 ${R.length} 筆（台北時間）</span></p>
+ <div class=tw><table><tr><th>時間</th><th>人員</th><th>角色</th><th>方式</th><th>裝置</th><th>IP</th><th>地點</th>${lv()>=5?'<th></th>':''}</tr>${R.map(r=>`<tr><td>${tpe(r.atMs)}</td><td>${esc(r.name)}<br><small>${esc(r.staffId)}</small></td><td>${esc(RL(r.role))}</td><td>${esc(r.type)}</td><td title="${esc(r.userAgent||'')}">${esc(r.device||'')}</td><td>${esc(r.ip||'未知')}</td><td>${esc([r.city,r.country].filter(Boolean).join('，'))||'—'}</td>${lv()>=5?`<td><button type=button class=s onclick="Cloud.llDel('${r.id}')">刪除</button></td>`:''}</tr>`).join('')}</table></div>
+ <p style="font-size:12px;color:#aaa">冠廷可看全部；老闆只看得到老闆以下的人。IP／地點由免費服務查詢，僅供參考（手機網路的地點常不準）。</p>`}
+function llF(k,v){LL[k]=v;llDraw()}
+async function llDel(id){if(lv()<5||!confirm('刪除這筆登入紀錄？'))return;try{await deleteDoc(doc(db,'loginLogs',id));LL.rows=LL.rows.filter(r=>r.id!=id);llDraw()}catch(e){alert('刪除失敗：'+e.code)}}
+window.openLoginLogs=openLoginLogs;
+
 window.openHelp=()=>pageOpen(HELP);
 window.openLogin=()=>st.user?openAccount():loginUI();
-window.Cloud={ver:"v12.2.1",logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
+window.Cloud={ver:"v12.3",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
 status();
