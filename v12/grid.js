@@ -1,4 +1,4 @@
-// v12.4.1 傳統排檯表模式（橘線＝已買單）（紙本格式勾選；與系統共用同一份資料）
+// v12.5 傳統排檯表（橘線＝已買單；換包廂／時間調整）（紙本格式勾選；與系統共用同一份資料）
 (function(){
 const GR={on:false,day:null,pal:null};
 const nm=g=>String(g.name||'').replace(/^\s*\d+\s*號?\s*/,'')||g.id;
@@ -46,7 +46,8 @@ function rowMenu(ref){const f=findRow(ref),e=rowCur(ref);if(!f||!e)return;if(!ca
  fm.innerHTML=`<h3>${esc(e.room)} 第 ${e.ban} 番・${hm(e.start)}${String(ref).startsWith('L')?'（已買單）':''}</h3>
  <label>進場時間 <input id=grT value="${hm(e.start)}" style="width:70px"></label> <label>人數 <input id=grN type=number min=1 value="${e.guests??''}" style="width:60px"></label>
  <label>訂番幹部（莉／冠／文…）<input id=grS value="${esc((live?f.x.orderStaff:f.e.orderStaff)||'')}" style="width:60px"></label>
- <p>${live&&f.last?`<button type=button onclick="dlg.close();boardEdit('${f.r}')">白板資料</button> <button type=button onclick="dlg.close();renew('${f.r}')">續番</button> <button type=button onclick="dlg.close();payFlow('${f.r}')">買單</button> `:''}
+ <p>${live&&f.last?`<button type=button onclick="dlg.close();boardEdit('${f.r}')">白板資料</button> <button type=button onclick="dlg.close();renew('${f.r}')">續番</button> <button type=button onclick="dlg.close();payFlow('${f.r}')">買單</button> <button type=button onclick="dlg.close();Xfer.open('${f.r}')">🔀 換包廂</button> <button type=button onclick="dlg.close();Xfer.adj('${f.r}')">⏱ 時間調整</button> `:''}
+ ${(e.xfer||[]).length?`<br><small>換包廂：${e.xfer.map(z=>hm(z.t)+' '+esc(z.from)+'→'+esc(z.to)+'（'+esc(z.by)+'）').join('；')}</small>`:''}${(e.timeAdj||[]).length?`<br><small>時間調整：${e.timeAdj.map(a=>hm(a.t)+' '+(a.girl?a.girl+'號':'整番')+' '+(a.min>0?'+':'')+a.min+'分'+(a.reason?'（'+esc(a.reason)+'）':'')).join('；')}</small>`:''}
  ${live?'<small style="color:#aaa">橘線會在買單完成後自動畫上</small>':'<small style="color:#fc6">已買單（橘線）</small>'}</p>
  <button value=ok>儲存</button> <button class=s value="">取消</button>`;
  const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue!='ok')return;const m=grT.value.match(/(\d{1,2}):?(\d{2})/);let t=e.start;if(m){const b=new Date(e.start);b.setHours(+m[1],+m[2],0,0);t=b.getTime();if(bizDay(t)!=GR.day)t+=864e5*(bizDay(t)<GR.day?1:-1)}
@@ -85,7 +86,7 @@ function draw(){const p=document.getElementById('gridPg');if(!p)return;const d=G
  const head=all.map((g,j)=>{const a=arriveOf(d,g.id),b=a?bandOf(a,bandsCfg):null,showB=b&&b!=lastBand&&j<main.length;if(b)lastBand=b;const sep=j==main.length?' gsep2':((j+1)%5==0?' gsep':'');
   return`<th class="gh${sep}${early(g.id)||offAt(g)?' goff':''}" onclick="Grid.girl('${g.id}')"><div class=gband>${showB?esc(String(b).split(/[–~-]/)[0].replace(':','')):''}</div><div class=gno>${esc(g.id)}</div><div class=gnm>${esc(j>=main.length&&catOf(g.id)!='小姐'?DISP(catOf(g.id)):nm(g)).slice(0,3)}</div></th>`}).join('');
  const body=rows.map((e,k)=>{const cl=String(e._ref).startsWith('L')?' gend':'';const os=e.orderStaff||(e._ref.startsWith('R|')?(S.rooms[e.room]||{}).orderStaff:'');
-  return`<tr class="${cl}"><td class="gs gs0" onclick="Grid.row('${e._ref}')">${esc(os||'')}</td><td class="gs gs1" onclick="Grid.row('${e._ref}')"><b>${esc(e.room)}</b></td><td class="gs gs2" onclick="Grid.row('${e._ref}')">${tally(e.guests)}</td><td class="gs gs3" onclick="Grid.row('${e._ref}')">${k+1}</td><td class="gs gs4" onclick="Grid.row('${e._ref}')">${hm(e.start).replace(':','')}</td>
+  return`<tr class="${cl}"><td class="gs gs0" onclick="Grid.row('${e._ref}')">${esc(os||'')}</td><td class="gs gs1" onclick="Grid.row('${e._ref}')"><b>${(e.xfer||[]).length?`<span style="font-size:10px;color:#c00">${esc(e.xfer[0].from)}→</span><br>`:''}${esc(e.room)}</b></td><td class="gs gs2" onclick="Grid.row('${e._ref}')">${tally(e.guests)}</td><td class="gs gs3" onclick="Grid.row('${e._ref}')">${k+1}</td><td class="gs gs4" onclick="Grid.row('${e._ref}')">${hm(e.start).replace(':','')}</td>
   ${all.map((g,j)=>{const sep=j==main.length?' gsep2':((j+1)%5==0?' gsep':''),pal=GR.pal&&GR.pal.ref==e._ref&&GR.pal.id==g.id;const m=e.girls.includes(g.id)?markType(e,g.id):[];
    const h=m.includes('私檯')?'<span class=gm4>4</span>':m.includes('訂番')?'<span class=gmo>✓</span>':m.includes('紅')?'<b style="color:#e22">✓</b>':m.length?'<b style="color:#27f">✓</b>':'';
    return`<td class="gc${sep}${early(g.id)||offAt(g)?' goff':''}${pal?' gpal':''}" onclick="Grid.cell('${e._ref}','${g.id}')">${h}</td>`}).join('')}</tr>`}).join('');

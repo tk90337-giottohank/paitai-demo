@@ -101,6 +101,10 @@ service cloud.firestore {
       allow update: if (staff()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusAt', 'statusBy', 'items', 'note'])
           && request.resource.data.status in ['待做', '製作中', '已出餐', '取消'])
+        // 換包廂（v12.5）：幹部以上可把點單改到新包廂
+        || (lvl() >= 2
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['room', 'movedFrom'])
+          && request.resource.data.room is string)
         || (isKitchen()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusAt', 'statusBy'])
           && request.resource.data.status in ['製作中', '已出餐']
