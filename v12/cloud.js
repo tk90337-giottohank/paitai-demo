@@ -1,4 +1,4 @@
-// v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單；移除白板 D 區預設品項）
+// v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單；移除白板 D 區預設品項）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
@@ -240,5 +240,5 @@ window.openLoginLogs=openLoginLogs;
 
 window.openHelp=()=>pageOpen(HELP);
 window.openLogin=()=>st.user?openAccount():loginUI();
-window.Cloud={ver:"v12.3",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
+window.Cloud={ver:"v12.4",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
 status();
