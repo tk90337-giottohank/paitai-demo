@@ -1,4 +1,4 @@
-// v12.4 傳統排檯表模式（紙本格式勾選；與系統共用同一份資料）
+// v12.4.1 傳統排檯表模式（橘線＝已買單）（紙本格式勾選；與系統共用同一份資料）
 (function(){
 const GR={on:false,day:null,pal:null};
 const nm=g=>String(g.name||'').replace(/^\s*\d+\s*號?\s*/,'')||g.id;
@@ -7,7 +7,7 @@ const rocDate=d=>{const[Y,M,D]=d.split('-').map(Number);return`${Y-1911}年${M}�
 const canEdit=()=>lvl()>=2;
 // ---- 讓 rowsOf 帶入排檯表手動記號／手動結束 ----
 const rowsOf0=window.rowsOf;
-window.rowsOf=function(x,r,closed){const rows=rowsOf0(x,r,closed);rows.forEach((e,i)=>{const gm=(x.gridMarks||[])[i];if(gm&&Object.keys(gm).length){const m={};e.girls.forEach(id=>{m[id]=gm[id]||markType(e,id)});e.marks=m}if((x.endedBans||[])[i]&&!e.ended){e.ended=true;e.why='手動標記'}});return rows};
+window.rowsOf=function(x,r,closed){const rows=rowsOf0(x,r,closed);rows.forEach((e,i)=>{const gm=(x.gridMarks||[])[i];if(gm&&Object.keys(gm).length){const m={};e.girls.forEach(id=>{m[id]=gm[id]||markType(e,id)});e.marks=m}});return rows};
 function findRow(ref){if(ref.startsWith('L'))return{kind:'L',e:S.sheetLog[+ref.slice(1)]};const[,r,i]=ref.split('|'),x=S.rooms[r];return x?{kind:'R',r,i:+i,x,last:+i==x.bans.length-1}:null}
 function rowCur(ref){return sheetRows(GR.day).find(e=>e._ref==ref)}
 function delOB(room,id,from){S.orderBonus=S.orderBonus.filter(o=>!(o.room==room&&o.girl==id&&o.t>=from-60000))}
@@ -38,15 +38,16 @@ function setMark(ref,id,type){if(!needRole(2,'傳統排檯表勾選'))return;con
  if(type=='私檯')L.privs.push(id);
  S.taiLog.push({day:L.day,room:L.room,ban:L.ban,girl:id,tai:type=='私檯'?C().privTai:1,priv:type=='私檯',t:st});
  log(`排檯表：${L.room} 第${L.ban}番（已結）${id} → ${type}`);done()}
+function cleanOld(){let ch=false;for(const r in S.rooms||{})if(S.rooms[r].endedBans){delete S.rooms[r].endedBans;ch=true}return ch}
 function done(){GR.pal=null;save();render();draw()}
 // ---- 列（番）操作 ----
 function rowMenu(ref){const f=findRow(ref),e=rowCur(ref);if(!f||!e)return;if(!canEdit())return alert(`${e.room} 第${e.ban}番 ${hm(e.start)}（只能檢視）`);
  const fm=document.getElementById('dform'),live=f.kind=='R';
- fm.innerHTML=`<h3>${esc(e.room)} 第 ${e.ban} 番・${hm(e.start)}${e.ended?'（已結束）':''}</h3>
+ fm.innerHTML=`<h3>${esc(e.room)} 第 ${e.ban} 番・${hm(e.start)}${String(ref).startsWith('L')?'（已買單）':''}</h3>
  <label>進場時間 <input id=grT value="${hm(e.start)}" style="width:70px"></label> <label>人數 <input id=grN type=number min=1 value="${e.guests??''}" style="width:60px"></label>
  <label>訂番幹部（莉／冠／文…）<input id=grS value="${esc((live?f.x.orderStaff:f.e.orderStaff)||'')}" style="width:60px"></label>
  <p>${live&&f.last?`<button type=button onclick="dlg.close();boardEdit('${f.r}')">白板資料</button> <button type=button onclick="dlg.close();renew('${f.r}')">續番</button> <button type=button onclick="dlg.close();payFlow('${f.r}')">買單</button> `:''}
- ${live?`<button type=button onclick="Grid.endBan('${ref}')">${(f.x.endedBans||[])[f.i]?'取消橘線（未結束）':'畫橘線（此番結束）'}</button>`:''}</p>
+ ${live?'<small style="color:#aaa">橘線會在買單完成後自動畫上</small>':'<small style="color:#fc6">已買單（橘線）</small>'}</p>
  <button value=ok>儲存</button> <button class=s value="">取消</button>`;
  const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue!='ok')return;const m=grT.value.match(/(\d{1,2}):?(\d{2})/);let t=e.start;if(m){const b=new Date(e.start);b.setHours(+m[1],+m[2],0,0);t=b.getTime();if(bizDay(t)!=GR.day)t+=864e5*(bizDay(t)<GR.day?1:-1)}
   const n=grN.value?Math.max(1,+grN.value):null,sv=grS.value.trim();
@@ -58,7 +59,6 @@ function rowMenu(ref){const f=findRow(ref),e=rowCur(ref);if(!f||!e)return;if(!ca
   else{const L=f.e;L.start=t;if(n)L.guests=n;if(sv!=(L.orderStaff||'')){S.orderBonus=S.orderBonus.filter(b=>!(b.codeOnly&&b.room==L.room&&Math.abs(b.t-e.start)<=60000));
     if(sv){if(L.marks)Object.keys(L.marks).forEach(k=>{if(L.marks[k].includes('訂番')){L.marks[k]=['紅'];delOB(L.room,k,e.start)}});L.order=[];const ci=codeInfo(sv);S.orderBonus.push({t:L.start,room:L.room,girl:'',girlAmt:0,staff:ci.cat=='特殊'?ci.who:`${ci.who}（${ci.cat}）`,staffCat:ci.cat,staffAmt:catAmt(ci.cat),code:ci.code,codeOnly:true})}L.orderStaff=sv}}
   log(`排檯表：${e.room} 第${e.ban}番 時間 ${hm(t)} 人數 ${n??'—'} 訂番幹部 ${sv||'—'}`);done()};d.showModal()}
-function endBan(ref){const f=findRow(ref);if(!f||f.kind!='R')return;const x=f.x;x.endedBans=x.endedBans||[];x.endedBans[f.i]=!x.endedBans[f.i];log(`排檯表：${f.r} 第${f.i+1}番 ${x.endedBans[f.i]?'畫橘線（結束）':'取消橘線'}`);document.getElementById('dlg').close();done()}
 function newRow(){if(!needRole(2,'新增番'))return;const free=roomList().filter(r=>!S.rooms[r]&&!(S.cleaning||{})[r]);if(!free.length)return alert('沒有空包廂');
  const fm=document.getElementById('dform');fm.innerHTML=`<h3>新增一番：選包廂</h3>${free.map(r=>`<button value="${esc(r)}" style="min-width:64px;height:44px;margin:3px">${esc(r)}</button>`).join('')}<p><button class=s value="">取消</button></p>`;
  const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{const r=d.returnValue;if(r)setTimeout(()=>checkIn(r),50)};d.showModal()}
@@ -84,7 +84,7 @@ function draw(){const p=document.getElementById('gridPg');if(!p)return;const d=G
  const early=id=>X.early&&X.early[id];
  const head=all.map((g,j)=>{const a=arriveOf(d,g.id),b=a?bandOf(a,bandsCfg):null,showB=b&&b!=lastBand&&j<main.length;if(b)lastBand=b;const sep=j==main.length?' gsep2':((j+1)%5==0?' gsep':'');
   return`<th class="gh${sep}${early(g.id)||offAt(g)?' goff':''}" onclick="Grid.girl('${g.id}')"><div class=gband>${showB?esc(String(b).split(/[–~-]/)[0].replace(':','')):''}</div><div class=gno>${esc(g.id)}</div><div class=gnm>${esc(j>=main.length&&catOf(g.id)!='小姐'?DISP(catOf(g.id)):nm(g)).slice(0,3)}</div></th>`}).join('');
- const body=rows.map((e,k)=>{const cl=e.ended?' gend':'';const os=e.orderStaff||(e._ref.startsWith('R|')?(S.rooms[e.room]||{}).orderStaff:'');
+ const body=rows.map((e,k)=>{const cl=String(e._ref).startsWith('L')?' gend':'';const os=e.orderStaff||(e._ref.startsWith('R|')?(S.rooms[e.room]||{}).orderStaff:'');
   return`<tr class="${cl}"><td class="gs gs0" onclick="Grid.row('${e._ref}')">${esc(os||'')}</td><td class="gs gs1" onclick="Grid.row('${e._ref}')"><b>${esc(e.room)}</b></td><td class="gs gs2" onclick="Grid.row('${e._ref}')">${tally(e.guests)}</td><td class="gs gs3" onclick="Grid.row('${e._ref}')">${k+1}</td><td class="gs gs4" onclick="Grid.row('${e._ref}')">${hm(e.start).replace(':','')}</td>
   ${all.map((g,j)=>{const sep=j==main.length?' gsep2':((j+1)%5==0?' gsep':''),pal=GR.pal&&GR.pal.ref==e._ref&&GR.pal.id==g.id;const m=e.girls.includes(g.id)?markType(e,g.id):[];
    const h=m.includes('私檯')?'<span class=gm4>4</span>':m.includes('訂番')?'<span class=gmo>✓</span>':m.includes('紅')?'<b style="color:#e22">✓</b>':m.length?'<b style="color:#27f">✓</b>':'';
@@ -93,7 +93,7 @@ function draw(){const p=document.getElementById('gridPg');if(!p)return;const d=G
   return`<td class="gt${sep}${early(g.id)||offAt(g)?' goff':''}">${r.tai?`<b>${r.tai}</b>`:''}${early(g.id)?`<div class=gel>${esc(String(early(g.id)).replace(':',''))}<br>離開</div>`:''}${lt?`<div class=gled>${esc(lt)}</div>`:''}</td>`}).join('');
  const pal=GR.pal?`<div class=gpalbox>${(()=>{const g=G(GR.pal.id),e=rowCur(GR.pal.ref);return`<b>${esc(e?e.room+' 第'+e.ban+'番':'')}・${esc(GR.pal.id)} ${g?esc(nm(g)):''}</b>`})()} ${PAL.map(([k,l])=>`<button type=button onclick="Grid.set('${GR.pal.ref}','${GR.pal.id}','${k}')">${l}</button>`).join('')}<button type=button class=s onclick="Grid.cell(null)">取消</button></div>`:'';
  p.innerHTML=`<div class=gtop><span class=gdate>${rocDate(d)}</span> <span class=gstore>${esc(S.cfg.storeName||document.getElementById('store').textContent||'')}</span> <input type=date value="${d}" onchange="Grid.day(this.value)"> ${canEdit()?'<button type=button onclick="Grid.add()">＋ 新增一番</button>':'<span style="color:#888">（只能檢視）</span>'} <button type=button class=s onclick="Grid.zoom(1)">＋字</button><button type=button class=s onclick="Grid.zoom(-1)">－字</button> <button type=button class=s onclick="Grid.print()">🖨 列印 A3</button> <button type=button class=s onclick="Grid.off();openSheet()">↔ 一般排檯表</button></div>
- <div class=gleg><b style="color:#e22">✓</b> 紅勾＝客人點選　<b style="color:#27f">✓</b> 藍勾＝幹部指派　<span class=gmo>✓</span> 訂番　<span class=gm4>4</span> 私檯　<span style="background:#ffb347;padding:0 6px">橘線</span> 此番結束　<span style="border-left:3px solid #e22;padding-left:4px">紅線</span> 已領錢回家　・點格子勾選，點左側改包廂／時間／人數，點小姐編號畫紅線</div>${pal}
+ <div class=gleg><b style="color:#e22">✓</b> 紅勾＝客人點選　<b style="color:#27f">✓</b> 藍勾＝幹部指派　<span class=gmo>✓</span> 訂番　<span class=gm4>4</span> 私檯　<span style="background:#ffb347;padding:0 6px">橘線</span> 已買單　<span style="border-left:3px solid #e22;padding-left:4px">紅線</span> 已領錢回家　・點格子勾選，點左側改包廂／時間／人數，點小姐編號畫紅線</div>${pal}
  <div class=gwrap style="--gz:${GR.z||1}"><table class=grid><thead><tr><th class="gs gs0">訂番</th><th class="gs gs1">包廂</th><th class="gs gs2">備註</th><th class="gs gs3">番</th><th class="gs gs4">時間</th>${head}</tr></thead><tbody>${body||`<tr><td class=gs colspan=5>今天還沒有番</td></tr>`}</tbody><tfoot><tr><td class="gs gs0"></td><td class="gs gs1" colspan=1>合計</td><td class="gs gs2"></td><td class="gs gs3">${rows.length}</td><td class="gs gs4"></td>${tot}</tr></tfoot></table></div>
  <p style="font-size:12px;color:#888">與系統同一份資料：勾選＝把小姐排進該番（紅勾＝點檯、藍勾＝店家派、訂番＝小姐 ${C().orderGirlBonus} 元、私檯＝${C().privTai} 台）；台數、訂番獎金、買單、白板都即時更新。合計列＝當日台數（待確認）；下方紅字＝寄放(+)／預支(-)。右側隔開的欄＝非上班／其他。</p>`;
  const nx=p.querySelector('.gwrap');if(sc&&nx){nx.scrollLeft=sc[0];nx.scrollTop=sc[1]}}
@@ -115,8 +115,8 @@ table.grid{border-collapse:separate;border-spacing:0;font-size:calc(14px*var(--g
 @media (min-width:1600px){.gwrap{--gz:1.25}}@media (max-width:600px){.gs2{font-size:11px}.gs3{color:#999}}
 @media print{@page{size:A3 landscape;margin:6mm}.gtop button,.gtop input,.gpalbox,.ph{display:none!important}.gwrap{max-height:none;overflow:visible;border:0}.grid .gs,.grid thead th,.grid tfoot td{position:static}body *{visibility:hidden}#page,#page *{visibility:visible}#page{position:absolute;left:0;top:0}}`;
 const st=document.createElement('style');st.textContent=CSS;document.head.appendChild(st);
-function open(d){GR.on=true;GR.day=d||GR.day||(typeof shDay!='undefined'&&shDay)||bizDay(now());GR.pal=null;pageOpen('<div id=gridPg></div>');draw()}
-window.Grid={open,draw,cell:(r,i)=>{if(r===null){GR.pal=null;return draw()}cell(r,i)},set:setMark,row:rowMenu,girl:girlMenu,add:newRow,endBan,day:d=>{GR.day=d;draw()},off:()=>{GR.on=false},zoom:k=>{GR.z=Math.max(.7,Math.min(2,(GR.z||1)+k*.15));draw()},print:()=>{GR.pal=null;draw();setTimeout(()=>print(),100)},state:GR};
+function open(d){if(lvl()>=2&&cleanOld())save();GR.on=true;GR.day=d||GR.day||(typeof shDay!='undefined'&&shDay)||bizDay(now());GR.pal=null;pageOpen('<div id=gridPg></div>');draw()}
+window.Grid={open,draw,cell:(r,i)=>{if(r===null){GR.pal=null;return draw()}cell(r,i)},set:setMark,row:rowMenu,girl:girlMenu,add:newRow,day:d=>{GR.day=d;draw()},off:()=>{GR.on=false},zoom:k=>{GR.z=Math.max(.7,Math.min(2,(GR.z||1)+k*.15));draw()},print:()=>{GR.pal=null;draw();setTimeout(()=>print(),100)},state:GR};
 window.openGrid=()=>open();
 // 一般排檯表加切換鈕；遠端更新時重畫
 const os0=window.openSheet;window.openSheet=function(){GR.on=false;os0.apply(this,arguments);const h=document.querySelector('#page h2');if(h&&!h.querySelector('.gtog')){const b=document.createElement('button');b.className='s gtog';b.textContent='📋 傳統排檯表';b.onclick=()=>open(typeof shDay!='undefined'?shDay:null);h.appendChild(b)}};

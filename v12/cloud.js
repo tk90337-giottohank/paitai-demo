@@ -240,5 +240,5 @@ window.openLoginLogs=openLoginLogs;
 
 window.openHelp=()=>pageOpen(HELP);
 window.openLogin=()=>st.user?openAccount():loginUI();
-window.Cloud={ver:"v12.4",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
+window.Cloud={ver:"v12.4.1",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
 status();
