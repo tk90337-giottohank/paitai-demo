@@ -1,0 +1,157 @@
+<!doctype html><meta charset=utf-8><title>firestore.rules v12.6</title><button onclick="navigator.clipboard.writeText(document.getElementById('r').textContent)">複製全部</button><pre id=r>rules_version = &#x27;2&#x27;;
+// 排檯系統 paitai-system — Firestore 安全規則（v12）
+// 角色：小姐/少爺=1 &lt; 幹部=2 &lt; 經理=3 &lt; 老闆=4 &lt; 特殊（冠廷）=5；tv=唯讀看板（0）
+    // users 文件需帶 rank 欄位且必須等於 rank(role)（供查詢過濾）
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function hasProfile() { return signedIn() &amp;&amp; exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function active() { return hasProfile() &amp;&amp; me().get(&#x27;disabled&#x27;, false) != true; }
+    function rank(r) { return r == &#x27;特殊&#x27; ? 5 : r == &#x27;老闆&#x27; ? 4 : r == &#x27;經理&#x27; ? 3 : r == &#x27;幹部&#x27; ? 2 : (r == &#x27;少爺&#x27; || r == &#x27;小姐&#x27;) ? 1 : 0; }
+    function lvl() { return active() ? rank(me().role) : 0; }
+    function isTV() { return active() &amp;&amp; me().role == &#x27;tv&#x27;; }
+    function staff() { return lvl() &gt;= 1; }
+    function reader() { return staff() || isTV(); }
+    function validRole(r) { return r in [&#x27;小姐&#x27;, &#x27;少爺&#x27;, &#x27;幹部&#x27;, &#x27;經理&#x27;, &#x27;老闆&#x27;, &#x27;特殊&#x27;, &#x27;tv&#x27;, &#x27;kitchen&#x27;, &#x27;room&#x27;]; }
+    function isRoomTab() { return active() &amp;&amp; me().role == &#x27;room&#x27; &amp;&amp; me().get(&#x27;room&#x27;, &#x27;&#x27;) != &#x27;&#x27;; }
+    function myRoom() { return me().room; }
+    function isKitchen() { return active() &amp;&amp; me().role == &#x27;kitchen&#x27;; }
+    function rankOk(d) { return d.rank == rank(d.role); }
+
+    // 店家設定、訊息卡、酒單：所有登入人員可讀，經理/老闆可寫
+    match /config/settings {
+      allow read: if reader();
+      allow write: if lvl() &gt;= 3;
+    }
+    // 首次啟用標記：與第一位老闆帳號同一批寫入，之後不可改
+    match /config/boot {
+      allow read: if signedIn();
+      allow create: if signedIn() &amp;&amp; !exists(/databases/$(database)/documents/config/boot)
+        &amp;&amp; request.resource.data.uid == request.auth.uid
+        &amp;&amp; getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in [&#x27;特殊&#x27;, &#x27;老闆&#x27;];
+      allow update, delete: if false;
+    }
+    // 人員帳號與角色
+    match /users/{uid} {
+      allow read: if (signedIn() &amp;&amp; request.auth.uid == uid) || (lvl() &gt;= 3 &amp;&amp; resource.data.rank &lt;= lvl());
+      // 第一位帳號（首次啟用）：特殊（冠廷）或老闆
+      allow create: if signedIn() &amp;&amp; request.auth.uid == uid
+        &amp;&amp; !exists(/databases/$(database)/documents/config/boot)
+        &amp;&amp; getAfter(/databases/$(database)/documents/config/boot).data.uid == uid
+        &amp;&amp; request.resource.data.role in [&#x27;特殊&#x27;, &#x27;老闆&#x27;] &amp;&amp; rankOk(request.resource.data) &amp;&amp; request.resource.data.get(&#x27;disabled&#x27;, false) == false;
+      // 老闆以上建立其他人員；不能建立比自己高的角色（只有特殊能建立特殊）
+      allow create: if lvl() &gt;= 4 &amp;&amp; request.auth.uid != uid &amp;&amp; validRole(request.resource.data.role)
+        &amp;&amp; rank(request.resource.data.role) &lt;= lvl() &amp;&amp; rankOk(request.resource.data);
+      // 經理/老闆改角色或停用：不能改自己、不能改比自己高的人、不能給超過自己的角色
+      allow update: if lvl() &gt;= 3 &amp;&amp; request.auth.uid != uid
+        &amp;&amp; rank(resource.data.role) &lt;= lvl()
+        &amp;&amp; validRole(request.resource.data.role) &amp;&amp; rank(request.resource.data.role) &lt;= lvl()
+        &amp;&amp; request.resource.data.staffId == resource.data.staffId &amp;&amp; rankOk(request.resource.data);
+      allow delete: if false;
+    }
+    // 當日營業資料（每個營業日一份文件）
+    match /days/{day} {
+      allow read: if reader();
+      allow create, update: if staff();
+      allow delete: if lvl() &gt;= 3;
+    }
+    // 歷史歸檔（每日一份）：幹部以上可看；自動日結任何在班人員可建立；修改（手動匯入）幹部以上
+    match /hist/{day} {
+      allow read: if lvl() &gt;= 2;
+      allow create: if staff();
+      allow update: if lvl() &gt;= 2;
+      allow delete: if lvl() &gt;= 3;
+    }
+    // 寄酒：幹部以上
+    match /wine/{id} {
+      allow read, create, update: if lvl() &gt;= 2;
+      allow delete: if lvl() &gt;= 3;
+    }
+    match /wineLog/{id} {
+      allow read: if lvl() &gt;= 2;
+      allow create: if lvl() &gt;= 2 &amp;&amp; request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+    // 小姐寄放／預支帳本：幹部以上可看、可新增；修改／刪除限經理以上
+    match /ledger/{id} {
+      allow read: if lvl() &gt;= 2;
+      allow create: if lvl() &gt;= 2 &amp;&amp; request.resource.data.uid == request.auth.uid;
+      allow update, delete: if lvl() &gt;= 3;
+    }
+    // 員工密碼副本：冠廷（5）可看全部；老闆（4）只能看老闆以下；其他人不能讀。本人改密碼時可寫自己的。
+    match /secrets/{uid} {
+      function targetRank() { return get(/databases/$(database)/documents/users/$(uid)).data.rank; }
+      allow read: if lvl() &gt;= 5 || (lvl() == 4 &amp;&amp; targetRank() &lt; 4);
+      allow create, update: if (hasProfile() &amp;&amp; request.auth.uid == uid)
+        || lvl() &gt;= 5 || (lvl() == 4 &amp;&amp; targetRank() &lt; 4);
+      allow delete: if false;
+    }
+    // 餐點菜單（v12.2）：登入人員與廚房可讀；經理以上可改
+    match /menu/{id} {
+      allow read: if reader() || isKitchen() || isRoomTab();
+      allow write: if lvl() &gt;= 3;
+    }
+    // 點餐單（v12.2）：少爺以上點餐；廚房只能改狀態（製作中／已出餐）
+    match /orders/{id} {
+      allow read: if reader() || isKitchen() || (isRoomTab() &amp;&amp; resource.data.room == myRoom());
+      // 包廂平板（v12.6）：只能替自己綁定的包廂點餐／點酒
+      allow create: if isRoomTab() &amp;&amp; request.resource.data.room == myRoom()
+        &amp;&amp; request.resource.data.createdBy == request.auth.uid &amp;&amp; request.resource.data.status == &#x27;待做&#x27;
+        &amp;&amp; request.resource.data.fromGuest == true
+        &amp;&amp; request.resource.data.items is list &amp;&amp; request.resource.data.items.size() &gt; 0 &amp;&amp; request.resource.data.items.size() &lt;= 60
+        &amp;&amp; request.resource.data.businessDay is string &amp;&amp; request.resource.data.createdAt is number;
+      allow create: if staff() &amp;&amp; request.resource.data.createdBy == request.auth.uid
+        &amp;&amp; request.resource.data.status == &#x27;待做&#x27;
+        &amp;&amp; request.resource.data.room is string &amp;&amp; request.resource.data.items is list
+        &amp;&amp; request.resource.data.items.size() &gt; 0 &amp;&amp; request.resource.data.items.size() &lt;= 60
+        &amp;&amp; request.resource.data.businessDay is string &amp;&amp; request.resource.data.createdAt is number;
+      allow update: if (staff()
+          &amp;&amp; request.resource.data.diff(resource.data).affectedKeys().hasOnly([&#x27;status&#x27;, &#x27;statusAt&#x27;, &#x27;statusBy&#x27;, &#x27;items&#x27;, &#x27;note&#x27;])
+          &amp;&amp; request.resource.data.status in [&#x27;待做&#x27;, &#x27;製作中&#x27;, &#x27;已出餐&#x27;, &#x27;取消&#x27;])
+        // 換包廂（v12.5）：幹部以上可把點單改到新包廂
+        || (lvl() &gt;= 2
+          &amp;&amp; request.resource.data.diff(resource.data).affectedKeys().hasOnly([&#x27;room&#x27;, &#x27;movedFrom&#x27;])
+          &amp;&amp; request.resource.data.room is string)
+        || (isKitchen()
+          &amp;&amp; request.resource.data.diff(resource.data).affectedKeys().hasOnly([&#x27;status&#x27;, &#x27;statusAt&#x27;, &#x27;statusBy&#x27;])
+          &amp;&amp; request.resource.data.status in [&#x27;製作中&#x27;, &#x27;已出餐&#x27;]
+          &amp;&amp; request.resource.data.statusBy == request.auth.uid);
+      allow delete: if lvl() &gt;= 3;
+    }
+    // 登入紀錄（v12.3）：本人建立自己的紀錄；冠廷（5）看全部、可刪；老闆（4）只看老闆以下
+    match /loginLogs/{id} {
+      allow create: if hasProfile() &amp;&amp; request.resource.data.uid == request.auth.uid
+        &amp;&amp; request.resource.data.rank == rank(me().role)
+        &amp;&amp; request.resource.data.atMs is number;
+      allow read: if lvl() &gt;= 5 || (lvl() == 4 &amp;&amp; resource.data.rank &lt; 4);
+      allow update: if false;
+      allow delete: if lvl() &gt;= 5;
+    }
+    // 包廂平板（v12.6）：可點小姐清單（只有編號、名字、照片）
+    match /public/avail {
+      allow read: if reader() || isRoomTab();
+      allow write: if staff();
+    }
+    // 包廂平板（v12.6）：客人需求（點小姐／呼叫 少爺/公主）
+    match /guestReq/{id} {
+      allow read: if reader() || (isRoomTab() &amp;&amp; resource.data.room == myRoom());
+      allow create: if isRoomTab() &amp;&amp; request.resource.data.room == myRoom()
+        &amp;&amp; request.resource.data.createdBy == request.auth.uid &amp;&amp; request.resource.data.status == &#x27;已送出&#x27;
+        &amp;&amp; request.resource.data.type in [&#x27;點小姐&#x27;, &#x27;呼叫&#x27;]
+        &amp;&amp; request.resource.data.girls is list &amp;&amp; request.resource.data.girls.size() &lt;= 10
+        &amp;&amp; request.resource.data.businessDay is string &amp;&amp; request.resource.data.createdAt is number;
+      allow update: if staff()
+        &amp;&amp; request.resource.data.diff(resource.data).affectedKeys().hasOnly([&#x27;status&#x27;, &#x27;handledBy&#x27;, &#x27;handledByName&#x27;, &#x27;handledAt&#x27;])
+        &amp;&amp; request.resource.data.status in [&#x27;已確認&#x27;, &#x27;已拒絕&#x27;, &#x27;已處理&#x27;];
+      allow delete: if lvl() &gt;= 3;
+    }
+    // 操作紀錄：只能新增，不能改不能刪
+    match /audit/{id} {
+      allow read: if lvl() &gt;= 3;
+      allow create: if staff() &amp;&amp; request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}
+</pre>

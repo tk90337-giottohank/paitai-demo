@@ -13,7 +13,9 @@ service cloud.firestore {
     function isTV() { return active() && me().role == 'tv'; }
     function staff() { return lvl() >= 1; }
     function reader() { return staff() || isTV(); }
-    function validRole(r) { return r in ['小姐', '少爺', '幹部', '經理', '老闆', '特殊', 'tv', 'kitchen']; }
+    function validRole(r) { return r in ['小姐', '少爺', '幹部', '經理', '老闆', '特殊', 'tv', 'kitchen', 'room']; }
+    function isRoomTab() { return active() && me().role == 'room' && me().get('room', '') != ''; }
+    function myRoom() { return me().room; }
     function isKitchen() { return active() && me().role == 'kitchen'; }
     function rankOk(d) { return d.rank == rank(d.role); }
 
@@ -87,12 +89,18 @@ service cloud.firestore {
     }
     // 餐點菜單（v12.2）：登入人員與廚房可讀；經理以上可改
     match /menu/{id} {
-      allow read: if reader() || isKitchen();
+      allow read: if reader() || isKitchen() || isRoomTab();
       allow write: if lvl() >= 3;
     }
     // 點餐單（v12.2）：少爺以上點餐；廚房只能改狀態（製作中／已出餐）
     match /orders/{id} {
-      allow read: if reader() || isKitchen();
+      allow read: if reader() || isKitchen() || (isRoomTab() && resource.data.room == myRoom());
+      // 包廂平板（v12.6）：只能替自己綁定的包廂點餐／點酒
+      allow create: if isRoomTab() && request.resource.data.room == myRoom()
+        && request.resource.data.createdBy == request.auth.uid && request.resource.data.status == '待做'
+        && request.resource.data.fromGuest == true
+        && request.resource.data.items is list && request.resource.data.items.size() > 0 && request.resource.data.items.size() <= 60
+        && request.resource.data.businessDay is string && request.resource.data.createdAt is number;
       allow create: if staff() && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.status == '待做'
         && request.resource.data.room is string && request.resource.data.items is list
@@ -119,6 +127,24 @@ service cloud.firestore {
       allow read: if lvl() >= 5 || (lvl() == 4 && resource.data.rank < 4);
       allow update: if false;
       allow delete: if lvl() >= 5;
+    }
+    // 包廂平板（v12.6）：可點小姐清單（只有編號、名字、照片）
+    match /public/avail {
+      allow read: if reader() || isRoomTab();
+      allow write: if staff();
+    }
+    // 包廂平板（v12.6）：客人需求（點小姐／呼叫 少爺/公主）
+    match /guestReq/{id} {
+      allow read: if reader() || (isRoomTab() && resource.data.room == myRoom());
+      allow create: if isRoomTab() && request.resource.data.room == myRoom()
+        && request.resource.data.createdBy == request.auth.uid && request.resource.data.status == '已送出'
+        && request.resource.data.type in ['點小姐', '呼叫']
+        && request.resource.data.girls is list && request.resource.data.girls.size() <= 10
+        && request.resource.data.businessDay is string && request.resource.data.createdAt is number;
+      allow update: if staff()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'handledBy', 'handledByName', 'handledAt'])
+        && request.resource.data.status in ['已確認', '已拒絕', '已處理'];
+      allow delete: if lvl() >= 3;
     }
     // 操作紀錄：只能新增，不能改不能刪
     match /audit/{id} {

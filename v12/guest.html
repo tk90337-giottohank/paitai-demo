@@ -1,0 +1,23 @@
+<!doctype html><html lang=zh-Hant><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name=apple-mobile-web-app-capable content=yes><title>包廂服務</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}body{margin:0;background:#120d1a;color:#fff;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif;user-select:none;-webkit-user-select:none}
+#top{display:flex;align-items:center;gap:12px;padding:12px 18px;background:linear-gradient(90deg,#3a1450,#1d1030)}#top .rm{font-size:34px;font-weight:800;color:#ffcf5a}#top .t{flex:1;font-size:18px;color:#cbb}#lock{background:none;border:0;color:#665;font-size:22px}
+main{padding:16px}.home{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,44vw),1fr));gap:16px}
+.big{border:0;border-radius:22px;padding:28px 10px;font-size:32px;font-weight:800;color:#fff;min-height:170px;box-shadow:0 4px 14px #0008}.big small{display:block;font-size:16px;font-weight:400;opacity:.85;margin-top:6px}
+.b1{background:linear-gradient(135deg,#e0457b,#a3208f)}.b2{background:linear-gradient(135deg,#f08c2a,#c9541b)}.b3{background:linear-gradient(135deg,#3a8fe0,#2950b8)}.b4{background:linear-gradient(135deg,#2fb47a,#16805a)}
+h2{margin:6px 0 12px;font-size:28px}.back{font-size:20px;padding:10px 18px;border-radius:12px;border:0;background:#443;color:#fff}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}.card{background:#2a2036;border:3px solid #2a2036;border-radius:16px;padding:12px;text-align:center;min-height:150px}.card.sel{border-color:#ffcf5a;background:#4a2e50}
+.card .no{font-size:40px;font-weight:800;color:#ff6b9a}.card .nm{font-size:24px}.card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px}
+.item{display:flex;align-items:center;gap:10px;background:#221a2c;border-radius:14px;padding:12px;margin:8px 0}.item .n{flex:1}.item .n b{font-size:24px}.item .n div{font-size:15px;color:#aab}.item .p{color:#ffcf5a;font-size:20px;min-width:80px;text-align:right}
+.q{width:60px;height:60px;font-size:30px;border-radius:14px;border:0;background:#3a8fe0;color:#fff}.qn{min-width:40px;text-align:center;font-size:28px;font-weight:800}
+.bar{position:sticky;bottom:0;background:#120d1aee;padding:12px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}.go{font-size:26px;padding:16px 30px;border-radius:16px;border:0;background:#2fb47a;color:#fff;font-weight:800}.go:disabled{opacity:.4}
+input.note{font-size:20px;padding:12px;border-radius:12px;border:0;flex:1;min-width:200px}
+.st{background:#1c1626;border-radius:14px;padding:10px 14px;margin-top:16px;font-size:18px}.st div{padding:4px 0;border-bottom:1px solid #2c2438}
+.tag{display:inline-block;padding:2px 10px;border-radius:10px;font-size:15px;margin-left:6px}.t0{background:#a70}.t1{background:#2b8}.t2{background:#777}
+#msg{position:fixed;left:50%;top:30%;transform:translateX(-50%);background:#2fb47a;color:#fff;font-size:30px;padding:24px 40px;border-radius:20px;display:none;z-index:99;text-align:center}
+#ov{position:fixed;inset:0;background:#120d1a;z-index:50;display:flex;align-items:center;justify-content:center}#ov .box{background:#221a2c;padding:24px;border-radius:18px;width:min(440px,92vw)}#ov input{width:100%;font-size:22px;padding:12px;margin:6px 0;border-radius:10px;border:0}#ov button{font-size:22px;padding:12px 20px;border-radius:12px;border:0;margin-top:8px}
+.tabs{display:flex;gap:8px;margin-bottom:8px}.tabs button{font-size:20px;padding:10px 18px;border-radius:12px;border:0;background:#332a40;color:#fff}.tabs button.on{background:#f08c2a}
+</style></head><body>
+<div id=top><span class=rm id=rm>包廂</span><span class=t id=tt>歡迎光臨</span><button id=lock title="員工">🔒</button></div>
+<main id=main></main><div id=msg></div><div id=ov style="display:none"></div>
+<script type=module src="guest.js?v=12.6"></script></body></html>

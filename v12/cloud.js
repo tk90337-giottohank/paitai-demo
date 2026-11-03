@@ -1,4 +1,4 @@
-// v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單；移除白板 D 區預設品項）
+// v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單；移除白板 D 區預設品項）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
@@ -9,7 +9,7 @@ const app=initializeApp(firebaseConfig),auth=getAuth(app);
 const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
 if(EMU){connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});connectFirestoreEmulator(db,'127.0.0.1',8080)}
 const DOMAIN='paitai-system.local',mail=id=>String(id).trim().toLowerCase()+'@'+DOMAIN;
-const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'特殊':5,'tv':0,'kitchen':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r;const ROLE_ALL=['小姐','少爺','幹部','經理','老闆','特殊','tv','kitchen'];
+const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'特殊':5,'tv':0,'kitchen':0,'room':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r=='room'?'房間平板':r;const ROLE_ALL=['小姐','少爺','幹部','經理','老闆','特殊','tv','kitchen','room'];
 const LOCAL=new Set(['cur','op','users','usersExample','impSnap','wsSeq']);
 const SETTINGS=['cfg','wines','catalog','cb','attVer','cutVer','cleanVer','imp1026','beerVer'];
 const isDayKey=k=>!LOCAL.has(k)&&!SETTINGS.includes(k)&&!['hist','wineStore','wsLog','ledger'].includes(k);
@@ -85,6 +85,7 @@ onAuthStateChanged(auth,async u=>{stopSync();st.user=u;st.prof=null;st.inited=nu
  if(!u){S.cur=null;status();loginUI();return}
  let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null}catch(e){p=null}
  if(!p||p.disabled){await signOut(auth);loginUI(p&&p.disabled?'此帳號已停用，請找老闆':'此帳號沒有權限資料，請找老闆');return}
+ if(p.role=='room'){location.replace('guest.html'+location.search);return}
  st.prof=p;S.cur={name:p.name,role:p.role,uid:u.uid,staffId:p.staffId};S.op=p.name;const op=document.getElementById('op');if(op)op.value=p.name;
  ov.style.display='none';startSync();if(location.hash=='#kitchen')openKitchen();rerender();log(`登入：${p.name}${p.role=='特殊'?'':'（'+RL(p.role)+'）'}`);const ty=st.manual?'登入':'自動登入';st.manual=false;loginLog(ty)});
 setPersistence(auth,browserLocalPersistence).catch(()=>{});
@@ -110,14 +111,14 @@ async function resetPw(uid){const u=USERS.find(x=>x.uid==uid);if(!canPw(u))retur
 function openStaff(){if(lv()<3)return alert('需經理以上');document.getElementById('dlg').close();
  if(!usersUnsub)usersUnsub=onSnapshot(query(collection(db,'users'),where('rank','<=',lv())),qs=>{USERS=[];qs.forEach(d=>USERS.push({uid:d.id,...d.data()}));USERS.sort((a,b)=>(RANK[b.role]||0)-(RANK[a.role]||0)||a.staffId.localeCompare(b.staffId));redrawTbl()},fail);drawStaff()}
 function staffTbl(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv());return`<table class=sch id=stTbl><tr><th>編號</th><th>名字</th><th>角色</th><th>狀態</th>${lv()>=4?'<th>密碼</th>':''}<th></th></tr>${USERS.map(u=>{const mine=u.uid==st.user.uid,can=!mine&&(RANK[u.role]||0)<=lv();
-  return`<tr><td>${esc(u.staffId)}</td><td>${esc(u.name)}</td><td>${can?`<select onchange="Cloud.setRole('${u.uid}',this.value)">${roles.map(r=>`<option value="${r}" ${r==u.role?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>`:esc(RL(u.role))+(mine?'（自己）':'')}</td><td>${u.disabled?'<b style="color:#e44">停用</b>':'啟用'}</td>${lv()>=4?`<td>${canPw(u)?(PWshow[u.uid]?(PW[u.uid]?`<code>${esc(PW[u.uid])}</code>`:'<span style="color:#aaa">未記錄</span>'):'••••')+` <button type=button class=s onclick="Cloud.togglePw('${u.uid}')">${PWshow[u.uid]?'隱藏':'👁 顯示'}</button> <button type=button class=s onclick="Cloud.copyPw('${u.uid}')">複製</button> <button type=button class=s onclick="Cloud.resetPw('${u.uid}')">重設密碼</button>`:'—'}</td>`:''}<td>${can?`<button type=button class=s onclick="Cloud.setDisabled('${u.uid}',${!u.disabled})">${u.disabled?'啟用':'停用'}</button>`:''}</td></tr>`}).join('')}</table>`}
+  return`<tr><td>${esc(u.staffId)}${u.room?`<br><small>包廂 ${esc(u.room)}</small>`:''}</td><td>${esc(u.name)}</td><td>${can?`<select onchange="Cloud.setRole('${u.uid}',this.value)">${roles.map(r=>`<option value="${r}" ${r==u.role?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>`:esc(RL(u.role))+(mine?'（自己）':'')}</td><td>${u.disabled?'<b style="color:#e44">停用</b>':'啟用'}</td>${lv()>=4?`<td>${canPw(u)?(PWshow[u.uid]?(PW[u.uid]?`<code>${esc(PW[u.uid])}</code>`:'<span style="color:#aaa">未記錄</span>'):'••••')+` <button type=button class=s onclick="Cloud.togglePw('${u.uid}')">${PWshow[u.uid]?'隱藏':'👁 顯示'}</button> <button type=button class=s onclick="Cloud.copyPw('${u.uid}')">複製</button> <button type=button class=s onclick="Cloud.resetPw('${u.uid}')">重設密碼</button>`:'—'}</td>`:''}<td>${can?`<button type=button class=s onclick="Cloud.setDisabled('${u.uid}',${!u.disabled})">${u.disabled?'啟用':'停用'}</button>`:''}</td></tr>`}).join('')}</table>`}
 function drawStaff(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv());
  pageOpen(`<h2>人員帳號管理</h2>${lv()>=4?`<details open><summary>新增帳號（老闆以上）</summary><label>員工編號（英數）<input id=nId autocapitalize=none></label> <label>名字<input id=nNm></label> <label>角色 <select id=nRole>${roles.map(r=>`<option value="${r}" ${r=='少爺'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select></label> <label>初始密碼（≥6）<input id=nPw></label> <button type=button onclick="Cloud.createStaff()">建立</button><p style="font-size:12px;color:#aaa">TV 看板請建立角色「tv」的帳號（只能看不能改）。</p></details>`:''}
  <div class=tw>${staffTbl()}</div>
  <p style="font-size:12px;color:#aaa">密碼：老闆可看老闆以下的人；冠廷可看全部。有記錄密碼的帳號可按「重設密碼」；顯示「未記錄」的舊帳號忘記密碼時，請先停用再建立新編號。</p>`)}
-async function createStaff(){const id=nId.value.trim(),nm=nNm.value.trim()||id,role=nRole.value,pw=nPw.value;if(!/^[A-Za-z0-9._-]+$/.test(id))return alert('員工編號只能用英文、數字');if(pw.length<6)return alert('密碼至少 6 碼');
+async function createStaff(){const id=nId.value.trim(),nm=nNm.value.trim()||id,role=nRole.value,pw=nPw.value;let room='';if(role=='room'){room=(prompt('這台房間平板綁定哪個包廂？（例 208）')||'').trim();if(!room)return}if(!/^[A-Za-z0-9._-]+$/.test(id))return alert('員工編號只能用英文、數字');if(pw.length<6)return alert('密碼至少 6 碼');
  const sec=initializeApp(firebaseConfig,'sec'+Date.now()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
- try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}）`);alert(`已建立：${id}（${RL(role)}）`)}
+ try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid,...(room?{room}:{})});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}）`);alert(`已建立：${id}（${RL(role)}）`)}
  catch(e){alert(e.code=='auth/email-already-in-use'?'此編號已被使用':'建立失敗：'+(e.code||e.message))}finally{deleteApp(sec).catch(()=>{})}}
 async function setRole(uid,role){const u=USERS.find(x=>x.uid==uid);await ok(updateDoc(doc(db,'users',uid),{role,rank:RANK[role]||0}));log(`變更角色 ${u&&u.staffId} → ${RL(role)}`)}
 async function setDisabled(uid,v){const u=USERS.find(x=>x.uid==uid);if(!confirm(`${v?'停用':'啟用'} ${u&&u.name}？`))return;await ok(updateDoc(doc(db,'users',uid),{disabled:v}));log(`${v?'停用':'啟用'}帳號 ${u&&u.staffId}`)}
@@ -152,23 +153,23 @@ const MENU_SEED=[
 const OLD_D={m06:'D 炸（待確認）',m07:'D 肚（待確認）',m08:'D 烏（待確認）',m09:'D 魷（待確認）'};
 const F={dFix:false,menu:[],orders:[],seen:new Set(),first:true,day:null,unsub:[],sound:false,fo:{room:'',q:{},note:''}};
 const isKit=()=>st.prof&&!st.prof.disabled&&st.prof.role=='kitchen';
-function foodSub(){F.unsub.forEach(u=>u());F.unsub=[];F.first=true;F.day=bizDay(now());
+function foodSub(){F.unsub.forEach(u=>u());F.unsub=[];F.first=true;F.day=bizDay(now());if(!isKit())gqSub();
  F.unsub.push(onSnapshot(collection(db,'menu'),qs=>{const L=[];qs.forEach(d=>L.push({id:d.id,...d.data()}));L.sort((a,b)=>(a.ord||0)-(b.ord||0));F.menu=L;
-  if(!L.length&&lv()>=3&&!qs.metadata.fromCache)seedMenu();
+  if(!L.length&&lv()>=3&&!qs.metadata.fromCache)seedMenu();if(L.length&&lv()>=3&&!qs.metadata.fromCache&&S.cfg&&!S.cfg.drinkSeed){S.cfg.drinkSeed=1;save();seedDrinks(L)}
   if(L.length&&lv()>=3&&!F.dFix){F.dFix=true;const bad=L.filter(m=>OLD_D[m.id]&&m.zh==OLD_D[m.id]&&!m.vn&&!m.price&&m.cat=='套餐內含');if(bad.length){bad.forEach(m=>ok(deleteDoc(doc(db,'menu',m.id))));log('餐點：移除白板 D 區預設品項（冠廷確認非套餐內含）')}
    const SH={'炸物拼盤':'炸','乾煎虱目魚肚':'肚','烤扁魚':'烏','烤魷魚':'魷'};L.forEach(m=>{if(SH[m.zh]&&m.short===undefined)ok(setDoc(doc(db,'menu',m.id),{short:SH[m.zh]},{merge:true}))})}foodDraw()},fail));
  F.unsub.push(onSnapshot(query(collection(db,'orders'),where('businessDay','==',F.day)),qs=>{const L=[];qs.forEach(d=>L.push({id:d.id,...d.data()}));L.sort((a,b)=>a.createdAt-b.createdAt);
-  const fresh=L.filter(o=>!F.seen.has(o.id)&&o.status=='待做');L.forEach(o=>F.seen.add(o.id));
+  const fresh=L.filter(o=>!F.seen.has(o.id)&&o.status=='待做');if(!F.first&&!isKit())fresh.filter(o=>o.fromGuest).forEach(o=>{try{toast(`🛎 ${o.room} 客人點${o.items.some(i=>i.cat=='酒水')?'酒／餐':'餐'}：${o.items.map(i=>i.name+'×'+i.qty).join('、')}`);beep()}catch(e){}});L.forEach(o=>F.seen.add(o.id));
   F.orders=L;if(!F.first&&fresh.length)ding(fresh);F.first=false;foodDraw();try{render()}catch(e){}},fail))}
 setInterval(()=>{if(st.user&&F.day&&bizDay(now())!=F.day)foodSub();kitDraw()},30000);
 async function seedMenu(){const b=writeBatch(db);MENU_SEED.forEach((m,i)=>{const n=i<5?i+1:i+5;b.set(doc(db,'menu','m'+String(n).padStart(2,'0')),{zh:m[0],vn:m[1],price:m[2],cat:m[3],short:m[4]||'',on:true,ord:n})});await ok(b.commit());log('餐點：載入預設菜單（待確認）')}
 // 帳單：本番已點的「加點」餐點
-function foodBill(r,x){const L=[];for(const o of F.orders)if(o.room==r&&o.status!='取消'&&o.createdAt>=(x.start||0))for(const it of o.items||[])if(it.cat=='加點'&&it.price>0)L.push([`餐點 ${it.name} × ${it.qty}`,it.price*it.qty]);return L}
+function foodBill(r,x){const L=[];for(const o of F.orders)if(o.room==r&&o.status!='取消'&&o.createdAt>=(x.start||0))for(const it of o.items||[])if((it.cat=='加點'||it.cat=='酒水')&&it.price>0)L.push([`餐點 ${it.name} × ${it.qty}`,it.price*it.qty]);return L}
 // ---- 點餐 ----
 function openOrder(room){if(lv()<1)return alert('需要少爺以上');if(room!==undefined){F.fo={room,q:{},note:''}}pageOpen('<div id=foodPg></div>');F.pg='order';foodDraw()}
 function foQ(id,d){const q=F.fo.q;q[id]=Math.max(0,(q[id]||0)+d);if(!q[id])delete q[id];foodDraw()}
 async function foSend(){const fo=F.fo;if(!fo.room)return alert('請先選包廂');const nt=document.getElementById('foNote');fo.note=nt?nt.value.trim():'';
- const items=Object.entries(fo.q).map(([id,qty])=>{const m=F.menu.find(z=>z.id==id);return m&&{id,name:m.zh,vn:m.vn||'',short:m.short||'',qty,price:m.cat=='加點'?+m.price||0:0,cat:m.cat}}).filter(Boolean);
+ const items=Object.entries(fo.q).map(([id,qty])=>{const m=F.menu.find(z=>z.id==id);return m&&{id,name:m.zh,vn:m.vn||'',short:m.short||'',qty,price:m.cat!='套餐內含'?+m.price||0:0,cat:m.cat}}).filter(Boolean);
  if(!items.length)return alert('請點選餐點');
  const o={room:fo.room,items,note:fo.note,status:'待做',createdBy:st.user.uid,createdByName:st.prof.name,createdAt:Date.now(),businessDay:bizDay(now())};
  ok(addDoc(collection(db,'orders'),o));log(`點餐 ${fo.room}：${items.map(i=>i.name+'×'+i.qty).join('、')}${fo.note?'（'+fo.note+'）':''}`);if(nt)nt.value='';F.fo={room:fo.room,q:{},note:''};foodDraw();toastF('已送出到廚房')}
@@ -178,19 +179,19 @@ const ago=t=>{const m=Math.floor((Date.now()-t)/60000);return m<1?'剛剛':m+' �
 const stC={'待做':'#e44','製作中':'#e90','已出餐':'#2b8','取消':'#777'};
 function orderHtml(){const fo=F.fo,rooms=[...new Set([...roomList(),...FOOD_ROOMS])];
  const grp=c=>F.menu.filter(m=>m.on!==false&&m.cat==c).map(m=>{const n=fo.q[m.id]||0;return`<div class=foIt style="display:flex;align-items:center;gap:6px;padding:8px;border-bottom:1px solid #333${n?';background:#234':''}"><div style="flex:1"><b style="font-size:17px">${m.short?`<span style="color:#fc6">[${esc(m.short)}]</span> `:''}${esc(m.zh)}</b>${m.price&&c=='加點'?` <span style="color:#fc6">$${m.price}</span>`:''}<div style="font-size:12px;color:#9ab">${esc(m.vn||'')}</div></div><button type=button style="width:44px;height:44px;font-size:22px" onclick="Food.q('${m.id}',-1)">−</button><b style="min-width:28px;text-align:center;font-size:20px">${n}</b><button type=button style="width:44px;height:44px;font-size:22px" onclick="Food.q('${m.id}',1)">＋</button></div>`}).join('');
- const sum=Object.entries(fo.q).reduce((a,[id,q])=>{const m=F.menu.find(z=>z.id==id);return a+(m&&m.cat=='加點'?(+m.price||0)*q:0)},0);
+ const sum=Object.entries(fo.q).reduce((a,[id,q])=>{const m=F.menu.find(z=>z.id==id);return a+(m&&m.cat!='套餐內含'?(+m.price||0)*q:0)},0);
  const mine=F.orders.filter(o=>o.room==fo.room).slice().reverse();
  return`<h2>🍽 點餐</h2><p>包廂：${rooms.map(r=>`<button type=button class=s style="min-width:56px;height:40px;${r==fo.room?'background:#4af;color:#000':''}" onclick="Food.room('${r}')">${esc(r)}${S.rooms&&S.rooms[r]?'●':''}</button>`).join(' ')}</p>
  ${!F.menu.length?'<p>菜單尚未建立（經理以上開啟後會自動載入預設菜單）</p>':''}
- <h3>套餐內含（$0）</h3>${grp('套餐內含')}<h3>加點（計價，會加進買單）</h3>${grp('加點')}
+ <h3>套餐內含（$0）</h3>${grp('套餐內含')}<h3>加點（計價，會加進買單）</h3>${grp('加點')}${F.menu.some(m=>m.cat=='酒水'&&m.on!==false)?`<h3>酒水（計價）</h3>${grp('酒水')}`:''}
  <p><label>備註 <input id=foNote value="${esc(fo.note||'')}" placeholder="例：不要辣、先上" style="width:70%"></label></p>
  <p style="position:sticky;bottom:0;background:#111;padding:8px 0"><button type=button style="font-size:20px;padding:12px 28px;background:#2b8;color:#fff" onclick="Food.send()">送出 ${fo.room||'（未選包廂）'}${sum?` ・加點 $${sum}`:''}</button> ${lv()>=3?'<button type=button class=s onclick="Food.menuPg()">⚙ 餐點設定</button>':''} <button type=button class=s onclick="Food.kitchen()">🍳 廚房畫面</button></p>
  ${fo.room?`<h3>${esc(fo.room)} 今日點單</h3>${mine.map(o=>`<div style="padding:6px;border-left:4px solid ${stC[o.status]};margin:4px 0">${new Date(o.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} <b style="color:${stC[o.status]}">${o.status}</b> ${o.items.map(i=>esc(i.name)+'×'+i.qty).join('、')}${o.note?' 📝'+esc(o.note):''} <small>${esc(o.createdByName||'')}</small> ${o.status=='待做'||lv()>=2&&o.status!='取消'?`<button type=button class=s onclick="Food.cancel('${o.id}')">取消</button>`:''}</div>`).join('')||'<p>尚無</p>'}`:''}`}
 // ---- 餐點設定（經理以上）----
 function menuHtml(){return`<h2>⚙ 餐點設定</h2><p style="font-size:12px;color:#aaa">「套餐內含」＝免費（$0），「加點」＝計價並加進該包廂買單。品名、越南文、價格、分類都可改（待冠廷確認）。</p>
- <div class=tw><table><tr><th>序</th><th>中文名</th><th>白板簡寫</th><th>越南文</th><th>價格</th><th>分類</th><th>啟用</th><th></th></tr>${F.menu.map(m=>`<tr><td><input id=mo_${m.id} value="${m.ord||0}" style="width:40px"></td><td><input id=mz_${m.id} value="${esc(m.zh)}"></td><td><input id=ms_${m.id} value="${esc(m.short||'')}" style="width:40px"></td><td><input id=mv_${m.id} value="${esc(m.vn||'')}"></td><td><input id=mp_${m.id} value="${m.price||0}" inputmode=numeric style="width:60px"></td><td><select id=mc_${m.id}>${['套餐內含','加點'].map(c=>`<option ${c==m.cat?'selected':''}>${c}</option>`).join('')}</select></td><td><input type=checkbox id=me_${m.id} ${m.on!==false?'checked':''}></td><td><button type=button class=s onclick="Food.mSave('${m.id}')">儲存</button> <button type=button class=s onclick="Food.mDel('${m.id}')">刪除</button></td></tr>`).join('')}</table></div>
+ <div class=tw><table><tr><th>序</th><th>中文名</th><th>白板簡寫</th><th>越南文</th><th>價格</th><th>分類</th><th>啟用</th><th></th></tr>${F.menu.map(m=>`<tr><td><input id=mo_${m.id} value="${m.ord||0}" style="width:40px"></td><td><input id=mz_${m.id} value="${esc(m.zh)}"></td><td><input id=ms_${m.id} value="${esc(m.short||'')}" style="width:40px"></td><td><input id=mv_${m.id} value="${esc(m.vn||'')}"></td><td><input id=mp_${m.id} value="${m.price||0}" inputmode=numeric style="width:60px"></td><td><select id=mc_${m.id}>${['套餐內含','加點','酒水'].map(c=>`<option ${c==m.cat?'selected':''}>${c}</option>`).join('')}</select></td><td><input type=checkbox id=me_${m.id} ${m.on!==false?'checked':''}></td><td><button type=button class=s onclick="Food.mSave('${m.id}')">儲存</button> <button type=button class=s onclick="Food.mDel('${m.id}')">刪除</button></td></tr>`).join('')}</table></div>
  <p><button type=button onclick="Food.mAdd()">＋ 新增品項</button> <button type=button class=s onclick="Food.order()">← 回點餐</button></p>`}
-function mSave(id){if(lv()<3)return;const g=k=>document.getElementById(k+'_'+id);const d={zh:g('mz').value.trim(),short:g('ms').value.trim(),vn:g('mv').value.trim(),price:Math.max(0,+g('mp').value||0),cat:g('mc').value,on:g('me').checked,ord:+g('mo').value||0};if(!d.zh)return alert('請填中文名');ok(setDoc(doc(db,'menu',id),d));log(`餐點設定：${d.zh} ${d.cat} $${d.price}${d.on?'':'（停用）'}`);toastF('已儲存')}
+function mSave(id){if(lv()<3)return;const g=k=>document.getElementById(k+'_'+id);const d0={zh:g('mz').value.trim(),short:g('ms').value.trim(),vn:g('mv').value.trim(),price:Math.max(0,+g('mp').value||0),cat:g('mc').value,on:g('me').checked,ord:+g('mo').value||0};const d=d0;if(!d.zh)return alert('請填中文名');ok(setDoc(doc(db,'menu',id),d));log(`餐點設定：${d.zh} ${d.cat} $${d.price}${d.on?'':'（停用）'}`);toastF('已儲存')}
 function mDel(id){const m=F.menu.find(z=>z.id==id);if(lv()<3||!m||!confirm(`刪除 ${m.zh}？`))return;ok(deleteDoc(doc(db,'menu',id)));log(`餐點設定：刪除 ${m.zh}`)}
 function mAdd(){if(lv()<3)return;const zh=prompt('中文名');if(!zh)return;const id='m'+Date.now().toString(36);ok(setDoc(doc(db,'menu',id),{zh,vn:'',price:300,cat:'加點',on:true,ord:(F.menu.length?Math.max(...F.menu.map(m=>m.ord||0)):0)+1}));log(`餐點設定：新增 ${zh}`)}
 function foodDraw(){const p=document.getElementById('foodPg');if(p){const a=document.activeElement&&document.activeElement.id;const nt=document.getElementById('foNote');if(nt)F.fo.note=nt.value;if(a&&a.startsWith('m')&&a.includes('_')&&F.pg=='menu')return;p.innerHTML=F.pg=='menu'?menuHtml():orderHtml()}kitDraw()}
@@ -206,7 +207,30 @@ function kitDraw(){if(!kitEl||kitEl.style.display=='none')return;const open=F.or
   ${ds.map(o=>`<div style="opacity:.45;font-size:13px">✓ ${o.items.map(i=>esc(i.name)+'×'+i.qty).join('、')}</div>`).join('')}</div>`}).join('')}</div><style>@keyframes kfl{50%{background:#7a1d22}}</style>`}
 function kitNext(id){const o=F.orders.find(z=>z.id==id);if(!o)return;const n=o.status=='待做'?'製作中':'已出餐';ok(updateDoc(doc(db,'orders',id),{status:n,statusAt:Date.now(),statusBy:st.user.uid}));o.status=n;o.statusAt=Date.now();kitDraw()}
 function ding(fresh){F.flash=new Set(fresh.map(o=>o.id));setTimeout(()=>{F.flash=null;kitDraw()},4500);if(!F.sound||!kitEl||kitEl.style.display=='none')return;try{const a=F.ac||(F.ac=new AudioContext());[0,.25,.5].forEach(t=>{const o=a.createOscillator(),g=a.createGain();o.frequency.value=880;o.connect(g);g.connect(a.destination);g.gain.setValueAtTime(.3,a.currentTime+t);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+t+.2);o.start(a.currentTime+t);o.stop(a.currentTime+t+.22)})}catch(e){}}
-window.Food={q:foQ,send:foSend,cancel:foCancel,room:r=>{const nt=document.getElementById('foNote');if(nt)nt.value='';F.fo={room:r,q:{},note:''};foodDraw()},order:()=>{F.pg='order';foodDraw()},menuPg:()=>{if(lv()<3)return;F.pg='menu';foodDraw()},mSave,mDel,mAdd,kitchen:openKitchen,closeK:closeKitchen,next:kitNext,snd:()=>{F.sound=true;try{(F.ac||(F.ac=new AudioContext())).resume()}catch(e){}kitDraw()},bill:foodBill,state:F,moveRoom:(from,to,since)=>{F.orders.filter(o=>o.room==from&&o.createdAt>=since-60000&&o.status!='取消').forEach(o=>{o.room=to;ok(updateDoc(doc(db,'orders',o.id),{room:to,movedFrom:from}))});foodDraw()},open:openOrder};
+
+// ===== v12.6 客人點檯平板：員工端 =====
+const GQ={list:[],seen:new Set(),first:true};
+function gqSub(){F.unsub.push(onSnapshot(query(collection(db,'guestReq'),where('businessDay','==',F.day)),qs=>{const L=[];qs.forEach(d=>L.push({id:d.id,...d.data()}));L.sort((a,b)=>a.createdAt-b.createdAt);
+ const fresh=L.filter(q=>!GQ.seen.has(q.id)&&q.status=='已送出');L.forEach(q=>GQ.seen.add(q.id));if(!GQ.first&&fresh.length){try{beep()}catch(e){}}GQ.first=false;GQ.list=L;gqDraw()},fail))}
+let gqEl=null;
+function gqDraw(){if(!gqEl){gqEl=document.createElement('div');gqEl.id='guestQ';gqEl.style.cssText='position:fixed;right:8px;bottom:8px;z-index:940;max-width:min(460px,96vw);display:flex;flex-direction:column;gap:6px';document.body.appendChild(gqEl)}
+ const P=GQ.list.filter(q=>q.status=='已送出');if(!P.length){gqEl.innerHTML='';return}const ro=TVMODE||lv()<1;
+ gqEl.innerHTML=`<div style="background:#123;border:2px solid #fc3;border-radius:10px;padding:6px 8px;color:#fff;box-shadow:0 2px 10px #000"><b>🛎 包廂客人需求（${P.length}）</b>${P.map(q=>`<div style="border-top:1px solid #345;padding:5px 0;font-size:17px"><b style="color:#fc3">${esc(q.room)}</b> ${q.type=='呼叫'?'<b>呼叫 少爺/公主</b>':`點小姐：<b>${(q.girls||[]).map(id=>{const g=G(id);return esc(id)+(g?' '+esc(String(g.name).replace(/^\s*\d+\s*/,'')):'')}).join('、')}</b>`} <small>${ago(q.createdAt)}</small>${q.note?`<div style="font-size:13px">📝 ${esc(q.note)}</div>`:''}${ro?'':`<div style="margin-top:3px">${q.type=='呼叫'?`<button onclick="Food.gq('${q.id}','已處理')" style="background:#2b8;color:#fff">✓ 知道了，馬上去</button>`:`<button onclick="Food.gq('${q.id}','已確認')" style="background:#2b8;color:#fff">✓ 確認（紅勾）</button> <button onclick="Food.gq('${q.id}','已拒絕')" class=s>✕ 婉拒</button>`}</div>`}</div>`).join('')}</div>`}
+async function gqAct(id,stt){const q=GQ.list.find(z=>z.id==id);if(!q)return;if(lv()<1)return alert('請先登入');
+ if(stt=='已確認'){if(lv()<1)return;const x=S.rooms[q.room];if(!x)return alert(`${q.room} 目前沒有開番，請先開番再確認`);const bad=[];
+  for(const gid of q.girls||[]){const g=G(gid);if(!g){bad.push(gid);continue}if(g.room&&g.room!=q.room&&!confirm(`${g.id} 目前在 ${g.room}，改到 ${q.room}？`)){bad.push(gid);continue}if(g.room!=q.room)seat(g,q.room,'red');else S.redLog.unshift({t:now(),girl:g.id,room:q.room})}
+  log(`🛎 ${q.room} 客人點小姐確認：${(q.girls||[]).filter(z=>!bad.includes(z)).join('、')||'無'}${bad.length?'（未排：'+bad.join('、')+'）':''}`);save();render()}
+ else log(`🛎 ${q.room} ${q.type=='呼叫'?'呼叫 少爺/公主 已處理':'客人點小姐 婉拒'}`);
+ ok(updateDoc(doc(db,'guestReq',id),{status:stt,handledBy:st.user.uid,handledByName:st.prof.name,handledAt:Date.now()}))}
+// 可點小姐清單（給包廂平板，只有編號、名字、照片）
+let availLast='';
+setInterval(()=>{if(!st.user||lv()<1||TVMODE||st.inited!==true||!S.girls)return;const d=bizDay(now()),X=(S.dayExt||{})[d]||{},early=X.early||{};
+ const list=S.girls.filter(g=>g.on&&!g.room&&!g.leave&&!early[g.id]&&g.status!='下班'&&!(X.others||[]).includes(g.id)&&!(g.priv)).map(g=>({id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{})}));
+ const j=JSON.stringify({list,d});if(j==availLast)return;availLast=j;ok(setDoc(doc(db,'public','avail'),{list,day:d,at:Date.now()}))},5000);
+async function seedDrinks(L){if(L.some(m=>m.cat=='酒水'))return;const b=writeBatch(db);let n=100;(S.wines||[]).forEach((w,i)=>{if(!w||!w.name)return;b.set(doc(db,'menu','w'+String(i+1).padStart(2,'0')),{zh:w.name,vn:'',price:+w.price||0,cat:'酒水',on:true,ord:n++})});
+ [['百威','beerAdd_百威'],['金牌','beerAdd_金牌'],['海尼根','beerAdd_海尼根']].forEach(([k,c],i)=>b.set(doc(db,'menu','b'+(i+1)),{zh:k+'（一手）',vn:'',price:+((S.cfg||{})[c])||0,cat:'酒水',on:true,ord:n++}));await ok(b.commit());log('餐點：由酒單建立「酒水」分類（待確認）')}
+
+window.Food={gq:gqAct,q:foQ,send:foSend,cancel:foCancel,room:r=>{const nt=document.getElementById('foNote');if(nt)nt.value='';F.fo={room:r,q:{},note:''};foodDraw()},order:()=>{F.pg='order';foodDraw()},menuPg:()=>{if(lv()<3)return;F.pg='menu';foodDraw()},mSave,mDel,mAdd,kitchen:openKitchen,closeK:closeKitchen,next:kitNext,snd:()=>{F.sound=true;try{(F.ac||(F.ac=new AudioContext())).resume()}catch(e){}kitDraw()},bill:foodBill,state:F,moveRoom:(from,to,since)=>{F.orders.filter(o=>o.room==from&&o.createdAt>=since-60000&&o.status!='取消').forEach(o=>{o.room=to;ok(updateDoc(doc(db,'orders',o.id),{room:to,movedFrom:from}))});foodDraw()},open:openOrder};
 window.openOrder=()=>openOrder();window.openKitchen=openKitchen;
 addEventListener('hashchange',()=>{if(location.hash=='#kitchen'&&st.user)openKitchen()});
 
@@ -240,5 +264,5 @@ window.openLoginLogs=openLoginLogs;
 
 window.openHelp=()=>pageOpen(HELP);
 window.openLogin=()=>st.user?openAccount():loginUI();
-window.Cloud={ver:"v12.5",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
+window.Cloud={ver:"v12.6",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
 status();
