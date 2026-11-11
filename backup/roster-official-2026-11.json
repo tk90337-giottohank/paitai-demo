@@ -1,6 +1,6 @@
 {
-  "savedAt": "2026-11-11T23:36+08:00",
-  "note": "官方新名單（程式預設）。線上 Firestore 無法用 Firebase 連接器讀寫文件，實際線上名冊備份請冠廷在系統內按「套用最新名單」時自動下載。",
+  "savedAt": "2026-11-12T00:54+08:00",
+  "note": "官方新名單（程式預設）。線上 Firestore 無法用 Firebase 連接器讀寫文件，實際線上名冊備份請冠廷在系統內按「套用最新名單」時自動下載。；2026-11-12 新增 24 太陽。",
   "photoPathTried": "/home/box/agent-data/agents/89c71e75-b902-40a2-8d7c-1ebc5ae5a467/attachments/116ca43c4549f6e97eb8181f55dc78df4b254cafa87d0b8e1b11273e99698efb.jpg",
   "photoFound": false,
   "uncertain": [
@@ -349,6 +349,10 @@
       "name": "露西"
     },
     {
+      "id": "24",
+      "name": "太陽"
+    },
+    {
       "id": "25",
       "name": "小小"
     },
@@ -604,5 +608,13 @@
       }
     ],
     "removeFromDefault": []
-  }
+  },
+  "addedLater": [
+    {
+      "id": "24",
+      "name": "太陽",
+      "at": "2026-11-12T00:54+08:00",
+      "reason": "冠廷要求新增"
+    }
+  ]
 }
