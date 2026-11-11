@@ -242,7 +242,7 @@ async function gqAct(id,stt){const q=GQ.list.find(z=>z.id==id);if(!q)return;if(l
 // 可點小姐清單（給包廂平板，只有編號、名字、照片）
 let availLast='';
 setInterval(()=>{if(!st.user||lv()<1||TVMODE||st.inited!==true||!S.girls)return;const d=bizDay(now()),X=(S.dayExt||{})[d]||{},early=X.early||{};
- const list=S.girls.filter(g=>g.on&&!g.room&&!g.leave&&!early[g.id]&&g.status!='下班'&&!(X.others||[]).includes(g.id)&&!(g.priv)).map(g=>({id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{})}));
+ const list=S.girls.filter(g=>g.on&&!g.gone&&!g.room&&!g.leave&&!early[g.id]&&g.status!='下班'&&!(X.others||[]).includes(g.id)&&!(g.priv)).map(g=>({id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{})}));
  const j=JSON.stringify({list,d});if(j==availLast)return;availLast=j;ok(setDoc(doc(db,'public','avail'),{list,day:d,at:Date.now()}))},5000);
 async function seedDrinks(L){if(L.some(m=>m.cat=='酒水'))return;const b=writeBatch(db);let n=100;(S.wines||[]).forEach((w,i)=>{if(!w||!w.name)return;b.set(doc(db,'menu','w'+String(i+1).padStart(2,'0')),{zh:w.name,vn:'',price:+w.price||0,cat:'酒水',on:true,ord:n++})});
  [['百威','beerAdd_百威'],['金牌','beerAdd_金牌'],['海尼根','beerAdd_海尼根']].forEach(([k,c],i)=>b.set(doc(db,'menu','b'+(i+1)),{zh:k+'（一手）',vn:'',price:+((S.cfg||{})[c])||0,cat:'酒水',on:true,ord:n++}));await ok(b.commit());log('餐點：由酒單建立「酒水」分類（待確認）')}
@@ -281,5 +281,5 @@ window.openLoginLogs=openLoginLogs;
 
 window.openHelp=()=>pageOpen(HELP);
 window.openLogin=()=>st.user?openAccount():loginUI();
-window.Cloud={ver:"v12.7",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
+window.Cloud={ver:"v12.7.1",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
 status();
