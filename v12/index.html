@@ -928,33 +928,54 @@ function sheetLearnIngest(d){if(!d)return;sheetLearnInit();let priv=0,ord=0;cons
  S.sheetLearn.days[d]={weekday:wd,weekdayName:'日一二三四五六'[wd],sessions,excluded:{priv,order:ord},source:'imported paper sheet'};
  S.sheetLearn.updatedAt=now();S.sheetLearn.version=1;S.sheetLearn.note='由匯入的人工排檯表學習；私檯與訂番不列入。僅建議、不自動派檯。'}
 function sheetLearnAll(){sheetLearnInit();const out=[];Object.entries(S.sheetLearn.days).forEach(([day,rec])=>(rec.sessions||[]).forEach(s=>out.push(Object.assign({day,weekday:rec.weekday,weekdayName:rec.weekdayName},s))));return out}
+function slW(typ){return typ=='藍'?2:typ=='紅'?1:0}
+function slInc(root,a,b,typ){const o=(root[a]=root[a]||{})[b]=(root[a][b]||{n:0,w:0,b:0,r:0});o.n++;o.w+=slW(typ);if(typ=='藍')o.b++;else if(typ=='紅')o.r++;}
+function slGet(root,a,b){return(root[a]||{})[b]||{n:0,w:0,b:0,r:0}}
+function sheetTodayTai(d){d=d||S.openDay||(typeof bizDay==='function'?bizDay(now()):'');const c={},seen=new Set();
+ const add=(key,girls,privs,order,marks)=>{if(key){if(seen.has(key))return;seen.add(key)}(girls||[]).forEach(id=>{if((privs||[]).includes(id))return;if((order||[]).includes(id))return;if(marks){const all=[].concat(marks[id]||[]).map(slTyp);if(all.includes('私檯')||all.includes('訂番'))return;if(all.length&&!all.includes('紅')&&!all.includes('藍'))return}c[id]=(c[id]||0)+1})};
+ (S.sheetLog||[]).forEach(e=>{if(e&&e.day==d)add((e.room||'')+'@'+(e.start||0)+':'+(e.seq||e.ban||''),e.girls,e.privs,e.order,e.marks)});
+ Object.entries(S.rooms||{}).forEach(([room,x])=>{if(!x||!x.start)return;if(typeof bizDay==='function'&&bizDay(x.start)!=d)return;const marks={};Object.entries(x.raw||{}).forEach(([id,v])=>{const ty=slTyp(v);if(ty)marks[id]=[ty]});
+  (S.redLog||[]).forEach(e=>{if(e&&e.room==room&&e.t==x.start)(marks[e.girl]=marks[e.girl]||[]).push('紅')});
+  (S.blueLog||[]).forEach(e=>{if(e&&e.room==room&&e.t==x.start)(marks[e.girl]=marks[e.girl]||[]).push('藍')});
+  (x.bans||[]).forEach((b,i)=>add(room+'@'+(x.start||0)+':'+i,b,(x.privBans||[])[i]||[],x.order||[],i===(x.bans||[]).length-1?marks:null))});
+ return c}
+function sheetLearnHistTai(exceptDay){const t={};sheetLearnAll().forEach(s=>{if(exceptDay&&s.day==exceptDay)return;s.girls.forEach(g=>t[g.id]=(t[g.id]||0)+1)});return t}
 function sheetLearnStats(){const all=sheetLearnAll(),days=Object.keys((S.sheetLearn||{}).days||{}),marks=all.reduce((a,s)=>a+s.girls.length,0);
  let priv=0,ord=0;days.forEach(d=>{const e=(S.sheetLearn.days[d]||{}).excluded||{};priv+=e.priv||0;ord+=e.order||0});
- const blue={},red={},tai={},roomG={},hourG={},wdG={},pair={};
- all.forEach(s=>{const ids=s.girls.map(g=>g.id);ids.forEach((id,i)=>{const g=s.girls[i];tai[id]=(tai[id]||0)+1;(g.typ=='藍'?blue:red)[id]=((g.typ=='藍'?blue:red)[id]||0)+1;
+ const blue={},red={},tai={},roomG={},hourG={},wdG={},pair={},roomFeat={},hourFeat={},wdFeat={},pairFeat={};
+ all.forEach(s=>{const ids=s.girls.map(g=>g.id);ids.forEach((id,i)=>{const g=s.girls[i],typ=g.typ;tai[id]=(tai[id]||0)+1;(typ=='藍'?blue:red)[id]=((typ=='藍'?blue:red)[id]||0)+1;
   (roomG[s.room]=roomG[s.room]||{})[id]=((roomG[s.room]||{})[id]||0)+1;const hr=(s.time||'').slice(0,2);(hourG[hr]=hourG[hr]||{})[id]=((hourG[hr]||{})[id]||0)+1;
-  const wd=s.weekdayName||'';(wdG[wd]=wdG[wd]||{})[id]=((wdG[wd]||{})[id]||0)+1});
-  for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){const a=ids[i]<ids[j]?ids[i]+'+'+ids[j]:ids[j]+'+'+ids[i];pair[a]=(pair[a]||0)+1}});
+  const wd=s.weekdayName||'';(wdG[wd]=wdG[wd]||{})[id]=((wdG[wd]||{})[id]||0)+1;
+  slInc(roomFeat,s.room,id,typ);slInc(hourFeat,hr,id,typ);slInc(wdFeat,wd,id,typ)});
+  for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){const a=ids[i],b=ids[j],k=a<b?a+'+'+b:b+'+'+a;pair[k]=(pair[k]||0)+1;slInc(pairFeat,a,b,s.girls[i].typ);slInc(pairFeat,b,a,s.girls[j].typ)}});
  const top=(obj,n)=>Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n);
- return{days:days.length,sessions:all.length,marks,priv,ord,nGirls:Object.keys(tai).length,blue,red,tai,roomG,hourG,wdG,pair,topBlue:top(blue,8),topRed:top(red,8),topTai:top(tai,8),lowTai:top(tai,99).reverse().slice(0,8),topPair:top(pair,8),roomLoad:Object.fromEntries(Object.entries(roomG).map(([r,o])=>[r,Object.values(o).reduce((a,b)=>a+b,0)]))}}
+ return{days:days.length,sessions:all.length,marks,priv,ord,nGirls:Object.keys(tai).length,blue,red,tai,roomG,hourG,wdG,pair,roomFeat,hourFeat,wdFeat,pairFeat,topBlue:top(blue,8),topRed:top(red,8),topTai:top(tai,8),lowTai:top(tai,99).reverse().slice(0,8),topPair:top(pair,8),roomLoad:Object.fromEntries(Object.entries(roomG).map(([r,o])=>[r,Object.values(o).reduce((a,b)=>a+b,0)]))}}
 function sheetAvail(){const d=S.openDay||bizDay(now()),X=(S.dayExt||{})[d]||{},early=X.early||{};
  return (S.girls||[]).filter(g=>g.on&&!g.gone&&!g.room&&!g.leave&&!early[g.id]&&g.status!='下班'&&!((X.others||[]).includes(g.id))&&!g.priv)}
 function sheetLearnScore(id,room,opts){opts=opts||{};const st=sheetLearnStats(),pool=opts.pool||sheetAvail();
- const tai=st.tai[id]||0,vals=pool.map(g=>st.tai[g.id]||0),avg=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;
- const fair=vals.length?Math.max(0,50+(avg-tai)*12):30;
- const roomN=(st.roomG[room]||{})[id]||0,roomSc=Math.min(50,roomN*12);
- const nowH=new Date().getHours(),wd='日一二三四五六'[(S.openDay?new Date(S.openDay+'T12:00:00'):new Date()).getDay()];
- const hrN=(st.hourG[String(nowH).padStart(2,'0')]||{})[id]||0,wdN=(st.wdG[wd]||{})[id]||0,timeSc=Math.min(40,hrN*10+wdN*6);
- const mates=opts.mates||[];let pairN=0;mates.forEach(m=>{const k=id<m?id+'+'+m:m+'+'+id;pairN+=st.pair[k]||0});
- const pairSc=mates.length?Math.min(40,pairN*10):0;
+ const day=opts.day||S.openDay||(typeof bizDay==='function'?bizDay(now()):'');
+ const histMap=opts.hist||sheetLearnHistTai(day),todayMap=opts.today||sheetTodayTai(day);
+ const hist=histMap[id]||0,todayN=todayMap[id]||0,unseen=!(st.tai[id]);
+ const loadOf=gid=>(histMap[gid]||0)+(todayMap[gid]||0)*2,load=loadOf(id);
+ const vals=pool.map(g=>loadOf(g.id)),avg=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;
+ let fair=vals.length?50+(avg-load)*12:30;if(unseen)fair+=18;fair=Math.max(0,Math.min(120,fair));
+ const rf=slGet(st.roomFeat,room,id),roomSc=Math.min(50,rf.w*8);
+ const nowH=opts.hour!=null?opts.hour:new Date().getHours(),wd=opts.wd||('日一二三四五六'[(day?new Date(day+'T12:00:00'):new Date()).getDay()]);
+ const hf=slGet(st.hourFeat,String(nowH).padStart(2,'0'),id),wf=slGet(st.wdFeat,wd,id),timeSc=Math.min(40,hf.w*8+wf.w*4);
+ const mates=opts.mates||[];let pairN=0,pairW=0,pairB=0,pairR=0;
+ mates.forEach(m=>{const p=slGet(st.pairFeat,id,m);pairN+=p.n;pairW+=p.w;pairB+=p.b;pairR+=p.r});
+ const pairSc=mates.length?Math.min(40,pairW*8):0;
  const score=Math.round(fair*0.40+roomSc*0.25+timeSc*0.20+pairSc*0.15);
  const why=[];why.push('今日已報班且目前可點');
- if(vals.length)why.push(tai<avg-0.2?`學習資料中台數較少（公平輪替，已 ${tai} 次，平均 ${avg.toFixed(1)}）`:tai>avg+0.2?`學習資料中台數較多（已 ${tai} 次，平均 ${avg.toFixed(1)}）`:`學習資料台數接近平均（${tai} 次）`);
- if(roomN)why.push(`此包廂（${room}）曾派過 ${roomN} 次`);else why.push(`學習資料中尚未在 ${room} 出現`);
- if(wdN)why.push(`星期${wd}曾出現 ${wdN} 次`);if(hrN)why.push(`此時段（${String(nowH).padStart(2,'0')} 時）曾出現 ${hrN} 次`);
- if(pairN)why.push(`與已在名單／包廂的搭檔曾同台 ${pairN} 次`);
+ if(unseen)why.push('學習資料尚無此人或尚無有效記號，優先補台數');
+ else why.push(hist<1?`學習歷史台數 0（不含今日）`:`學習歷史台數 ${hist}（不含今日已上場）`);
+ why.push(`今日已上 ${todayN} 台（不含私檯／訂番）`);
+ if(rf.n)why.push(`此包廂（${room}）曾派過 ${rf.n} 次（藍 ${rf.b}／紅 ${rf.r}，藍權重 2）`);else why.push(`學習資料中尚未在 ${room} 出現`);
+ if(wf.n)why.push(`星期${wd}曾出現 ${wf.n} 次（藍 ${wf.b}／紅 ${wf.r}）`);
+ if(hf.n)why.push(`此時段（${String(nowH).padStart(2,'0')} 時）曾出現 ${hf.n} 次（藍 ${hf.b}／紅 ${hf.r}）`);
+ if(pairN)why.push(`與已在名單／包廂的搭檔曾同台 ${pairN} 次（藍 ${pairB}／紅 ${pairR}，藍權重 2）`);
  const typB=st.blue[id]||0,typR=st.red[id]||0;if(typB||typR)why.push(`學習中藍勾 ${typB}、紅勾 ${typR}（不含私檯／訂番）`);
- return{id,name:slNick(id),score,fair,roomN,tai,why,typB,typR}}
+ return{id,name:slNick(id),score,fair,roomN:rf.n,tai:st.tai[id]||0,hist,todayN,unseen,why,typB,typR}}
 function sheetLearnSuggest(room,n){const pool=sheetAvail(),inRoom=((S.rooms[room]||{}).bans||[[]]);const last=inRoom[inRoom.length-1]||[];
  const picked=[],rest=pool.map(g=>g.id);n=Math.max(1,Math.min(8,+n||1));
  while(picked.length<n&&rest.length){const mates=last.concat(picked);const ranked=rest.map(id=>sheetLearnScore(id,room,{pool,mates})).sort((a,b)=>b.score-a.score||a.tai-b.tai);
@@ -975,6 +996,7 @@ function openSheetLearn(){if(!needRole(2,'自動排台（學習中）'))return;s
 <p><button class=s type=button onclick="sheetLearnRebuild()">從此日已匯入排檯表重建</button></p>
 </div>
 <div class=spbox><h3>學到的模式（目前資料尚少，僅供參考）</h3>
+<p style="color:#ccc;font-size:13px">建議計分已依冠廷確認：偏重幹部派（藍勾）模式；無學習資料者優先補台數；公平同時看歷史與今日已上台數。</p>
 <p><b>幹部派（藍勾）較多：</b>${line(st.topBlue)}</p>
 <p><b>客點（紅勾）較多：</b>${line(st.topRed)}</p>
 <p><b>學習台數（紅＋藍，不含私檯／訂番）較多：</b>${line(st.topTai)}</p>
@@ -983,7 +1005,7 @@ function openSheetLearn(){if(!needRole(2,'自動排台（學習中）'))return;s
 <p><b>各包廂派檯人次：</b>${Object.entries(st.roomLoad).sort().map(([r,n])=>`${esc(r)} ${n}`).join('、')||'尚無'}</p>
 </div>
 <div class=spbox><h3>建議排台（僅建議，不自動派）</h3>
-<p>從今日已報班、目前可點（未在其他包廂、未停用）的小姐中評分。計分：公平輪替 40%（學習台數較少者優先）、包廂熟悉 25%、時段／星期 20%、同台搭配 15%。</p>
+<p>從今日已報班、目前可點（未在其他包廂、未停用）的小姐中評分。計分（冠廷確認）：<b>公平輪替 40%</b>——同時看學習資料的歷史台數，以及今日已上台數（取自當日已結束與進行中的番，不含私檯／訂番）；學習資料中尚未出現者優先補台數。<b>包廂熟悉 25%</b>、<b>時段／星期 20%</b>、<b>同台搭配 15%</b>——依學習資料，幹部派（藍勾）權重 2、客點（紅勾）權重 1。僅建議，不會自動派檯。</p>
 <p>目前可點 <b>${sug.avail}</b> 位${sug.avail?'':'（請先為小姐報班，或等在檯小姐回休息室）'}。</p>
 <div class=spnav><label>包廂 <select id=slRoom onchange="slRoom=this.value;openSheetLearn()">${rooms.map(r=>`<option ${r==slRoom?'selected':''}>${esc(r)}</option>`).join('')}</select></label>
 <label>人數 <button class=s type=button onclick="slN=Math.max(1,slN-1);openSheetLearn()">−</button> <b>${slN}</b> <button class=s type=button onclick="slN=Math.min(8,slN+1);openSheetLearn()">＋</button></label>
@@ -996,4 +1018,4 @@ ${sug.ranked.length?`<ol class=slrank>${sug.ranked.map((r,i)=>`<li style="${sug.
 function sheetLearnRebuild(){const days=new Set((S.sheetLog||[]).filter(e=>e&&e.imp&&e.day).map(e=>e.day));Object.values(S.rooms||{}).forEach(x=>{if(x&&x.imp&&x.start&&typeof bizDay==='function')days.add(bizDay(x.start))});if(!days.size)days.add(S.openDay||bizDay(now()));[...days].forEach(d=>sheetLearnIngest(d));const lab=[...days].sort().join('、');log('自動排台學習：已納入 '+lab);save();toast('已重建學習資料（'+lab+'）');openSheetLearn()}
 
 document.getElementById('op').value=S.op||'';render();setInterval(tick,1000);
-</script><script src="grid.js?v=12.10"></script><script src="transfer.js?v=12.10"></script><script type=module src="cloud.js?v=12.10"></script></body></html>
+</script><script src="grid.js?v=12.11"></script><script src="transfer.js?v=12.11"></script><script type=module src="cloud.js?v=12.11"></script></body></html>

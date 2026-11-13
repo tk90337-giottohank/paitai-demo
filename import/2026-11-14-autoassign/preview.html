@@ -13,19 +13,19 @@ header button{flex:1 1 45%;min-height:44px}
 .spbox h3{margin:0 0 8px;font-size:17px}
 .spbox p{margin:8px 0;line-height:1.55;font-size:15px}
 .spnav{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}
-.ph{position:sticky;top:0;background:#1b1d24;padding:4px 0;z-index:1}
-
-.slrank{margin:8px 0;padding-left:22px}
-.slrank li{margin:8px 0;font-size:15px;line-height:1.45}
 .spnav select,.spnav label{font-size:16px}
 .spnav select{min-height:44px;padding:6px 10px;border-radius:8px;border:0;background:#1b1d24;color:#fff}
 .spwrap button{min-height:44px;padding:8px 14px;font-size:16px;border-radius:8px}
+.slrank{margin:8px 0;padding-left:22px}
+.slrank li{margin:8px 0;font-size:15px;line-height:1.45}
 .demo{background:#3a2a10;color:#fc6;padding:8px 12px;border-radius:8px;font-size:13px;margin:8px 12px}
 .hlbtn{outline:3px solid #fc3;background:#3d6df2!important}
 #page{padding:8px 12px 24px}
+.ph{position:sticky;top:0;background:#1b1d24;padding:4px 0;z-index:1}
+.cap{background:#3a2a10;color:#fc6;padding:8px 12px;font-size:13px;margin:0}
 </style>
 <body>
-<p class="demo">示範畫面（非 live 派檯）：學習資料來自已匯入的 2026-11-13（五）人工排檯表；建議假設今日有 12 位已報班可點，包廂 201、要 3 人，時段以週五 22 時評分。系統不會自動派檯。</p>
+<p class="demo">示範畫面（非 live 派檯）：學習資料來自已匯入的 2026-11-13（五）。建議假設今日（11/14）有 12 位已報班可點，包廂 201、要 3 人，時段 22 時。今日已上台數為示範假設（例如 08 牛奶、28 百合各已上 2 台）。系統不會自動派檯。</p>
 <header id="hdr">
 <h1>排檯系統</h1>
 <button class="s">今日排檯表</button>
@@ -47,6 +47,7 @@ header button{flex:1 1 45%;min-height:44px}
 </div>
 <div class="spbox" id="patterns">
 <h3>學到的模式（目前資料尚少，僅供參考）</h3>
+<p style="color:#ccc;font-size:13px">建議計分已依冠廷確認：偏重幹部派（藍勾）模式；無學習資料者優先補台數；公平同時看歷史與今日已上台數。</p>
 <p><b>幹部派（藍勾）較多：</b>10 翠翠（7）、26 蜜桃（6）、08 牛奶（5）、35 葡萄（5）、96 天兒（5）、66 米奇（5）、77 太陽（5）、70 月亮（4）</p>
 <p><b>客點（紅勾）較多：</b>90 兔兔（7）、28 百合（7）、92 宝宝（6）、69 恩恩（5）、70 月亮（5）、18 晶晶（5）、09 可樂（4）、08 牛奶（4）</p>
 <p><b>學習台數（紅＋藍，不含私檯／訂番）較多：</b>08 牛奶（9）、28 百合（9）、70 月亮（9）、90 兔兔（9）、92 宝宝（8）、26 蜜桃（8）、69 恩恩（8）、09 可樂（7）</p>
@@ -56,13 +57,24 @@ header button{flex:1 1 45%;min-height:44px}
 </div>
 <div class="spbox" id="suggest">
 <h3>建議排台（僅建議，不自動派）</h3>
-<p>從今日已報班、目前可點（未在其他包廂、未停用）的小姐中評分。計分：公平輪替 40%（學習台數較少者優先）、包廂熟悉 25%、時段／星期 20%、同台搭配 15%。</p>
+<p>從今日已報班、目前可點（未在其他包廂、未停用）的小姐中評分。計分（冠廷確認）：<b>公平輪替 40%</b>——同時看學習資料的歷史台數，以及今日已上台數（取自當日已結束與進行中的番，不含私檯／訂番）；學習資料中尚未出現者優先補台數。<b>包廂熟悉 25%</b>、<b>時段／星期 20%</b>、<b>同台搭配 15%</b>——依學習資料，幹部派（藍勾）權重 2、客點（紅勾）權重 1。僅建議，不會自動派檯。</p>
 <p>目前可點 <b>12</b> 位。</p>
 <div class="spnav"><label>包廂 <select><option >101</option><option >102</option><option >103</option><option >105</option><option >106</option><option selected>201</option><option >202</option><option >203</option></select></label>
 <label>人數 <button class="s" type="button">−</button> <b>3</b> <button class="s" type="button">＋</button></label>
 <button type="button">重新建議</button></div>
 <ol class="slrank">
-<li style="background:#1e3a2f;border-radius:8px;padding:8px"><b>01 甜蜜</b>　44 分　<span style="color:#8c8">建議</span><div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較少（公平輪替，已 0 次，平均 5.1）；學習資料中尚未在 201 出現</div></li><li style="background:#1e3a2f;border-radius:8px;padding:8px"><b>33 珊珊</b>　37 分　<span style="color:#8c8">建議</span><div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較少（公平輪替，已 2 次，平均 5.1）；學習資料中尚未在 201 出現；星期五曾出現 2 次；學習中藍勾 2、紅勾 0（不含私檯／訂番）</div></li><li style=""><b>15 LYLY</b>　37 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較少（公平輪替，已 3 次，平均 5.1）；學習資料中尚未在 201 出現；星期五曾出現 3 次；此時段（22 時）曾出現 1 次；與已在名單／包廂的搭檔曾同台 1 次；學習中藍勾 3、紅勾 0（不含私檯／訂番）</div></li><li style="background:#1e3a2f;border-radius:8px;padding:8px"><b>93 依琳</b>　37 分　<span style="color:#8c8">建議</span><div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較少（公平輪替，已 3 次，平均 5.1）；此包廂（201）曾派過 1 次；星期五曾出現 3 次；學習中藍勾 0、紅勾 3（不含私檯／訂番）</div></li><li style=""><b>99 水水</b>　37 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較少（公平輪替，已 3 次，平均 5.1）；學習資料中尚未在 201 出現；星期五曾出現 3 次；與已在名單／包廂的搭檔曾同台 2 次；學習中藍勾 0、紅勾 3（不含私檯／訂番）</div></li><li style=""><b>67 天心</b>　34 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料台數接近平均（5 次）；此包廂（201）曾派過 1 次；星期五曾出現 5 次；此時段（22 時）曾出現 1 次；與已在名單／包廂的搭檔曾同台 2 次；學習中藍勾 4、紅勾 1（不含私檯／訂番）</div></li><li style=""><b>18 晶晶</b>　28 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料台數接近平均（5 次）；學習資料中尚未在 201 出現；星期五曾出現 5 次；與已在名單／包廂的搭檔曾同台 1 次；學習中藍勾 0、紅勾 5（不含私檯／訂番）</div></li><li style=""><b>57 寶貝</b>　25 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較多（已 6 次，平均 5.1）；學習資料中尚未在 201 出現；星期五曾出現 6 次；此時段（22 時）曾出現 1 次；與已在名單／包廂的搭檔曾同台 1 次；學習中藍勾 4、紅勾 2（不含私檯／訂番）</div></li><li style=""><b>10 翠翠</b>　23 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較多（已 7 次，平均 5.1）；此包廂（201）曾派過 1 次；星期五曾出現 7 次；此時段（22 時）曾出現 3 次；與已在名單／包廂的搭檔曾同台 1 次；學習中藍勾 7、紅勾 0（不含私檯／訂番）</div></li><li style=""><b>08 牛奶</b>　18 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較多（已 9 次，平均 5.1）；此包廂（201）曾派過 2 次；星期五曾出現 9 次；此時段（22 時）曾出現 2 次；與已在名單／包廂的搭檔曾同台 2 次；學習中藍勾 5、紅勾 4（不含私檯／訂番）</div></li><li style=""><b>70 月亮</b>　15 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較多（已 9 次，平均 5.1）；此包廂（201）曾派過 1 次；星期五曾出現 9 次；此時段（22 時）曾出現 1 次；與已在名單／包廂的搭檔曾同台 2 次；學習中藍勾 4、紅勾 5（不含私檯／訂番）</div></li><li style=""><b>28 百合</b>　14 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較多（已 9 次，平均 5.1）；學習資料中尚未在 201 出現；星期五曾出現 9 次；此時段（22 時）曾出現 2 次；與已在名單／包廂的搭檔曾同台 3 次；學習中藍勾 2、紅勾 7（不含私檯／訂番）</div></li>
+<li style="background:#1e3a2f;border-radius:8px;padding:8px"><b>01 甜蜜</b>　48 分　<span style="color:#8c8">建議</span><div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料尚無此人或尚無有效記號，優先補台數；今日已上 0 台（不含私檯／訂番）；學習資料中尚未在 201 出現</div></li>
+<li style="background:#1e3a2f;border-radius:8px;padding:8px"><b>33 珊珊</b>　40 分　<span style="color:#8c8">建議</span><div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習歷史台數 2（不含今日已上場）；今日已上 0 台（不含私檯／訂番）；學習資料中尚未在 201 出現；學習中藍勾 2、紅勾 0（不含私檯／訂番）</div></li>
+<li style="background:#1e3a2f;border-radius:8px;padding:8px"><b>15 LYLY</b>　39 分　<span style="color:#8c8">建議</span><div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習歷史台數 3（不含今日已上場）；今日已上 0 台（不含私檯／訂番）；學習資料中尚未在 201 出現；此時段（22 時）曾出現 1 次（藍 1／紅 0）；學習中藍勾 3、紅勾 0（不含私檯／訂番）</div></li>
+<li style=""><b>93 依琳</b>　39 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習歷史台數 3（不含今日已上場）；今日已上 0 台（不含私檯／訂番）；此包廂（201）曾派過 1 次（藍 0／紅 1，藍權重 2）；與已在名單／包廂的搭檔曾同台 1 次（藍 0／紅 1，藍權重 2）；學習中藍勾 0、紅勾 3（不含私檯／訂番）</div></li>
+<li style=""><b>99 水水</b>　38 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習歷史台數 3（不含今日已上場）；今日已上 0 台（不含私檯／訂番）；學習資料中尚未在 201 出現；與已在名單／包廂的搭檔曾同台 2 次（藍 0／紅 2，藍權重 2）；學習中藍勾 0、紅勾 3（不含私檯／訂番）</div></li>
+<li style=""><b>67 天心</b>　33 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習歷史台數 5（不含今日已上場）；今日已上 0 台（不含私檯／訂番）；此包廂（201）曾派過 1 次（藍 1／紅 0，藍權重 2）；此時段（22 時）曾出現 1 次（藍 1／紅 0）；學習中藍勾 4、紅勾 1（不含私檯／訂番）</div></li>
+<li style=""><b>57 寶貝</b>　24 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習歷史台數 6（不含今日已上場）；今日已上 0 台（不含私檯／訂番）；學習資料中尚未在 201 出現；此時段（22 時）曾出現 1 次（藍 1／紅 0）；學習中藍勾 4、紅勾 2（不含私檯／訂番）</div></li>
+<li style=""><b>10 翠翠</b>　24 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習歷史台數 7（不含今日已上場）；今日已上 1 台（不含私檯／訂番）；此包廂（201）曾派過 1 次（藍 1／紅 0，藍權重 2）；此時段（22 時）曾出現 3 次（藍 3／紅 0）；與已在名單／包廂的搭檔曾同台 2 次（藍 2／紅 0，藍權重 2）；學習中藍勾 7、紅勾 0（不含私檯／訂番）</div></li>
+<li style=""><b>18 晶晶</b>　19 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習歷史台數 5（不含今日已上場）；今日已上 1 台（不含私檯／訂番）；學習資料中尚未在 201 出現；與已在名單／包廂的搭檔曾同台 2 次（藍 0／紅 2，藍權重 2）；學習中藍勾 0、紅勾 5（不含私檯／訂番）</div></li>
+<li style=""><b>08 牛奶</b>　16 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習歷史台數 9（不含今日已上場）；今日已上 2 台（不含私檯／訂番）；此包廂（201）曾派過 2 次（藍 1／紅 1，藍權重 2）；此時段（22 時）曾出現 2 次（藍 2／紅 0）；與已在名單／包廂的搭檔曾同台 2 次（藍 1／紅 1，藍權重 2）；學習中藍勾 5、紅勾 4（不含私檯／訂番）</div></li>
+<li style=""><b>70 月亮</b>　10 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習歷史台數 9（不含今日已上場）；今日已上 1 台（不含私檯／訂番）；此包廂（201）曾派過 1 次（藍 0／紅 1，藍權重 2）；此時段（22 時）曾出現 1 次（藍 0／紅 1）；與已在名單／包廂的搭檔曾同台 3 次（藍 2／紅 1，藍權重 2）；學習中藍勾 4、紅勾 5（不含私檯／訂番）</div></li>
+<li style=""><b>28 百合</b>　9 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習歷史台數 9（不含今日已上場）；今日已上 2 台（不含私檯／訂番）；學習資料中尚未在 201 出現；此時段（22 時）曾出現 2 次（藍 0／紅 2）；與已在名單／包廂的搭檔曾同台 4 次（藍 2／紅 2，藍權重 2）；學習中藍勾 2、紅勾 7（不含私檯／訂番）</div></li>
 </ol>
 </div>
 <p style="color:#aaa;font-size:13px">權限：幹部以上可查看。此功能學習中，自動派檯尚未開放。</p>
