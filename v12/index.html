@@ -73,8 +73,14 @@ dialog input[type=text]{width:100%;box-sizing:border-box}#sugg{width:100%}#guest
 .spbig{font-size:32px}
 }
 
+
+.slrank{margin:8px 0;padding-left:22px}
+.slrank li{margin:8px 0;font-size:15px;line-height:1.45}
+.spnav select,.spnav label{font-size:16px}
+.spnav select{min-height:44px;padding:6px 10px;border-radius:8px;border:0;background:#1b1d24;color:#fff}
+.spwrap button{min-height:44px;padding:8px 14px;font-size:16px;border-radius:8px}
 </style></head><body>
-<header><h1 id="store"></h1><span id="clock"></span><button onclick="openSettings()">⚙ 店家設定</button><button id=userBtn class=s onclick="openLogin()">👤</button><span id=sync style="font-size:13px;margin:0 6px">☁ 連線中…</span><button class=s onclick="openHelp()">❓ 登入教學</button><input id=op type=hidden><button class="s" onclick="openGuest()">客人點檯（包廂平板）</button><button class="s" onclick="openReport()">月出勤報表</button><button class="s" onclick="openRevenue()">今日營收</button><button class="s" onclick="openSheet()">今日排檯表</button><button class="s" onclick="openGrid()">📋 傳統排檯表</button><button class="s" onclick="openHistory()">📅 歷史紀錄</button><button class="s" onclick="openOrder()">🍽 點餐</button><button class="s" onclick="openKitchen()">🍳 廚房</button><button class="s" onclick="openWine()">🍾 寄酒</button><button class="s" onclick="openLoginLogs()">🔐 登入紀錄</button><button class="s" onclick="openLedger()">💰 寄放／預支</button><button class="s" onclick="openBonus(bizDay(now()).slice(0,7))">訂番獎金</button><button id=mimpBtn class="s" onclick="openManualImport()">手動匯入</button><button class="s" onclick="openSched()">少爺排班</button><button class="s" onclick="openPayroll()">少爺薪資</button><button class="s" onclick="openGirlPay()">小姐台數</button><button class="s" onclick="openFind()">外找</button><button onclick="openBoard()" style="background:#a3c">📺 控台大螢幕</button><button onclick="openCallBoard()" style="background:#c80">🧲 叫檯看板</button><button class="s" onclick="if(confirm('重設示範資料？')){Store.clear();location.reload()}">重設</button></header>
+<header><h1 id="store"></h1><span id="clock"></span><button onclick="openSettings()">⚙ 店家設定</button><button id=userBtn class=s onclick="openLogin()">👤</button><span id=sync style="font-size:13px;margin:0 6px">☁ 連線中…</span><button class=s onclick="openHelp()">❓ 登入教學</button><input id=op type=hidden><button class="s" onclick="openGuest()">客人點檯（包廂平板）</button><button class="s" onclick="openReport()">月出勤報表</button><button class="s" onclick="openRevenue()">今日營收</button><button class="s" onclick="openSheet()">今日排檯表</button><button class="s" onclick="openGrid()">📋 傳統排檯表</button><button class="s" onclick="openSheetLearn()">自動排台（學習中）</button><button class="s" onclick="openHistory()">📅 歷史紀錄</button><button class="s" onclick="openOrder()">🍽 點餐</button><button class="s" onclick="openKitchen()">🍳 廚房</button><button class="s" onclick="openWine()">🍾 寄酒</button><button class="s" onclick="openLoginLogs()">🔐 登入紀錄</button><button class="s" onclick="openLedger()">💰 寄放／預支</button><button class="s" onclick="openBonus(bizDay(now()).slice(0,7))">訂番獎金</button><button id=mimpBtn class="s" onclick="openManualImport()">手動匯入</button><button class="s" onclick="openSched()">少爺排班</button><button class="s" onclick="openPayroll()">少爺薪資</button><button class="s" onclick="openGirlPay()">小姐台數</button><button class="s" onclick="openFind()">外找</button><button onclick="openBoard()" style="background:#a3c">📺 控台大螢幕</button><button onclick="openCallBoard()" style="background:#c80">🧲 叫檯看板</button><button class="s" onclick="if(confirm('重設示範資料？')){Store.clear();location.reload()}">重設</button></header>
 <main><div><section id=callsec></section><section id=qsec></section><div id="rooms"></div></div><div>
 <section><b>紅筆點檯請求</b><div id=reqs></div></section><section><b>女孩名冊</b><span id=cnt></span><br><input id=q placeholder='搜尋編號/名字' oninput=render() size=12> <select id=fl onchange=render()><option value=''>全部</option><option>休息室</option><option>在檯</option><option>休息</option><option>未到</option><option>請假</option><option>離職</option></select><div id="girls" style='max-height:340px;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:4px'></div></section>
 <section><b>模擬感應（門口讀卡器）</b><br>包廂 <select id=sr></select><select id=sa><option value=''>（包廂門）</option><option value=R-LOUNGE>休息室讀卡器</option><option value=R-DINE>餐廳讀卡器</option></select> 標籤 <input id=stag value="TAG08" size=7> <select id=sd><option value=in>進</option><option value=out>出</option><option value="">未知</option></select> <button onclick="handleDoorEvent({readerId:sa.value||'R-'+sr.value,roomId:sr.value,tagId:stag.value.trim(),timestamp:Date.now(),direction:sd.value||null})">送出感應</button></section>
@@ -343,7 +349,7 @@ const todayOB=()=>S.orderBonus.filter(o=>dkey(o.t)==dkey(now()));
 function openRevenue(){openRevenue0();const ob=todayOB(),f=document.getElementById('dform');f.lastElementChild.insertAdjacentHTML('beforebegin',`<h3>今日訂番獎金（${ob.length} 筆・小姐 ${ob.reduce((a,o)=>a+o.girlAmt,0)}・幹部 ${ob.reduce((a,o)=>a+o.staffAmt,0)} 元）</h3><table border=1 cellpadding=4 style="border-collapse:collapse;font-size:13px"><tr><th>包廂</th><th>小姐</th><th>小姐獎金</th><th>幹部</th><th>幹部獎金</th></tr>${ob.map(o=>`<tr><td>${o.room}</td><td>${esc(G(o.girl)?G(o.girl).name:o.girl)}</td><td>${o.girlAmt}</td><td>${esc(o.staff)}</td><td>${o.staffAmt}</td></tr>`).join('')}</table><p><button type=button onclick="dl('訂番獎金-'+dkey(now())+'.csv',[['時間','包廂','小姐','小姐獎金','幹部','幹部獎金'],...todayOB().map(o=>[t(o.t),o.room,o.girl,o.girlAmt,o.staff,o.staffAmt])])">匯出訂番 CSV</button></p>`)}
 
 // ===== v6：少爺排班／少爺薪資／小姐台數 =====
-{const d={girlTaiRate:0,dayCut:6,shifts:'早,晚,全',staffDefOff:4,towelFee:500};for(const k in d)if(C()[k]===undefined)C()[k]=d[k];S.staff=S.staff||[];S.sched=S.sched||{};S.staffAdj=S.staffAdj||{};S.girlAdj=S.girlAdj||{};S.taiLog=S.taiLog||[];S.staffPay=S.staffPay||{};}
+{const d={girlTaiRate:0,dayCut:6,shifts:'早,晚,全',staffDefOff:4,towelFee:500};for(const k in d)if(C()[k]===undefined)C()[k]=d[k];S.staff=S.staff||[];S.sched=S.sched||{};S.staffAdj=S.staffAdj||{};S.girlAdj=S.girlAdj||{};S.taiLog=S.taiLog||[];S.staffPay=S.staffPay||{};S.sheetLearn=S.sheetLearn||{version:1,days:{}};}
 if(!S.cutVer){C().dayCut='07:10';S.cutVer=1}
 const cutM=()=>{const m=String(C().dayCut).match(/^(\d{1,2})(?::(\d{2}))?$/);return m?+m[1]*60+(+m[2]||0):430},cutTxt=()=>{const m=cutM();return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
 const bizDay=ts=>dkey(ts-cutM()*60000);
@@ -825,7 +831,7 @@ function parseSheetTxt(txt,defDay){const ext={colOrder:[],bands:null,arrive:{},e
   keep.push(l)});
  const p=parseSheetTxt0(keep.join('\n'),defDay);p.ext=ext;Object.keys(p.rows||{}).forEach(k=>{const a=[];if(ext.orderStaff[k])a.push('代號 '+ext.orderStaff[k]);(p.marks||[]).filter(m=>m[0]==k&&m[2]=='訂番').forEach(m=>a.push('小姐 '+m[1]));ext.otherMarks.filter(m=>m.seq==k&&m.type=='訂番').forEach(m=>a.push(m.cat+' '+m.who));if(a.length>1)p.tbd=(p.tbd||[]).concat(`⚠ 序${k} 訂番衝突（一番只能一位）：${a.join('、')}——此番不發訂番獎金，請修正後重新匯入`)});if(ext.xNotes.length)p.tbd=(p.tbd||[]).concat(ext.xNotes.map(s=>s+'（不匯入）'));return p}
 const applySheet0=applySheetA;
-function applySheet(p,pol){const r=applySheet0(p,pol),d=p.day,ex=p.ext;if(!ex)return r;const X=DX(d);
+function applySheet(p,pol){const r=applySheet0(p,pol),d=p.day,ex=p.ext;const slFeed=()=>{try{if(d)sheetLearnIngest(d)}catch(e){}};if(!ex){slFeed();return r}const X=DX(d);
  if(ex.colOrder.length)X.colOrder=ex.colOrder;if(ex.bands)X.bands=ex.bands;Object.assign(X.arrive,ex.arrive);Object.assign(X.early,ex.early);if(ex.others.length)X.others=ex.others;
  // 序、訂番幹部、原始記號
  const ts=k=>{const rw=p.rows[k];return rw&&rw.tm?dayTs(d,...rw.tm):null};
@@ -905,5 +911,89 @@ function ledDel(id){if(!needRole(3,'刪除帳本需經理以上'))return;const e
 const closeDayL=closeDay;closeDay=function(d,how){if(how=='自動'&&S.hist&&S.hist[d])return;closeDayL(d,how);if(how=='自動'){const keep=x=>!x||bizDay(x)>=d;for(const k of ['sheetLog','taiLog','revenue','visitLog','orderBonus','redLog','blueLog','calls','finds','decisions'])if(Array.isArray(S[k]))S[k]=S[k].filter(e=>keep(e&&(e.start||e.t)));save()}};
 window.openUsers=()=>window.Cloud?Cloud.openStaff():alert('雲端尚未載入');
 if(!window.openHelp)window.openHelp=()=>alert('載入中，請稍候');
+// ---- v12.10 自動排台（學習中）：由匯入人工排檯表學習，私檯／訂番不列入；只建議不派檯 ----
+function slNick(id){const g=typeof G==='function'?G(id):null;return g?gNick(g):String(id)}
+function sheetLearnInit(){S.sheetLearn=S.sheetLearn||{version:1,days:{}};if(!S.sheetLearn.days)S.sheetLearn.days={}}
+function slTyp(raw){const s=String(raw||'');if(/私檯|④/.test(s))return'私檯';if(/訂番/.test(s))return'訂番';if(/紅/.test(s))return'紅';if(/藍/.test(s))return'藍';if(s==='x'||s==='X'||s==='×')return'x';return''}
+function slExtract(room,start,seq,girls,privs,order,marks){const kept=[];let priv=0,ord=0;(girls||[]).forEach(id=>{const tys=[].concat((marks&&marks[id])||[]);const all=tys.map(slTyp);if((privs||[]).includes(id)||all.includes('私檯')){priv++;return}if((order||[]).includes(id)||all.includes('訂番')){ord++;return}const typ=all.includes('紅')?'紅':all.includes('藍')?'藍':'';if(typ)kept.push({id,typ})});return{kept,priv,ord}}
+function sheetLearnIngest(d){if(!d)return;sheetLearnInit();let priv=0,ord=0;const sessions=[],seen=new Set();
+ const push=(room,start,seq,girls,privs,order,marks)=>{const r=slExtract(room,start,seq,girls,privs,order,marks);priv+=r.priv;ord+=r.ord;if(!r.kept.length)return;const k=room+'@'+(start||0);if(seen.has(k))return;seen.add(k);sessions.push({seq:seq||null,room,start:start||0,time:start?hm(start):'',girls:r.kept})};
+ (S.sheetLog||[]).forEach(e=>{if(e&&e.imp&&e.day==d)push(e.room,e.start,e.seq||e.ban,e.girls,e.privs,e.order,e.marks)});
+ Object.entries(S.rooms||{}).forEach(([room,x])=>{if(!x||!x.imp)return;if(typeof bizDay==='function'&&x.start&&bizDay(x.start)!=d)return;const last=(x.bans||[[]])[(x.bans||[[]]).length-1]||[];const privs=(x.privBans||[[]])[(x.privBans||[[]]).length-1]||[];const marks={};Object.entries(x.raw||{}).forEach(([id,v])=>{const ty=slTyp(v);if(ty)marks[id]=[ty]});
+  (S.redLog||[]).forEach(e=>{if(e&&e.imp&&e.room==room&&e.t==x.start)(marks[e.girl]=marks[e.girl]||[]).push('紅')});
+  (S.blueLog||[]).forEach(e=>{if(e&&e.imp&&e.room==room&&e.t==x.start)(marks[e.girl]=marks[e.girl]||[]).push('藍')});
+  push(room,x.start,x.paperSeq,last,privs,x.order||[],marks)});
+ if(!sessions.length&&!priv&&!ord)return;
+ const wd=new Date(d+'T12:00:00').getDay();
+ S.sheetLearn.days[d]={weekday:wd,weekdayName:'日一二三四五六'[wd],sessions,excluded:{priv,order:ord},source:'imported paper sheet'};
+ S.sheetLearn.updatedAt=now();S.sheetLearn.version=1;S.sheetLearn.note='由匯入的人工排檯表學習；私檯與訂番不列入。僅建議、不自動派檯。'}
+function sheetLearnAll(){sheetLearnInit();const out=[];Object.entries(S.sheetLearn.days).forEach(([day,rec])=>(rec.sessions||[]).forEach(s=>out.push(Object.assign({day,weekday:rec.weekday,weekdayName:rec.weekdayName},s))));return out}
+function sheetLearnStats(){const all=sheetLearnAll(),days=Object.keys((S.sheetLearn||{}).days||{}),marks=all.reduce((a,s)=>a+s.girls.length,0);
+ let priv=0,ord=0;days.forEach(d=>{const e=(S.sheetLearn.days[d]||{}).excluded||{};priv+=e.priv||0;ord+=e.order||0});
+ const blue={},red={},tai={},roomG={},hourG={},wdG={},pair={};
+ all.forEach(s=>{const ids=s.girls.map(g=>g.id);ids.forEach((id,i)=>{const g=s.girls[i];tai[id]=(tai[id]||0)+1;(g.typ=='藍'?blue:red)[id]=((g.typ=='藍'?blue:red)[id]||0)+1;
+  (roomG[s.room]=roomG[s.room]||{})[id]=((roomG[s.room]||{})[id]||0)+1;const hr=(s.time||'').slice(0,2);(hourG[hr]=hourG[hr]||{})[id]=((hourG[hr]||{})[id]||0)+1;
+  const wd=s.weekdayName||'';(wdG[wd]=wdG[wd]||{})[id]=((wdG[wd]||{})[id]||0)+1});
+  for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){const a=ids[i]<ids[j]?ids[i]+'+'+ids[j]:ids[j]+'+'+ids[i];pair[a]=(pair[a]||0)+1}});
+ const top=(obj,n)=>Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n);
+ return{days:days.length,sessions:all.length,marks,priv,ord,nGirls:Object.keys(tai).length,blue,red,tai,roomG,hourG,wdG,pair,topBlue:top(blue,8),topRed:top(red,8),topTai:top(tai,8),lowTai:top(tai,99).reverse().slice(0,8),topPair:top(pair,8),roomLoad:Object.fromEntries(Object.entries(roomG).map(([r,o])=>[r,Object.values(o).reduce((a,b)=>a+b,0)]))}}
+function sheetAvail(){const d=S.openDay||bizDay(now()),X=(S.dayExt||{})[d]||{},early=X.early||{};
+ return (S.girls||[]).filter(g=>g.on&&!g.gone&&!g.room&&!g.leave&&!early[g.id]&&g.status!='下班'&&!((X.others||[]).includes(g.id))&&!g.priv)}
+function sheetLearnScore(id,room,opts){opts=opts||{};const st=sheetLearnStats(),pool=opts.pool||sheetAvail();
+ const tai=st.tai[id]||0,vals=pool.map(g=>st.tai[g.id]||0),avg=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;
+ const fair=vals.length?Math.max(0,50+(avg-tai)*12):30;
+ const roomN=(st.roomG[room]||{})[id]||0,roomSc=Math.min(50,roomN*12);
+ const nowH=new Date().getHours(),wd='日一二三四五六'[(S.openDay?new Date(S.openDay+'T12:00:00'):new Date()).getDay()];
+ const hrN=(st.hourG[String(nowH).padStart(2,'0')]||{})[id]||0,wdN=(st.wdG[wd]||{})[id]||0,timeSc=Math.min(40,hrN*10+wdN*6);
+ const mates=opts.mates||[];let pairN=0;mates.forEach(m=>{const k=id<m?id+'+'+m:m+'+'+id;pairN+=st.pair[k]||0});
+ const pairSc=mates.length?Math.min(40,pairN*10):0;
+ const score=Math.round(fair*0.40+roomSc*0.25+timeSc*0.20+pairSc*0.15);
+ const why=[];why.push('今日已報班且目前可點');
+ if(vals.length)why.push(tai<avg-0.2?`學習資料中台數較少（公平輪替，已 ${tai} 次，平均 ${avg.toFixed(1)}）`:tai>avg+0.2?`學習資料中台數較多（已 ${tai} 次，平均 ${avg.toFixed(1)}）`:`學習資料台數接近平均（${tai} 次）`);
+ if(roomN)why.push(`此包廂（${room}）曾派過 ${roomN} 次`);else why.push(`學習資料中尚未在 ${room} 出現`);
+ if(wdN)why.push(`星期${wd}曾出現 ${wdN} 次`);if(hrN)why.push(`此時段（${String(nowH).padStart(2,'0')} 時）曾出現 ${hrN} 次`);
+ if(pairN)why.push(`與已在名單／包廂的搭檔曾同台 ${pairN} 次`);
+ const typB=st.blue[id]||0,typR=st.red[id]||0;if(typB||typR)why.push(`學習中藍勾 ${typB}、紅勾 ${typR}（不含私檯／訂番）`);
+ return{id,name:slNick(id),score,fair,roomN,tai,why,typB,typR}}
+function sheetLearnSuggest(room,n){const pool=sheetAvail(),inRoom=((S.rooms[room]||{}).bans||[[]]);const last=inRoom[inRoom.length-1]||[];
+ const picked=[],rest=pool.map(g=>g.id);n=Math.max(1,Math.min(8,+n||1));
+ while(picked.length<n&&rest.length){const mates=last.concat(picked);const ranked=rest.map(id=>sheetLearnScore(id,room,{pool,mates})).sort((a,b)=>b.score-a.score||a.tai-b.tai);
+  const best=ranked[0];picked.push(best.id);rest.splice(rest.indexOf(best.id),1)}
+ const ranked=pool.map(g=>sheetLearnScore(g.id,room,{pool,mates:last.concat(picked.filter(id=>id!=g.id))})).sort((a,b)=>b.score-a.score||a.tai-b.tai);
+ return{picked,ranked,avail:pool.length,short:picked.length<n}}
+let slRoom=null,slN=2;
+function openSheetLearn(){if(!needRole(2,'自動排台（學習中）'))return;sheetLearnInit();const st=sheetLearnStats(),rooms=(typeof roomList==='function'?roomList():String((C().rooms)||'').split(',')).filter(Boolean);
+ slRoom=slRoom&&rooms.includes(slRoom)?slRoom:(Object.keys(S.rooms||{})[0]||rooms[0]||'');slN=Math.max(1,Math.min(8,slN||2));
+ const sug=slRoom?sheetLearnSuggest(slRoom,slN):{picked:[],ranked:[],avail:0,short:false};
+ const line=(arr)=>arr.map(([id,n])=>`${esc(id)} ${esc(slNick(id))}（${n}）`).join('、')||'尚無';
+ const pairLine=st.topPair.map(([k,n])=>{const[a,b]=k.split('+');return`${esc(a)} ${esc(slNick(a))}＋${esc(b)} ${esc(slNick(b))}（${n} 次）`}).join('、')||'尚無';
+ pageOpen(`<div class=spwrap><h2>自動排台（學習中）</h2>
+<p>從已匯入的人工排檯表學習派檯模式。<b>私檯與訂番不列入分析</b>。以下僅提供建議，<b>不會自動派檯</b>。資料越多越準，請繼續匯入本月排檯表。</p>
+<div class=spbox><h3>學習資料</h3>
+<p>已學習 <b>${st.days}</b> 個營業日、<b>${st.sessions}</b> 番、有效記號 <b>${st.marks}</b> 筆（${st.nGirls} 位小姐）。已排除私檯 ${st.priv} 筆、訂番 ${st.ord} 筆。</p>
+<p>資料日：${Object.keys(S.sheetLearn.days).sort().map(esc).join('、')||'尚無'}</p>
+<p><button class=s type=button onclick="sheetLearnRebuild()">從此日已匯入排檯表重建</button></p>
+</div>
+<div class=spbox><h3>學到的模式（目前資料尚少，僅供參考）</h3>
+<p><b>幹部派（藍勾）較多：</b>${line(st.topBlue)}</p>
+<p><b>客點（紅勾）較多：</b>${line(st.topRed)}</p>
+<p><b>學習台數（紅＋藍，不含私檯／訂番）較多：</b>${line(st.topTai)}</p>
+<p><b>學習台數較少：</b>${line(st.lowTai)}</p>
+<p><b>常見同台：</b>${pairLine}</p>
+<p><b>各包廂派檯人次：</b>${Object.entries(st.roomLoad).sort().map(([r,n])=>`${esc(r)} ${n}`).join('、')||'尚無'}</p>
+</div>
+<div class=spbox><h3>建議排台（僅建議，不自動派）</h3>
+<p>從今日已報班、目前可點（未在其他包廂、未停用）的小姐中評分。計分：公平輪替 40%（學習台數較少者優先）、包廂熟悉 25%、時段／星期 20%、同台搭配 15%。</p>
+<p>目前可點 <b>${sug.avail}</b> 位${sug.avail?'':'（請先為小姐報班，或等在檯小姐回休息室）'}。</p>
+<div class=spnav><label>包廂 <select id=slRoom onchange="slRoom=this.value;openSheetLearn()">${rooms.map(r=>`<option ${r==slRoom?'selected':''}>${esc(r)}</option>`).join('')}</select></label>
+<label>人數 <button class=s type=button onclick="slN=Math.max(1,slN-1);openSheetLearn()">−</button> <b>${slN}</b> <button class=s type=button onclick="slN=Math.min(8,slN+1);openSheetLearn()">＋</button></label>
+<button type=button onclick="openSheetLearn()">重新建議</button></div>
+${sug.short?`<p class=spwarn>可點人數不足，僅建議 ${sug.picked.length} 位。</p>`:''}
+${sug.ranked.length?`<ol class=slrank>${sug.ranked.map((r,i)=>`<li style="${sug.picked.includes(r.id)?'background:#1e3a2f;border-radius:8px;padding:8px':''}"><b>${esc(r.id)} ${esc(r.name)}</b>　${r.score} 分${sug.picked.includes(r.id)?'　<span style=color:#8c8>建議</span>':''}<div style="color:#bbb;font-size:13px">${r.why.map(esc).join('；')}</div></li>`).join('')}</ol>`:'<p>沒有可建議的小姐。</p>'}
+</div>
+<p style="color:#aaa;font-size:13px">權限：幹部以上可查看。此功能學習中，自動派檯尚未開放。</p>
+</div>`)}
+function sheetLearnRebuild(){const days=new Set((S.sheetLog||[]).filter(e=>e&&e.imp&&e.day).map(e=>e.day));Object.values(S.rooms||{}).forEach(x=>{if(x&&x.imp&&x.start&&typeof bizDay==='function')days.add(bizDay(x.start))});if(!days.size)days.add(S.openDay||bizDay(now()));[...days].forEach(d=>sheetLearnIngest(d));const lab=[...days].sort().join('、');log('自動排台學習：已納入 '+lab);save();toast('已重建學習資料（'+lab+'）');openSheetLearn()}
+
 document.getElementById('op').value=S.op||'';render();setInterval(tick,1000);
-</script><script src="grid.js?v=12.9"></script><script src="transfer.js?v=12.9"></script><script type=module src="cloud.js?v=12.9"></script></body></html>
+</script><script src="grid.js?v=12.10"></script><script src="transfer.js?v=12.10"></script><script type=module src="cloud.js?v=12.10"></script></body></html>

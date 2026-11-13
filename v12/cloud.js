@@ -1,4 +1,4 @@
-// v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
+// v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
@@ -11,7 +11,7 @@ if(EMU){connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true})
 const DOMAIN='paitai-system.local',mail=id=>String(id).trim().toLowerCase()+'@'+DOMAIN;
 const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'特殊':5,'tv':0,'kitchen':0,'room':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r=='room'?'房間平板':r;const ROLE_ALL=['小姐','少爺','幹部','經理','老闆','特殊','tv','kitchen','room'];
 const LOCAL=new Set(['cur','op','users','usersExample','impSnap','wsSeq']);
-const SETTINGS=['cfg','wines','catalog','cb','attVer','cutVer','cleanVer','imp1026','beerVer'];
+const SETTINGS=['cfg','wines','catalog','cb','attVer','cutVer','cleanVer','imp1026','beerVer','sheetLearn'];
 const isDayKey=k=>!LOCAL.has(k)&&!SETTINGS.includes(k)&&!['hist','wineStore','wsLog','ledger'].includes(k);
 const J=v=>JSON.stringify(v===undefined?null:v);
 const st={user:null,prof:null,inited:null,dayId:null,unsub:[],dayUnsub:null,last:{set:{},day:{},hist:{},wine:{},led:{},wlog:new Set()},timer:null,pending:0,err:'',online:navigator.onLine};

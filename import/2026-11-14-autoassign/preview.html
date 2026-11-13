@@ -1,0 +1,71 @@
+<!DOCTYPE html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>自動排台（學習中）示範</title>
+<style>
+body{font-family:"Noto Sans CJK TC","Noto Sans CJK","Noto Sans TC",sans-serif;margin:0;background:#1b1d24;color:#eee}
+header{padding:8px;background:#2a2d38;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+h1{font-size:16px;margin:0;width:100%}
+button{font-size:15px;padding:8px 12px;border:0;border-radius:6px;background:#3d6df2;color:#fff}
+button.s{background:#555}
+header button{flex:1 1 45%;min-height:44px}
+.spwrap{max-width:640px;margin:0 auto}
+.spwrap h2{font-size:22px;margin:8px 0}
+.spbox{background:#2a2d38;border-radius:12px;padding:12px;margin:10px 0}
+.spbox h3{margin:0 0 8px;font-size:17px}
+.spbox p{margin:8px 0;line-height:1.55;font-size:15px}
+.spnav{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}
+.ph{position:sticky;top:0;background:#1b1d24;padding:4px 0;z-index:1}
+
+.slrank{margin:8px 0;padding-left:22px}
+.slrank li{margin:8px 0;font-size:15px;line-height:1.45}
+.spnav select,.spnav label{font-size:16px}
+.spnav select{min-height:44px;padding:6px 10px;border-radius:8px;border:0;background:#1b1d24;color:#fff}
+.spwrap button{min-height:44px;padding:8px 14px;font-size:16px;border-radius:8px}
+.demo{background:#3a2a10;color:#fc6;padding:8px 12px;border-radius:8px;font-size:13px;margin:8px 12px}
+.hlbtn{outline:3px solid #fc3;background:#3d6df2!important}
+#page{padding:8px 12px 24px}
+</style>
+<body>
+<p class="demo">示範畫面（非 live 派檯）：學習資料來自已匯入的 2026-11-13（五）人工排檯表；建議假設今日有 12 位已報班可點，包廂 201、要 3 人，時段以週五 22 時評分。系統不會自動派檯。</p>
+<header id="hdr">
+<h1>排檯系統</h1>
+<button class="s">今日排檯表</button>
+<button class="s">📋 傳統排檯表</button>
+<button class="s hlbtn">自動排台（學習中）</button>
+<button class="s">📅 歷史紀錄</button>
+<button class="s">少爺薪資</button>
+</header>
+<div id="page">
+<div class="ph"><button class="s">✕ 關閉</button> <button class="s">🖨 列印</button></div>
+<div class="spwrap" id="learn">
+<h2>自動排台（學習中）</h2>
+<p>從已匯入的人工排檯表學習派檯模式。<b>私檯與訂番不列入分析</b>。以下僅提供建議，<b>不會自動派檯</b>。資料越多越準，請繼續匯入本月排檯表。</p>
+<div class="spbox" id="stats">
+<h3>學習資料</h3>
+<p>已學習 <b>1</b> 個營業日、<b>27</b> 番、有效記號 <b>159</b> 筆（26 位小姐）。已排除私檯 22 筆、訂番 10 筆。</p>
+<p>資料日：2026-11-13</p>
+<p><button class="s" type="button">從此日已匯入排檯表重建</button></p>
+</div>
+<div class="spbox" id="patterns">
+<h3>學到的模式（目前資料尚少，僅供參考）</h3>
+<p><b>幹部派（藍勾）較多：</b>10 翠翠（7）、26 蜜桃（6）、08 牛奶（5）、35 葡萄（5）、96 天兒（5）、66 米奇（5）、77 太陽（5）、70 月亮（4）</p>
+<p><b>客點（紅勾）較多：</b>90 兔兔（7）、28 百合（7）、92 宝宝（6）、69 恩恩（5）、70 月亮（5）、18 晶晶（5）、09 可樂（4）、08 牛奶（4）</p>
+<p><b>學習台數（紅＋藍，不含私檯／訂番）較多：</b>08 牛奶（9）、28 百合（9）、70 月亮（9）、90 兔兔（9）、92 宝宝（8）、26 蜜桃（8）、69 恩恩（8）、09 可樂（7）</p>
+<p><b>學習台數較少：</b>33 珊珊（2）、99 水水（3）、15 LYLY（3）、93 依琳（3）、18 晶晶（5）、39 玲玲（5）、67 天心（5）、96 天兒（5）</p>
+<p><b>常見同台：</b>28 百合＋98 小不點（6 次）、28 百合＋70 月亮（5 次）、08 牛奶＋26 蜜桃（5 次）、10 翠翠＋88 AA（5 次）、10 翠翠＋77 太陽（5 次）、77 太陽＋88 AA（5 次）、77 太陽＋90 兔兔（5 次）、09 可樂＋71 蜜兒（4 次）</p>
+<p><b>各包廂派檯人次：</b>101 16、102 16、103 27、105 20、106 21、201 22、202 16、203 21</p>
+</div>
+<div class="spbox" id="suggest">
+<h3>建議排台（僅建議，不自動派）</h3>
+<p>從今日已報班、目前可點（未在其他包廂、未停用）的小姐中評分。計分：公平輪替 40%（學習台數較少者優先）、包廂熟悉 25%、時段／星期 20%、同台搭配 15%。</p>
+<p>目前可點 <b>12</b> 位。</p>
+<div class="spnav"><label>包廂 <select><option >101</option><option >102</option><option >103</option><option >105</option><option >106</option><option selected>201</option><option >202</option><option >203</option></select></label>
+<label>人數 <button class="s" type="button">−</button> <b>3</b> <button class="s" type="button">＋</button></label>
+<button type="button">重新建議</button></div>
+<ol class="slrank">
+<li style="background:#1e3a2f;border-radius:8px;padding:8px"><b>01 甜蜜</b>　44 分　<span style="color:#8c8">建議</span><div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較少（公平輪替，已 0 次，平均 5.1）；學習資料中尚未在 201 出現</div></li><li style="background:#1e3a2f;border-radius:8px;padding:8px"><b>33 珊珊</b>　37 分　<span style="color:#8c8">建議</span><div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較少（公平輪替，已 2 次，平均 5.1）；學習資料中尚未在 201 出現；星期五曾出現 2 次；學習中藍勾 2、紅勾 0（不含私檯／訂番）</div></li><li style=""><b>15 LYLY</b>　37 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較少（公平輪替，已 3 次，平均 5.1）；學習資料中尚未在 201 出現；星期五曾出現 3 次；此時段（22 時）曾出現 1 次；與已在名單／包廂的搭檔曾同台 1 次；學習中藍勾 3、紅勾 0（不含私檯／訂番）</div></li><li style="background:#1e3a2f;border-radius:8px;padding:8px"><b>93 依琳</b>　37 分　<span style="color:#8c8">建議</span><div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較少（公平輪替，已 3 次，平均 5.1）；此包廂（201）曾派過 1 次；星期五曾出現 3 次；學習中藍勾 0、紅勾 3（不含私檯／訂番）</div></li><li style=""><b>99 水水</b>　37 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較少（公平輪替，已 3 次，平均 5.1）；學習資料中尚未在 201 出現；星期五曾出現 3 次；與已在名單／包廂的搭檔曾同台 2 次；學習中藍勾 0、紅勾 3（不含私檯／訂番）</div></li><li style=""><b>67 天心</b>　34 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料台數接近平均（5 次）；此包廂（201）曾派過 1 次；星期五曾出現 5 次；此時段（22 時）曾出現 1 次；與已在名單／包廂的搭檔曾同台 2 次；學習中藍勾 4、紅勾 1（不含私檯／訂番）</div></li><li style=""><b>18 晶晶</b>　28 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料台數接近平均（5 次）；學習資料中尚未在 201 出現；星期五曾出現 5 次；與已在名單／包廂的搭檔曾同台 1 次；學習中藍勾 0、紅勾 5（不含私檯／訂番）</div></li><li style=""><b>57 寶貝</b>　25 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較多（已 6 次，平均 5.1）；學習資料中尚未在 201 出現；星期五曾出現 6 次；此時段（22 時）曾出現 1 次；與已在名單／包廂的搭檔曾同台 1 次；學習中藍勾 4、紅勾 2（不含私檯／訂番）</div></li><li style=""><b>10 翠翠</b>　23 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較多（已 7 次，平均 5.1）；此包廂（201）曾派過 1 次；星期五曾出現 7 次；此時段（22 時）曾出現 3 次；與已在名單／包廂的搭檔曾同台 1 次；學習中藍勾 7、紅勾 0（不含私檯／訂番）</div></li><li style=""><b>08 牛奶</b>　18 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較多（已 9 次，平均 5.1）；此包廂（201）曾派過 2 次；星期五曾出現 9 次；此時段（22 時）曾出現 2 次；與已在名單／包廂的搭檔曾同台 2 次；學習中藍勾 5、紅勾 4（不含私檯／訂番）</div></li><li style=""><b>70 月亮</b>　15 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較多（已 9 次，平均 5.1）；此包廂（201）曾派過 1 次；星期五曾出現 9 次；此時段（22 時）曾出現 1 次；與已在名單／包廂的搭檔曾同台 2 次；學習中藍勾 4、紅勾 5（不含私檯／訂番）</div></li><li style=""><b>28 百合</b>　14 分<div style="color:#bbb;font-size:13px">今日已報班且目前可點；學習資料中台數較多（已 9 次，平均 5.1）；學習資料中尚未在 201 出現；星期五曾出現 9 次；此時段（22 時）曾出現 2 次；與已在名單／包廂的搭檔曾同台 3 次；學習中藍勾 2、紅勾 7（不含私檯／訂番）</div></li>
+</ol>
+</div>
+<p style="color:#aaa;font-size:13px">權限：幹部以上可查看。此功能學習中，自動派檯尚未開放。</p>
+</div>
+</div>
+</body></html>
