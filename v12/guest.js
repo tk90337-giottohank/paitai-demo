@@ -1,4 +1,4 @@
-// v12.6 客人點檯平板（包廂平板專用頁；不含任何員工畫面）
+// v12.9 客人點檯平板（新增隨機點檯）＋v12.6 四語／點小姐／點餐／呼叫
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
@@ -11,9 +11,9 @@ const mail=id=>String(id).trim().toLowerCase()+'@paitai-system.local';
 const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'特殊':5};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
-const G={user:null,prof:null,room:'',menu:[],avail:[],day:'',reqs:[],orders:[],view:'home',sel:new Set(),q:{},tab:'加點',unsub:[]};
+const G={user:null,prof:null,room:'',menu:[],avail:[],day:'',reqs:[],orders:[],view:'home',sel:new Set(),q:{},tab:'加點',randN:1,randResult:null,unsub:[]};
 const IDLE=90000;let idleT=null;
-function idle(){clearTimeout(idleT);idleT=setTimeout(()=>{if(G.view!='home'){G.view='home';G.sel.clear();G.q={};draw()}},IDLE)}
+function idle(){clearTimeout(idleT);idleT=setTimeout(()=>{if(G.view!='home'){G.view='home';G.sel.clear();G.q={};G.randResult=null;draw()}},IDLE)}
 ['pointerdown','keydown'].forEach(e=>addEventListener(e,idle,{passive:true}));
 function flash(t){const m=$('msg');m.innerHTML=t;m.style.display='block';setTimeout(()=>m.style.display='none',2200)}
 const day=()=>G.day||new Date(Date.now()-7.17*36e5).toLocaleDateString('sv-SE');
@@ -36,18 +36,37 @@ let dayUns=[];function subDay(){dayUns.forEach(f=>f());dayUns=[];const f=e=>cons
 const ST={'已送出':['已送出・請稍候','t0'],'已確認':['已確認','t1'],'已處理':['少爺/公主馬上到','t1'],'已拒絕':['抱歉，請重新選擇','t2']};
 const OST={'待做':['已送出・準備中','t0'],'製作中':['製作中','t0'],'已出餐':['已送達','t1'],'取消':['已取消','t2']};
 function statusHtml(){const R=G.reqs.slice(0,6),O=G.orders.slice(0,6);if(!R.length&&!O.length)return'';
- return`<div class=st><b>目前狀態</b>${R.map(q=>`<div>${new Date(q.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} ${q.type=='呼叫'?'呼叫 少爺/公主':'點小姐 '+(q.girls||[]).map(esc).join('、')}<span class="tag ${ST[q.status]?.[1]||'t0'}">${ST[q.status]?.[0]||esc(q.status)}</span></div>`).join('')}${O.map(o=>`<div>${new Date(o.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} ${o.items.map(i=>esc(i.name)+'×'+i.qty).join('、')}<span class="tag ${OST[o.status]?.[1]||'t0'}">${OST[o.status]?.[0]||esc(o.status)}</span></div>`).join('')}</div>`}
+ return`<div class=st><b>目前狀態</b>${R.map(q=>`<div>${new Date(q.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} ${q.type=='呼叫'?'呼叫 少爺/公主':((q.random?'🎲 隨機點檯 ':'點小姐 ')+(q.girls||[]).map(esc).join('、'))}<span class="tag ${ST[q.status]?.[1]||'t0'}">${ST[q.status]?.[0]||esc(q.status)}</span></div>`).join('')}${O.map(o=>`<div>${new Date(o.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} ${o.items.map(i=>esc(i.name)+'×'+i.qty).join('、')}<span class="tag ${OST[o.status]?.[1]||'t0'}">${OST[o.status]?.[0]||esc(o.status)}</span></div>`).join('')}</div>`}
 function draw(soft){if(!G.prof)return;const m=$('main');if(soft&&document.activeElement&&document.activeElement.classList.contains('note'))return;const note=document.querySelector('.note');const nv=note?note.value:'';
- if(G.view=='home')m.innerHTML=`<div class=home><button class="big b1" onclick="GU.go('girls')">💃 點小姐<small>Chọn tiếp viên<br>Choose hostess<br>เลือกพนักงานต้อนรับ</small></button><button class="big b2" onclick="GU.go('food')">🍽 點菜<small>Gọi món<br>Order food<br>สั่งอาหาร</small></button><button class="big b3" onclick="GU.go('drink')">🍾 點酒<small>Gọi đồ uống<br>Order drinks<br>สั่งเครื่องดื่ม</small></button><button class="big b4" onclick="GU.call()">🛎 呼叫 少爺/公主<small>Gọi phục vụ<br>Call staff<br>เรียกพนักงาน</small></button></div>${statusHtml()}`;
+ if(G.view=='home')m.innerHTML=`<div class=home><button class="big b1" onclick="GU.go('girls')">💃 點小姐<small>Chọn tiếp viên<br>Choose hostess<br>เลือกพนักงานต้อนรับ</small></button><button class="big b5" onclick="GU.go('random')">🎲 隨機點檯<small>Chọn ngẫu nhiên<br>Random Pick<br>เลือกแบบสุ่ม</small></button><button class="big b2" onclick="GU.go('food')">🍽 點菜<small>Gọi món<br>Order food<br>สั่งอาหาร</small></button><button class="big b3" onclick="GU.go('drink')">🍾 點酒<small>Gọi đồ uống<br>Order drinks<br>สั่งเครื่องดื่ม</small></button><button class="big b4" onclick="GU.call()">🛎 呼叫 少爺/公主<small>Gọi phục vụ<br>Call staff<br>เรียกพนักงาน</small></button></div>${statusHtml()}`;
  else if(G.view=='girls'){const A=G.avail;m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> 點小姐（可複選）</h2>${A.length?`<div class=cards>${A.map(g=>`<div class="card ${G.sel.has(g.id)?'sel':''}" onclick="GU.pick('${esc(g.id)}')">${g.photo?`<img src="${esc(g.photo)}" alt="">`:''}<div class=no>${esc(g.id)}</div><div class=nm>${esc(g.name)}</div></div>`).join('')}</div>`:'<p style="font-size:22px">目前沒有可點的小姐，請按「呼叫 少爺/公主」。</p>'}
   <div class=bar><input class=note placeholder="備註（選填）" value="${esc(nv)}"><button class=go ${G.sel.size?'':'disabled'} onclick="GU.sendGirls()">送出（${G.sel.size} 位）</button></div>${statusHtml()}`}
+ else if(G.view=='random'){const n=Math.max(1,Math.min(5,G.randN||1)),A=G.avail||[],max=A.length;
+  m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> 隨機點檯</h2>
+<p class=hint>Chọn ngẫu nhiên · Random Pick · เลือกแบบสุ่ม<br>從今日已報班、目前可點的小姐中隨機抽出，送出後由幹部確認排檯。</p>
+<p class=hint>目前可點 <b style="color:#ffcf5a;font-size:26px">${max}</b> 位</p>
+${max?`<div class=step><span class=lab>要幾位</span><button class=q onclick="GU.rand(-1)">−</button><span class=qn>${n}</span><button class=q onclick="GU.rand(1)">＋</button></div>
+<button class=go style="width:100%;min-height:64px" onclick="GU.sendRandom()">抽出並送出</button>`:'<p class=warn>目前沒有可點的小姐，請按「呼叫 少爺/公主」。</p>'}
+${statusHtml()}`}
+ else if(G.view=='randomResult'){const R=G.randResult||{picked:[],want:0,short:false};
+  m.innerHTML=`<h2>🎲 隨機點檯結果</h2>
+${R.short?`<p class=warn>目前僅有 ${R.picked.length} 位可點（您要 ${R.want} 位），已為您抽出這 ${R.picked.length} 位。</p>`:`<p class=hint>已為您抽出 ${R.picked.length} 位，並送出給幹部確認。</p>`}
+<div class="cards res">${R.picked.map(g=>`<div class=card>${g.photo?`<img src="${esc(g.photo)}" alt="">`:''}<div class=no>${esc(g.id)}</div><div class=nm>${esc(g.name)}</div></div>`).join('')}</div>
+<p class=hint>請稍候，幹部確認中。</p>
+<button class=go style="width:100%;min-height:56px;margin-top:12px" onclick="GU.go('home')">返回</button>
+${statusHtml()}`}
  else{const cats=G.view=='drink'?['酒水']:['套餐內含','加點'];if(!cats.includes(G.tab))G.tab=cats[cats.length-1];const items=G.menu.filter(x=>x.cat==G.tab);
   const sum=Object.entries(G.q).reduce((a,[id,q])=>{const x=G.menu.find(z=>z.id==id);return a+(x&&x.cat!='套餐內含'?(+x.price||0)*q:0)},0),n=Object.values(G.q).reduce((a,b)=>a+b,0);
   m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> ${G.view=='drink'?'點酒':'點菜'}</h2>${cats.length>1?`<div class=tabs>${cats.map(c=>`<button class="${c==G.tab?'on':''}" onclick="GU.tab('${c}')">${c=='套餐內含'?'套餐附餐（免費）<small> Free · ฟรี</small>':'加點<small> Extra · สั่งเพิ่ม</small>'}</button>`).join('')}</div>`:''}
   ${items.length?items.map(x=>{const q=G.q[x.id]||0;return`<div class=item><div class=n><b>${esc(x.zh)}</b><div class=tr>${[x.vn,x.en,x.th].filter(Boolean).map(esc).join('<br>')}</div></div><div class=p>${x.cat=='套餐內含'?'免費':'$'+(+x.price||0)}</div><button class=q onclick="GU.q('${x.id}',-1)">−</button><span class=qn>${q}</span><button class=q onclick="GU.q('${x.id}',1)">＋</button></div>`}).join(''):'<p style="font-size:22px">目前沒有品項</p>'}
   <div class=bar><input class=note placeholder="備註（例：不要辣）" value="${esc(nv)}"><button class=go ${n?'':'disabled'} onclick="GU.sendFood()">送出 ${n} 項${sum?`・$${sum}`:''}</button></div>${statusHtml()}`}}
-async function addReq(type,girls,note){return addDoc(collection(db,'guestReq'),{room:G.room,type,girls:girls||[],note:note||'',status:'已送出',createdBy:G.user.uid,createdAt:Date.now(),businessDay:day()})}
-window.GU={go:v=>{G.view=v;G.sel.clear();G.q={};draw()},tab:t=>{G.tab=t;draw()},pick:id=>{G.sel.has(id)?G.sel.delete(id):G.sel.add(id);draw()},q:(id,d)=>{G.q[id]=Math.max(0,(G.q[id]||0)+d);if(!G.q[id])delete G.q[id];draw()},
+async function addReq(type,girls,note,extra){return addDoc(collection(db,'guestReq'),Object.assign({room:G.room,type,girls:girls||[],note:note||'',status:'已送出',createdBy:G.user.uid,createdAt:Date.now(),businessDay:day()},extra||{}))}
+function shuffle(arr){const x=arr.slice();for(let i=x.length-1;i>0;i--){const buf=new Uint32Array(1);crypto.getRandomValues(buf);const j=buf[0]%(i+1);const t=x[i];x[i]=x[j];x[j]=t}return x}
+window.GU={go:v=>{G.view=v;G.sel.clear();G.q={};if(v!='randomResult')G.randResult=null;draw()},tab:t=>{G.tab=t;draw()},pick:id=>{G.sel.has(id)?G.sel.delete(id):G.sel.add(id);draw()},q:(id,d)=>{G.q[id]=Math.max(0,(G.q[id]||0)+d);if(!G.q[id])delete G.q[id];draw()},
+ rand:d=>{G.randN=Math.max(1,Math.min(5,(G.randN||1)+d));draw()},
+ sendRandom:async()=>{const want=Math.max(1,Math.min(5,G.randN||1)),pool=shuffle(G.avail||[]);if(!pool.length)return flash('目前沒有可點的小姐<br><small>請按「呼叫 少爺/公主」</small>');
+  const picked=pool.slice(0,Math.min(want,pool.length)),short=picked.length<want;
+  try{await addReq('點小姐',picked.map(g=>g.id),'',{random:true,want});G.randResult={picked,want,short};G.view='randomResult';draw()}catch(e){flash('送出失敗，請呼叫 少爺/公主')}},
  sendGirls:async()=>{const n=(document.querySelector('.note')||{}).value||'';try{await addReq('點小姐',[...G.sel],n.trim());flash('已送出 ✓<br><small>請稍候，幹部確認中</small>');G.view='home';G.sel.clear();draw()}catch(e){flash('送出失敗，請呼叫 少爺/公主')}},
  sendFood:async()=>{const n=((document.querySelector('.note')||{}).value||'').trim();const items=Object.entries(G.q).map(([id,qty])=>{const x=G.menu.find(z=>z.id==id);return x&&{id,name:x.zh,vn:x.vn||'',short:x.short||'',qty,price:x.cat!='套餐內含'?+x.price||0:0,cat:x.cat}}).filter(Boolean);if(!items.length)return;
   try{await addDoc(collection(db,'orders'),{room:G.room,items,note:n,status:'待做',createdBy:G.user.uid,createdByName:G.room+' 客人',fromGuest:true,createdAt:Date.now(),businessDay:day()});flash('已送出 ✓<br><small>馬上為您準備</small>');G.view='home';G.q={};draw()}catch(e){flash('送出失敗，請呼叫 少爺/公主')}},

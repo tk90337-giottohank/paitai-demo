@@ -1,4 +1,4 @@
-// v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單；移除白板 D 區預設品項）
+// v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
@@ -232,12 +232,12 @@ function gqSub(){F.unsub.push(onSnapshot(query(collection(db,'guestReq'),where('
 let gqEl=null;
 function gqDraw(){if(!gqEl){gqEl=document.createElement('div');gqEl.id='guestQ';gqEl.style.cssText='position:fixed;right:8px;bottom:8px;z-index:940;max-width:min(460px,96vw);display:flex;flex-direction:column;gap:6px';document.body.appendChild(gqEl)}
  const P=GQ.list.filter(q=>q.status=='已送出');if(!P.length){gqEl.innerHTML='';return}const ro=TVMODE||lv()<1;
- gqEl.innerHTML=`<div style="background:#123;border:2px solid #fc3;border-radius:10px;padding:6px 8px;color:#fff;box-shadow:0 2px 10px #000"><b>🛎 包廂客人需求（${P.length}）</b>${P.map(q=>`<div style="border-top:1px solid #345;padding:5px 0;font-size:17px"><b style="color:#fc3">${esc(q.room)}</b> ${q.type=='呼叫'?'<b>呼叫 少爺/公主</b>':`點小姐：<b>${(q.girls||[]).map(id=>{const g=G(id);return esc(id)+(g?' '+esc(String(g.name).replace(/^\s*\d+\s*/,'')):'')}).join('、')}</b>`} <small>${ago(q.createdAt)}</small>${q.note?`<div style="font-size:13px">📝 ${esc(q.note)}</div>`:''}${ro?'':`<div style="margin-top:3px">${q.type=='呼叫'?`<button onclick="Food.gq('${q.id}','已處理')" style="background:#2b8;color:#fff">✓ 知道了，馬上去</button>`:`<button onclick="Food.gq('${q.id}','已確認')" style="background:#2b8;color:#fff">✓ 確認（紅勾）</button> <button onclick="Food.gq('${q.id}','已拒絕')" class=s>✕ 婉拒</button>`}</div>`}</div>`).join('')}</div>`}
+ gqEl.innerHTML=`<div style="background:#123;border:2px solid #fc3;border-radius:10px;padding:6px 8px;color:#fff;box-shadow:0 2px 10px #000"><b>🛎 包廂客人需求（${P.length}）</b>${P.map(q=>`<div style="border-top:1px solid #345;padding:5px 0;font-size:17px"><b style="color:#fc3">${esc(q.room)}</b> ${q.type=='呼叫'?'<b>呼叫 少爺/公主</b>':`${q.random?'🎲 隨機點檯：':'點小姐：'}<b>${(q.girls||[]).map(id=>{const g=G(id);return esc(id)+(g?' '+esc(String(g.name).replace(/^\s*\d+\s*/,'')):'')}).join('、')}</b>`} <small>${ago(q.createdAt)}</small>${q.note?`<div style="font-size:13px">📝 ${esc(q.note)}</div>`:''}${ro?'':`<div style="margin-top:3px">${q.type=='呼叫'?`<button onclick="Food.gq('${q.id}','已處理')" style="background:#2b8;color:#fff">✓ 知道了，馬上去</button>`:`<button onclick="Food.gq('${q.id}','已確認')" style="background:#2b8;color:#fff">✓ 確認（紅勾${q.random?'・隨機':''}）</button> <button onclick="Food.gq('${q.id}','已拒絕')" class=s>✕ 婉拒</button>`}</div>`}</div>`).join('')}</div>`}
 async function gqAct(id,stt){const q=GQ.list.find(z=>z.id==id);if(!q)return;if(lv()<1)return alert('請先登入');
  if(stt=='已確認'){if(lv()<1)return;const x=S.rooms[q.room];if(!x)return alert(`${q.room} 目前沒有開番，請先開番再確認`);const bad=[];
   for(const gid of q.girls||[]){const g=G(gid);if(!g){bad.push(gid);continue}if(g.room&&g.room!=q.room&&!confirm(`${g.id} 目前在 ${g.room}，改到 ${q.room}？`)){bad.push(gid);continue}if(g.room!=q.room)seat(g,q.room,'red');else S.redLog.unshift({t:now(),girl:g.id,room:q.room})}
-  log(`🛎 ${q.room} 客人點小姐確認：${(q.girls||[]).filter(z=>!bad.includes(z)).join('、')||'無'}${bad.length?'（未排：'+bad.join('、')+'）':''}`);save();render()}
- else log(`🛎 ${q.room} ${q.type=='呼叫'?'呼叫 少爺/公主 已處理':'客人點小姐 婉拒'}`);
+  log(`🛎 ${q.room} 客人${q.random?'隨機點檯':'點小姐'}確認：${(q.girls||[]).filter(z=>!bad.includes(z)).join('、')||'無'}${bad.length?'（未排：'+bad.join('、')+'）':''}`);save();render()}
+ else log(`🛎 ${q.room} ${q.type=='呼叫'?'呼叫 少爺/公主 已處理':(q.random?'客人隨機點檯 婉拒':'客人點小姐 婉拒')}`);
  ok(updateDoc(doc(db,'guestReq',id),{status:stt,handledBy:st.user.uid,handledByName:st.prof.name,handledAt:Date.now()}))}
 // 可點小姐清單（給包廂平板，只有編號、名字、照片）
 let availLast='';
