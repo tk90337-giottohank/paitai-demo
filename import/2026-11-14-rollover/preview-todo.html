@@ -1,0 +1,66 @@
+<!DOCTYPE html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>昨日未完成事項（示範）</title><style>
+body{font-family:"Noto Sans CJK TC","Noto Sans CJK","Noto Sans TC",sans-serif;margin:0;background:#1b1d24;color:#eee}
+header{padding:8px;background:#2a2d38;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+h1{font-size:16px;margin:0;width:100%}
+button{font-size:15px;padding:8px 12px;border:0;border-radius:6px;background:#3d6df2;color:#fff}
+button.s{background:#555}
+header button{flex:1 1 45%;min-height:44px}
+.demo{background:#3a2a10;color:#fc6;padding:8px 12px;border-radius:8px;font-size:13px;margin:8px 12px}
+.rollban{background:#5a3a12;color:#ffe9c2;padding:10px 12px;margin:8px 12px;border-radius:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:15px}
+.rollban b{font-size:17px}
+.rollban button{min-height:44px;padding:8px 14px;font-size:16px}
+.carry{display:inline-block;background:#a60;color:#fff;border-radius:6px;font-size:12px;padding:1px 6px;margin-left:4px;vertical-align:middle}
+.rooms{display:grid;grid-template-columns:1fr;gap:10px;padding:8px 12px}
+.room{background:#2f3340;border-radius:10px;padding:10px;border:3px solid #3c9}
+.room h3{margin:0 0 4px}
+#rooms{display:grid;grid-template-columns:1fr;gap:10px;padding:8px 12px}
+.g{background:#444;border-radius:5px;padding:3px 6px;margin:3px 0;font-size:14px}
+.spwrap{max-width:640px;margin:0 auto;padding:8px 12px 24px}
+.spwrap h2{font-size:22px;margin:8px 0}
+.spwrap p{line-height:1.55}
+.clist{margin:8px 0;padding-left:22px}
+.citem{margin:10px 0;font-size:15px;line-height:1.45}
+.citem .cdet{color:#bbb;font-size:13px;margin-top:4px}
+.citem .cacts{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0 0}
+.ph{position:sticky;top:0;background:#1b1d24;padding:4px 0;z-index:1}
+.dlg{margin:16px 12px;background:#2a2d38;border-radius:12px;padding:16px}
+.dlg pre{white-space:pre-wrap;font-family:inherit;font-size:15px;line-height:1.5}
+.dlg .row{display:flex;gap:8px;margin-top:12px}
+.dlg .row button{flex:1;min-height:44px}
+</style>
+<body>
+<p class="demo">示範畫面（非 live）：模擬 11/14 07:15 自動換日後，幹部看到的「昨日未完成事項」。系統不會自動派檯，也不會刪除昨日已存檔資料。</p>
+<div class="ph"><button class="s">✕ 關閉</button></div>
+<div class="spwrap">
+<h2>昨日未完成事項</h2>
+<p>系統在每日 07:10 自動換日時記錄。<b>昨日未關帳的包廂仍會顯示在看板上（標示「昨日未結束」），買單會記入原營業日</b>；其餘空房已是新的一天。勾選「已處理」僅作待辦註記，不會刪除歷史台數或已完成買單。</p>
+<p>未處理 <b>12</b> 項</p>
+<h3>待處理</h3>
+<ol class="clist"><li class="citem"><div><b>202 番尚未結束／未買單</b><div class="cdet">人數未填・第 1 番（匯入未結束）・房內無小姐・帳面 0 元<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li><li class="citem"><div><b>201 番尚未結束／未買單</b><div class="cdet">人數 4・第 2 番・小姐 10 翠翠、26 蜜桃・帳面 4,000 元<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li><li class="citem"><div><b>106 買單付款方式為「掛帳」，待確認入帳</b><div class="cdet">金額 8,000 元<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li><li class="citem"><div><b>廚房訂單未完成（201・待做）</b><div class="cdet">烤魷魚<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li><li class="citem"><div><b>102 換包廂後尚未清理完成</b><div class="cdet">客人已換到 201・請確認打掃完畢<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li><li class="citem"><div><b>103 買單後清潔尚未完成</b><div class="cdet">預計 07:20 可用<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li><li class="citem"><div><b>包廂客人需求未處理（201・點小姐）</b><div class="cdet">點小姐 10<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li><li class="citem"><div><b>叫號／回檯未處理（回檯買單・201）</b><div class="cdet">10<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li><li class="citem"><div><b>少爺薪資（日薪結算）需人工補齊</b><div class="cdet">尚未儲存：小費總額／煙／飲料／口香糖／菜與出勤人數<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li><li class="citem"><div><b>昨日營業已有排檯／營收，但出勤尚未登錄</b><div class="cdet">請確認小姐打卡／出勤<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li><li class="citem"><div><b>202 人數尚未填寫（白板）</b><div class="cdet">請補客人數後才能買單<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li><li class="citem"><div><b>尚有 1 組候位未入房</b><div class="cdet">王先生<br>營業日 2026-11-13</div>
+<p class="cacts"><button type="button" class="s">前往處理</button>
+<label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type="checkbox"> 已處理</label></p></div></li></ol>
+<p style="color:#aaa;font-size:13px">權限：幹部以上。此清單由自動換日產生，不會改寫昨日已存檔的營業資料。</p>
+</div></body></html>

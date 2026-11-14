@@ -1,0 +1,67 @@
+<!DOCTYPE html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>自動換日看板（示範）</title><style>
+body{font-family:"Noto Sans CJK TC","Noto Sans CJK","Noto Sans TC",sans-serif;margin:0;background:#1b1d24;color:#eee}
+header{padding:8px;background:#2a2d38;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+h1{font-size:16px;margin:0;width:100%}
+button{font-size:15px;padding:8px 12px;border:0;border-radius:6px;background:#3d6df2;color:#fff}
+button.s{background:#555}
+header button{flex:1 1 45%;min-height:44px}
+.demo{background:#3a2a10;color:#fc6;padding:8px 12px;border-radius:8px;font-size:13px;margin:8px 12px}
+.rollban{background:#5a3a12;color:#ffe9c2;padding:10px 12px;margin:8px 12px;border-radius:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:15px}
+.rollban b{font-size:17px}
+.rollban button{min-height:44px;padding:8px 14px;font-size:16px}
+.carry{display:inline-block;background:#a60;color:#fff;border-radius:6px;font-size:12px;padding:1px 6px;margin-left:4px;vertical-align:middle}
+.rooms{display:grid;grid-template-columns:1fr;gap:10px;padding:8px 12px}
+.room{background:#2f3340;border-radius:10px;padding:10px;border:3px solid #3c9}
+.room h3{margin:0 0 4px}
+#rooms{display:grid;grid-template-columns:1fr;gap:10px;padding:8px 12px}
+.g{background:#444;border-radius:5px;padding:3px 6px;margin:3px 0;font-size:14px}
+.spwrap{max-width:640px;margin:0 auto;padding:8px 12px 24px}
+.spwrap h2{font-size:22px;margin:8px 0}
+.spwrap p{line-height:1.55}
+.clist{margin:8px 0;padding-left:22px}
+.citem{margin:10px 0;font-size:15px;line-height:1.45}
+.citem .cdet{color:#bbb;font-size:13px;margin-top:4px}
+.citem .cacts{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0 0}
+.ph{position:sticky;top:0;background:#1b1d24;padding:4px 0;z-index:1}
+.dlg{margin:16px 12px;background:#2a2d38;border-radius:12px;padding:16px}
+.dlg pre{white-space:pre-wrap;font-family:inherit;font-size:15px;line-height:1.5}
+.dlg .row{display:flex;gap:8px;margin-top:12px}
+.dlg .row button{flex:1;min-height:44px}
+
+.rooms{grid-template-columns:1fr}
+@media(min-width:700px){.rooms{grid-template-columns:1fr 1fr}}
+</style>
+<body>
+<p class="demo">示範畫面（非 live）：模擬 11/14 07:15 已自動換成新營業日。空房是新的一天；未買單的包廂仍顯示並標「昨日未結束」。黃條為待辦橫幅。</p>
+<header>
+<h1>排檯系統</h1>
+<button class="s">今日排檯表</button>
+<button class="s" style="outline:3px solid #fc3;background:#3d6df2">昨日待辦</button>
+<button class="s">包廂重設紀錄</button>
+<button class="s">少爺薪資</button>
+</header>
+<div class="rollban"><b>昨日未完成事項 12 項</b><span>請幹部確認未關帳包廂、清潔、廚房與需手填欄位。不會自動派檯。</span><button type="button">查看待辦</button></div>
+<div class="rooms">
+<div class="room"><h3>201 <span class="carry">昨日未結束</span></h3>
+<div>4 人・第 2 節・至 08:00</div>
+<div style="font-size:14px;color:#fd5">高粱・帳 $4,000</div>
+<div class="g">藍筆 10 翠翠</div><div class="g">紅筆 26 蜜桃</div>
+<button>派檯</button> <button class="s">續番</button> <button class="s">白板</button>
+<button style="background:#c80">買單結帳</button>
+<button class="s">重設包廂</button>
+</div>
+<div class="room"><h3>202 <span class="carry">昨日未結束</span></h3>
+<div>待補 人・第 1 節・匯入未結束</div>
+<div style="font-size:14px;color:#fd5">・帳 $0</div>
+<button>派檯</button> <button class="s">白板</button>
+<button style="background:#c80">買單結帳</button>
+<button class="s">重設包廂</button>
+</div>
+<div class="room" style="border-color:#444"><h3>103</h3>
+<div style="color:#fc3">清潔中・07:20 可用</div>
+<button class="s">清潔完成</button>
+<button class="s">重設包廂</button>
+</div>
+</div>
+</body></html>

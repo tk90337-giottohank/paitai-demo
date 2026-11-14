@@ -1,0 +1,43 @@
+<!DOCTYPE html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>重設包廂確認（示範）</title><style>
+body{font-family:"Noto Sans CJK TC","Noto Sans CJK","Noto Sans TC",sans-serif;margin:0;background:#1b1d24;color:#eee}
+header{padding:8px;background:#2a2d38;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+h1{font-size:16px;margin:0;width:100%}
+button{font-size:15px;padding:8px 12px;border:0;border-radius:6px;background:#3d6df2;color:#fff}
+button.s{background:#555}
+header button{flex:1 1 45%;min-height:44px}
+.demo{background:#3a2a10;color:#fc6;padding:8px 12px;border-radius:8px;font-size:13px;margin:8px 12px}
+.rollban{background:#5a3a12;color:#ffe9c2;padding:10px 12px;margin:8px 12px;border-radius:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:15px}
+.rollban b{font-size:17px}
+.rollban button{min-height:44px;padding:8px 14px;font-size:16px}
+.carry{display:inline-block;background:#a60;color:#fff;border-radius:6px;font-size:12px;padding:1px 6px;margin-left:4px;vertical-align:middle}
+.rooms{display:grid;grid-template-columns:1fr;gap:10px;padding:8px 12px}
+.room{background:#2f3340;border-radius:10px;padding:10px;border:3px solid #3c9}
+.room h3{margin:0 0 4px}
+#rooms{display:grid;grid-template-columns:1fr;gap:10px;padding:8px 12px}
+.g{background:#444;border-radius:5px;padding:3px 6px;margin:3px 0;font-size:14px}
+.spwrap{max-width:640px;margin:0 auto;padding:8px 12px 24px}
+.spwrap h2{font-size:22px;margin:8px 0}
+.spwrap p{line-height:1.55}
+.clist{margin:8px 0;padding-left:22px}
+.citem{margin:10px 0;font-size:15px;line-height:1.45}
+.citem .cdet{color:#bbb;font-size:13px;margin-top:4px}
+.citem .cacts{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0 0}
+.ph{position:sticky;top:0;background:#1b1d24;padding:4px 0;z-index:1}
+.dlg{margin:16px 12px;background:#2a2d38;border-radius:12px;padding:16px}
+.dlg pre{white-space:pre-wrap;font-family:inherit;font-size:15px;line-height:1.5}
+.dlg .row{display:flex;gap:8px;margin-top:12px}
+.dlg .row button{flex:1;min-height:44px}
+</style>
+<body>
+<p class="demo">示範畫面（非 live）：幹部在包廂功能列點「重設包廂」後的確認內容。需幹部以上。不會刪除已完成買單或已記入台數。</p>
+<div class="dlg">
+<h2 style="margin-top:0">重設包廂 201？</h2>
+<pre>進行中的番將被清空（4 人・第 2 番・帳面 4,000 元・小姐 10、26）
+進行中的番不會記入台數、也不會產生買單
+已完成的買單與已記入的台數不會刪除，並會留下可還原的快照
+
+確定重設？</pre>
+<div class="row"><button class="s">取消</button><button>確定重設</button></div>
+</div>
+</body></html>

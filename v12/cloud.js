@@ -1,9 +1,9 @@
-// v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
+// v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,browserLocalPersistence,setPersistence} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
 const app=initializeApp(firebaseConfig),auth=getAuth(app);
 const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
@@ -35,7 +35,7 @@ function fail(e){console.warn(e);st.err=e.code=='permission-denied'?'權限不�
 function startSync(){stopSync();foodSub();
  if(isKit()){openKitchen();status();return}
  st.unsub.push(onSnapshot(doc(db,'config','settings'),snap=>{if(snap.metadata.hasPendingWrites)return;st.inited=snap.exists();
-  if(snap.exists()&&applyFields(snap.data(),st.last.set,SETTINGS))rerender();if(snap.exists()&&lv()>=3&&S.cfg){const cur=roomList(),miss=FOOD_ROOMS.filter(r=>!cur.includes(r));if(miss.length){S.cfg.rooms=cur.concat(miss).join(',');log('包廂清單補上：'+miss.join(','));save()}}status();if(!st.inited&&lv()>=4)banner()},fail));
+  if(snap.exists()&&applyFields(snap.data(),st.last.set,SETTINGS))rerender();if(snap.exists()&&lv()>=3&&S.cfg){const cur=roomList(),miss=FOOD_ROOMS.filter(r=>!cur.includes(r));if(miss.length){S.cfg.rooms=cur.concat(miss).join(',');log('包廂清單補上：'+miss.join(','));save()}}status();if(!st.inited&&lv()>=4)banner();if(st.inited){syncServerTime();if(typeof maybeDayRoll==='function')setTimeout(()=>maybeDayRoll({reason:'sync'}),600)}},fail));
  subDay(S.openDay||bizDay(now()));
  if(lv()>=2){
   st.unsub.push(onSnapshot(collection(db,'hist'),qs=>{if(qs.metadata.hasPendingWrites)return;const h={};qs.forEach(d=>{h[d.id]=JSON.parse(d.data().json);st.last.hist[d.id]=d.data().json});S.hist=Object.assign(S.hist||{},h);for(const k of Object.keys(S.hist))if(!h[k]&&st.last.hist[k]){delete S.hist[k];delete st.last.hist[k]}rerender()},fail));
@@ -281,5 +281,62 @@ window.openLoginLogs=openLoginLogs;
 
 window.openHelp=()=>pageOpen(HELP);
 window.openLogin=()=>st.user?openAccount():loginUI();
-window.Cloud={ver:"v12.7.1",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv};
+
+// ---- v12.12 伺服器時間＋換日鎖（Spark 無排程，由任一職員裝置觸發）----
+st.timeOffset=0;st.pongAt=0;
+async function syncServerTime(){
+ const id=S.openDay||((typeof bizDay==='function')?bizDay(Date.now()):null);if(!id)return;
+ try{
+  if(lv()>=1&&!TVMODE){
+   const ref=doc(db,'days',id);
+   await setDoc(ref,{_pong:serverTimestamp()},{merge:true});
+   const snap=await getDoc(ref);const ts=snap.exists()&&snap.data()._pong;
+   if(ts&&ts.toMillis){st.timeOffset=ts.toMillis()-Date.now();st.pongAt=Date.now()}
+  }else{
+   const snap=await getDoc(doc(db,'days',id));const ts=snap.exists()&&snap.data()._pong;
+   if(ts&&ts.toMillis){st.timeOffset=ts.toMillis()-Date.now();st.pongAt=Date.now()}
+  }
+ }catch(e){console.warn('syncServerTime',e)}
+}
+function serverNow(){if(!st.pongAt||Date.now()-st.pongAt>15*60000)syncServerTime();return Date.now()+(st.timeOffset||0)}
+function parseRoll(v){if(!v)return null;if(typeof v==='object')return v;try{return JSON.parse(v)}catch(e){return null}}
+async function tryDayRoll(from,to){
+ if(!st.user||TVMODE||lv()<1||st.inited!==true)return{ok:false,reason:'no-write'};
+ if(!from||!to||from==to)return{ok:false,reason:'same'};
+ const ref=doc(db,'days',to);
+ try{
+  const won=await runTransaction(db,async tx=>{
+   const snap=await tx.get(ref);
+   const cur=parseRoll(snap.exists()?snap.data().dayRoll:null);
+   const age=cur&&cur.at?Date.now()-cur.at:9e99;
+   if(cur&&cur.status==='done'&&cur.from===from)return false;
+   if(cur&&cur.status==='done')return false;
+   if(cur&&cur.status==='pending'&&age<120000&&cur.uid!==st.user.uid)return false;
+   tx.set(ref,{dayRoll:J({status:'pending',from,to,at:Date.now(),by:(st.prof&&st.prof.name)||'',uid:st.user.uid})},{merge:true});
+   return true
+  });
+  return{ok:true,won:!!won}
+ }catch(e){console.warn('tryDayRoll',e);return{ok:false,reason:e.code||String(e)}}
+}
+async function markDayRollDone(from,to){
+ if(lv()<1||TVMODE)return;
+ const rec=J({status:'done',from,to,at:Date.now(),by:(st.prof&&st.prof.name)||'',uid:st.user.uid});
+ try{await setDoc(doc(db,'days',to),{dayRoll:rec},{merge:true});st.last.day.dayRoll=rec}catch(e){console.warn(e)}
+}
+async function followDayRoll(from,to){
+ try{const snap=await getDoc(doc(db,'days',to));const cur=parseRoll(snap.exists()?snap.data().dayRoll:null);return!!(cur&&cur.status==='done'&&(!from||cur.from===from||cur.to===to))}catch(e){return false}
+}
+function followDay(id){if(!id)return;if(st.dayId!=id)subDay(id)}
+async function flushTo(id){
+ if(!st.user||TVMODE||lv()<1||st.inited!==true)throw new Error('cannot-flush');
+ if(id!=st.dayId)subDay(id);
+ const dch={};for(const k of Object.keys(S))if(isDayKey(k))dch[k]=J(S[k]);
+ if(S.carryover)dch.carryover=J(S.carryover);
+ Object.assign(st.last.day,dch);
+ st.pending++;status();
+ try{await setDoc(doc(db,'days',id),dch,{merge:true})}finally{st.pending=Math.max(0,st.pending-1);status()}
+ if(S.hist){for(const [d,v] of Object.entries(S.hist)){const j=J(v);if(st.last.hist[d]===j)continue;if(lv()<2&&st.last.hist[d]!==undefined)continue;st.last.hist[d]=j;try{await setDoc(doc(db,'hist',d),{json:j,by:st.user.uid,at:Date.now()})}catch(e){console.warn(e)}}}
+}
+
+window.Cloud={ver:"v12.12",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,serverNow,syncServerTime,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo};
 status();
