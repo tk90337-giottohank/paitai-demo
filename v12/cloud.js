@@ -1,4 +1,4 @@
-// v12.20 介面繁中＋越南文上下並列（清爽間距）
+// v12.21 改名（幹部+）＋101 加回＋匯入自動報班＋客人可點名單含在檯（忙碌）
 // v12.18 照片壓縮上傳＋分塊＋辨識佇列
 // v12.16（過期換日不把已關帳舊房寫進今日；小姐報班頁幹部不導走）＋v12.15（拿掉 Apple 登入；打卡地圖／5 公尺）＋v12.14（打卡／請假／週排班、小姐獨立報班、Google 登入、客人點檯 QR）＋v12.13（新店 7 包廂清單；停用舊房不刪歷史）＋v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
@@ -12,7 +12,7 @@ const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:pe
 if(EMU){connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});connectFirestoreEmulator(db,'127.0.0.1',8080)}
 const DOMAIN='paitai-system.local',mail=id=>String(id).trim().toLowerCase()+'@'+DOMAIN;
 const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'特殊':5,'tv':0,'kitchen':0,'room':0,'pending':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r=='room'?'房間平板':r=='pending'?'待核准':r;const ROLE_ALL=['小姐','少爺','幹部','經理','老闆','特殊','tv','kitchen','room','pending'];
-const LOCAL=new Set(['cur','op','users','usersExample','impSnap','wsSeq']);
+const LOCAL=new Set(['cur','op','users','usersExample','impSnap','wsSeq','rosterNames','renameLog']);
 const SETTINGS=['cfg','wines','catalog','cb','attVer','cutVer','cleanVer','imp1026','beerVer','sheetLearn'];
 const isDayKey=k=>!LOCAL.has(k)&&!SETTINGS.includes(k)&&!['hist','wineStore','wsLog','ledger'].includes(k);
 const J=v=>JSON.stringify(v===undefined?null:v);
@@ -34,12 +34,17 @@ function applyFields(data,bucket,keys){let ch=false;for(const k of keys){if(!(k 
 function subDay(id){if(st.dayUnsub)st.dayUnsub();st.dayId=id;st.last.day={};
  st.dayUnsub=onSnapshot(doc(db,'days',id),snap=>{if(snap.metadata.hasPendingWrites)return;
   if(!snap.exists()){if(st.inited&&lv()>=1)push(true);return}
-  const d=snap.data();if(applyFields(d,st.last.day,Object.keys(d)))rerender()},e=>fail(e))}
+  const d=snap.data();if(applyFields(d,st.last.day,Object.keys(d))){if(typeof applyRosterNames==='function')applyRosterNames();rerender()}},e=>fail(e))}
 function fail(e){console.warn(e);st.err=e.code=='permission-denied'?'權限不足':'連線錯誤';status()}
 function startSync(){stopSync();foodSub();
  if(isKit()){openKitchen();status();return}
  st.unsub.push(onSnapshot(doc(db,'config','settings'),snap=>{if(snap.metadata.hasPendingWrites)return;st.inited=snap.exists();
   if(snap.exists()&&applyFields(snap.data(),st.last.set,SETTINGS))rerender();status();if(!st.inited&&lv()>=4)banner();if(st.inited){syncServerTime();if(typeof maybeDayRoll==='function')setTimeout(()=>maybeDayRoll({reason:'sync'}),600)}},fail));
+ st.unsub.push(onSnapshot(doc(db,'config','roster'),snap=>{if(snap.metadata.hasPendingWrites)return;if(!snap.exists())return;const d=snap.data()||{};
+  try{S.rosterNames=typeof d.names==='string'?JSON.parse(d.names):(d.names||S.rosterNames||{})}catch(e){}
+  try{S.renameLog=typeof d.log==='string'?JSON.parse(d.log):(d.log||S.renameLog||[])}catch(e){}
+  st.last.roster=J({names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:d.at,by:d.by});
+  if(typeof applyRosterNames==='function')applyRosterNames();rerender()},fail));
  subDay(S.openDay||bizDay(now()));
  if(isOps()){subGirlCheckin();subHr()}
  if(lv()>=2){
@@ -52,12 +57,14 @@ function stopSync(){F.unsub.forEach(u=>u());F.unsub=[];st.unsub.forEach(u=>u());
 // ---- 由 S 寫回雲端（只寫有變動的欄位）----
 function push(now_){if(!st.user||TVMODE||!isOps())return;clearTimeout(st.timer);st.timer=null;if(now_)return flush();st.timer=setTimeout(flush,600);status()}
 function flush(){st.timer=null;if(!st.user||st.inited!==true||!isOps()){status();return}
+ if(typeof applyRosterNames==='function')applyRosterNames();
  const id=S.openDay||bizDay(now());if(id!=st.dayId)subDay(id);
  // 當日
  const dch={};for(const k of Object.keys(S))if(isDayKey(k)){const j=J(S[k]);if(st.last.day[k]!==j){dch[k]=j}}
  if(Object.keys(dch).length){const size=Object.values(dch).reduce((a,v)=>a+v.length,0);if(size>900000){st.err='當日資料過大';status()}Object.assign(st.last.day,dch);ok(setDoc(doc(db,'days',id),dch,{merge:true}))}
  // 設定（經理以上）
  if(lv()>=3){const sch={};for(const k of SETTINGS){const j=J(S[k]);if(st.last.set[k]!==j)sch[k]=j}if(Object.keys(sch).length){Object.assign(st.last.set,sch);ok(setDoc(doc(db,'config','settings'),sch,{merge:true}))}}
+ if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user.uid};const j=J(rec);if(st.last.roster!==j){st.last.roster=j;ok(setDoc(doc(db,'config','roster'),rec))}}
  // 歷史
  for(const [d,v] of Object.entries(S.hist||{})){const j=J(v);if(st.last.hist[d]===j)continue;if(lv()<2&&st.last.hist[d]!==undefined)continue;st.last.hist[d]=j;ok(setDoc(doc(db,'hist',d),{json:j,by:st.user.uid,at:Date.now()}))}
  if(lv()>=3)for(const d of Object.keys(st.last.hist))if(!(S.hist||{})[d]){delete st.last.hist[d];ok(deleteDoc(doc(db,'hist',d)))}
@@ -295,8 +302,14 @@ async function gqAct(id,stt){const q=GQ.list.find(z=>z.id==id);if(!q)return;if(l
  ok(updateDoc(doc(db,'guestReq',id),{status:stt,handledBy:st.user.uid,handledByName:st.prof.name,handledAt:Date.now()}))}
 // 可點小姐清單（給包廂平板，只有編號、名字、照片）
 let availLast='';
-setInterval(()=>{if(!st.user||!isOps()||TVMODE||st.inited!==true||!S.girls)return;const d=bizDay(now()),X=(S.dayExt||{})[d]||{},early=X.early||{};
- const list=S.girls.filter(g=>g.on&&!g.gone&&!g.room&&!g.leave&&!early[g.id]&&g.status!='下班'&&!(X.others||[]).includes(g.id)&&!(g.priv)).map(g=>({id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{})}));
+function buildAvailList(){if(typeof guestAvailList==='function')return guestAvailList();
+ const d=bizDay(now()),X=(S.dayExt||{})[d]||{},early=X.early||{};
+ return (S.girls||[]).filter(g=>g&&g.on&&!g.gone&&!g.leave&&g.status!='下班'&&!(early&&early[g.id])&&!((X.others||[]).includes(g.id))).map(g=>{
+  const room=g.room||(g.priv&&g.priv.room)||'';
+  let busyRoom=room;if(!busyRoom){for(const r in (S.rooms||{})){if(((S.rooms[r].bans)||[]).some(b=>b&&b.includes(g.id))){busyRoom=r;break}}}
+  return{id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{}),...(busyRoom?{busy:true,room:String(busyRoom)}:{})}})}
+setInterval(()=>{if(!st.user||!isOps()||TVMODE||st.inited!==true||!S.girls)return;const d=bizDay(now());
+ const list=buildAvailList();
  const j=JSON.stringify({list,d});if(j==availLast)return;availLast=j;ok(setDoc(doc(db,'public','avail'),{list,day:d,at:Date.now()}));syncGuestTokenViews()},5000);
 async function seedDrinks(L){if(L.some(m=>m.cat=='酒水'))return;const b=writeBatch(db);let n=100;(S.wines||[]).forEach((w,i)=>{if(!w||!w.name)return;b.set(doc(db,'menu','w'+String(i+1).padStart(2,'0')),{zh:w.name,vn:'',price:+w.price||0,cat:'酒水',on:true,ord:n++})});
  [['百威','beerAdd_百威'],['金牌','beerAdd_金牌'],['海尼根','beerAdd_海尼根']].forEach(([k,c],i)=>b.set(doc(db,'menu','b'+(i+1)),{zh:k+'（一手）',vn:'',price:+((S.cfg||{})[c])||0,cat:'酒水',on:true,ord:n++}));await ok(b.commit());log('餐點：由酒單建立「酒水」分類（待確認）')}
@@ -626,7 +639,7 @@ async function writeTokenViews(t,room){
   // use same list as public/avail
   const d=S.openDay||(typeof bizDay==='function'?bizDay(now()):'');
   const X=(S.dayExt||{})[d]||{},early=X.early||{};
-  const list=(S.girls||[]).filter(g=>g.on&&!g.gone&&!g.room&&!g.leave&&!early[g.id]&&g.status!='下班'&&!(X.others||[]).includes(g.id)&&!(g.priv)).map(g=>({id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{})}));
+  const list=buildAvailList();
   const menu=(window.Food&&Food.state&&Food.state.menu)||[];
   await ok(setDoc(doc(db,'guestTokens',t,'view','avail'),{list,day:d,room,at:Date.now()}));
   await ok(setDoc(doc(db,'guestTokens',t,'view','menu'),{list:menu.filter(m=>m&&m.on!==false).map(m=>({id:m.id,zh:m.zh,vn:m.vn,en:m.en,th:m.th,price:m.price,cat:m.cat,short:m.short})),at:Date.now()}));
@@ -736,5 +749,5 @@ async function getSheetImport(id){
   return d.exists()?Object.assign({id:d.id},d.data()):null;
 }
 
-window.Cloud={ver:"v12.20",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport};
+window.Cloud={ver:"v12.21",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();

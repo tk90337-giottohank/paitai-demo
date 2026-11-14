@@ -193,6 +193,10 @@ function subs(){
     G.day=bizDay(Date.now());
     subMine();draw();
   },f));
+  G.unsub.push(onSnapshot(doc(db,'config','roster'),s=>{
+    try{let n=s.exists()?s.data().names:null;if(typeof n==='string')n=JSON.parse(n);G.rosterNames=n&&typeof n==='object'?n:{}}catch(_){G.rosterNames=G.rosterNames||{}}
+    draw(true);
+  },f));
   if(G.staffMode){
     const day=()=>G.day||bizDay(Date.now());
     G.unsub.push(onSnapshot(doc(db,'days',day()),s=>{
@@ -315,7 +319,7 @@ function drawStaff(){
   const onIds=new Set(list.filter(x=>x.on).map(x=>String(x.girlId)));
   const pick=G.pickId||'';
   const picked=roster.find(g=>String(g.id)===String(pick));
-  const nm=g=>String((g&&(g.name||g.nm))||'').replace(/^\s*\d+\s*號?\s*/,'');
+  const nm=g=>{const id=String((g&&g.id)||'');const off=(G.rosterNames||{})[id]||(G.rosterNames||{})[id.padStart(2,'0')];return String(off||(g&&(g.name||g.nm))||'').replace(/^\s*\d+\s*號?\s*/,'')};
   $('who').textContent=(G.prof.name||'')+' · '+(G.prof.role==='特殊'?'冠廷':G.prof.role);
   $('main').innerHTML=`
     <div class=clock>${T('today')} <b>${esc(day)}</b> · ${T('clock')} ${hm(Date.now())}（07:10）</div>

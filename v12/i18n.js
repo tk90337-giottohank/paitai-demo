@@ -4,7 +4,7 @@ const HAN=/\p{Script=Han}/u;
 const VI=/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ]/;
 const DATA=global.__I18N_DATA__||{strings:{},templates:[],skip:[],corrections:[]};
 const STRINGS=Object.assign({
-  '列印':'In','關閉':'Đóng','登入中':'Đang đăng nhập'
+  '列印':'In','關閉':'Đóng','登入中':'Đang đăng nhập','改名':'Đổi tên','新藝名':'Nghệ danh mới','確認改名':'Xác nhận đổi tên','改名紀錄':'Nhật ký đổi tên','請輸入藝名':'Vui lòng nhập nghệ danh','名字沒有變更':'Tên không thay đổi','小姐名冊（編輯／新增／離職）':'Danh sách tiếp viên (sửa / thêm / nghỉ việc)'
 }, DATA.strings||{});
 const SKIP=new Set(DATA.skip||['冠廷']);
 SKIP.add('冠廷');
@@ -263,6 +263,6 @@ if(typeof document!=='undefined'){
   setTimeout(hook,0);setTimeout(hook,800);setTimeout(hook,2000);
 }
 
-global.I18N={t,tTpl,schedule,fixCallBoard,pair,boxText,stripEmoji,viFor,ver:'12.20'};
+global.I18N={t,tTpl,schedule,fixCallBoard,pair,boxText,stripEmoji,viFor,ver:'12.21'};
 global.t=t;
 })(typeof window!=='undefined'?window:globalThis);

@@ -1,5 +1,5 @@
 rules_version = '2';
-// 排檯系統 paitai-system — Firestore 安全規則（v12.18）
+// 排檯系統 paitai-system — Firestore 安全規則（v12.21）
 // 角色：小姐/少爺=1 < 幹部=2 < 經理=3 < 老闆=4 < 特殊（冠廷）=5；tv=唯讀看板（0）；pending=待核准（0）
 // 小姐只能走獨立報班頁，不能讀寫營業日主檔；只讀自己的報班／台數，只寫自己的報班紀錄
     // users 文件需帶 rank 欄位且必須等於 rank(role)（供查詢過濾）
@@ -37,6 +37,11 @@ service cloud.firestore {
     match /config/settings {
       allow read: if reader() || isHostess();
       allow write: if lvl() >= 3;
+    }
+    // v12.21 小姐顯示名（依編號；幹部以上可寫，低權限不可改名）
+    match /config/roster {
+      allow read: if reader() || isHostess();
+      allow write: if lvl() >= 2;
     }
     // 首次啟用標記：與第一位老闆帳號同一批寫入，之後不可改
     match /config/boot {

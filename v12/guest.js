@@ -1,4 +1,4 @@
-// v12.20.1 hotfix：QR 模式 draw() 不再因沒有 G.prof 而空白；四語首頁維持原樣
+// v12.21 可點名單含在檯（標忙碌）；QR 模式 draw hotfix 仍有效
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
@@ -91,14 +91,15 @@ function statusHtml(){const R=G.reqs.slice(0,6),O=G.orders.slice(0,6);if(!R.leng
  return`<div class=st><b>目前狀態</b>${R.map(q=>`<div>${new Date(q.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} ${q.type=='呼叫'?'呼叫 少爺/公主':q.type=='續番選擇'?('續番：'+(q.renewChoice=='keep'?'維持原樣':'更換小姐')):((q.random?'🎲 隨機點檯 ':'點小姐 ')+(q.girls||[]).map(esc).join('、'))}<span class="tag ${ST[q.status]?.[1]||'t0'}">${ST[q.status]?.[0]||esc(q.status)}</span></div>`).join('')}${O.map(o=>`<div>${new Date(o.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} ${o.items.map(i=>esc(i.name)+'×'+i.qty).join('、')}<span class="tag ${OST[o.status]?.[1]||'t0'}">${OST[o.status]?.[0]||esc(o.status)}</span></div>`).join('')}</div>`}
 function draw(soft){if(!G.tokenMode&&!G.prof)return;const m=$('main');if(!m)return;if(soft&&document.activeElement&&document.activeElement.classList.contains('note'))return;const note=document.querySelector('.note');const nv=note?note.value:'';
  if(G.view=='home')m.innerHTML=`<div class=home><button class="big b1" onclick="GU.go('girls')">💃 點小姐<small>Chọn tiếp viên<br>Choose hostess<br>เลือกพนักงานต้อนรับ</small></button><button class="big b5" onclick="GU.go('random')">🎲 隨機點檯<small>Chọn ngẫu nhiên<br>Random Pick<br>เลือกแบบสุ่ม</small></button><button class="big b2" onclick="GU.go('food')">🍽 點菜<small>Gọi món<br>Order food<br>สั่งอาหาร</small></button><button class="big b3" onclick="GU.go('drink')">🍾 點酒<small>Gọi đồ uống<br>Order drinks<br>สั่งเครื่องดื่ม</small></button><button class="big b4" onclick="GU.call()">🛎 呼叫 少爺/公主<small>Gọi phục vụ<br>Call staff<br>เรียกพนักงาน</small></button></div>${G.tokenMode?'':`<p style="text-align:center;margin-top:12px"><button class=back type=button onclick="GU.showQr()">📱 出 QR 給客人掃描</button></p>`}${statusHtml()}`;
- else if(G.view=='girls'){const A=G.avail;m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> 點小姐（可複選）</h2>${A.length?`<div class=cards>${A.map(g=>`<div class="card ${G.sel.has(g.id)?'sel':''}" onclick="GU.pick('${esc(g.id)}')">${g.photo?`<img src="${esc(g.photo)}" alt="">`:''}<div class=no>${esc(g.id)}</div><div class=nm>${esc(g.name)}</div></div>`).join('')}</div>`:'<p style="font-size:22px">目前沒有可點的小姐，請按「呼叫 少爺/公主」。</p>'}
+ else if(G.view=='girls'){const A=G.avail||[],free=A.filter(g=>!g.busy);m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> 點小姐（可複選）</h2>${A.length?`<p class=hint>可點 ${free.length} 位${A.length>free.length?'・在檯／忙碌 '+(A.length-free.length)+' 位':''}</p><div class=cards>${A.map(g=>`<div class="card ${G.sel.has(g.id)?'sel':''}${g.busy?' busy':''}" ${g.busy?'':'onclick="GU.pick(\''+esc(g.id)+'\')"'}">${g.photo?`<img src="${esc(g.photo)}" alt="">`:''}<div class=no>${esc(g.id)}</div><div class=nm>${esc(g.name||'')}</div>${g.busy?`<div class=bz>忙碌 / Bận / Busy${g.room?' · '+esc(g.room):''}</div>`:''}</div>`).join('')}</div>`:'<p style="font-size:22px">目前沒有已報班的小姐，請按「呼叫 少爺/公主」。</p>'}
   <div class=bar><input class=note placeholder="備註（選填）" value="${esc(nv)}"><button class=go ${G.sel.size?'':'disabled'} onclick="GU.sendGirls()">送出（${G.sel.size} 位）</button></div>${statusHtml()}`}
- else if(G.view=='random'){const n=Math.max(1,Math.min(5,G.randN||1)),A=G.avail||[],max=A.length;
+ else if(G.view=='random'){const n=Math.max(1,Math.min(5,G.randN||1)),A=G.avail||[],free=A.filter(g=>!g.busy),max=free.length,busyN=A.length-max;
   m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> 隨機點檯</h2>
 <p class=hint>Chọn ngẫu nhiên · Random Pick · เลือกแบบสุ่ม<br>從今日已報班、目前可點的小姐中隨機抽出，送出後由幹部確認排檯。</p>
-<p class=hint>目前可點 <b style="color:#ffcf5a;font-size:26px">${max}</b> 位</p>
+<p class=hint>目前可點 <b style="color:#ffcf5a;font-size:26px">${max}</b> 位${busyN?`　在檯／忙碌 ${busyN} 位`:''}</p>
+${A.length?`<div class=cards>${A.map(g=>`<div class="card${g.busy?' busy':''}"><div class=no>${esc(g.id)}</div><div class=nm>${esc(g.name||'')}</div>${g.busy?`<div class=bz>忙碌 / Bận / Busy${g.room?' · '+esc(g.room):''}</div>`:''}</div>`).join('')}</div>`:''}
 ${max?`<div class=step><span class=lab>要幾位</span><button class=q onclick="GU.rand(-1)">−</button><span class=qn>${n}</span><button class=q onclick="GU.rand(1)">＋</button></div>
-<button class=go style="width:100%;min-height:64px" onclick="GU.sendRandom()">抽出並送出</button>`:'<p class=warn>目前沒有可點的小姐，請按「呼叫 少爺/公主」。</p>'}
+<button class=go style="width:100%;min-height:64px" onclick="GU.sendRandom()">抽出並送出</button>`:(A.length?'<p class=warn>目前在檯／忙碌，請按「呼叫 少爺/公主」或等小姐回休息室。</p>':'<p class=warn>目前沒有已報班的小姐，請按「呼叫 少爺/公主」。</p>')}
 ${statusHtml()}`}
  else if(G.view=='randomResult'){const R=G.randResult||{picked:[],want:0,short:false};
   m.innerHTML=`<h2>🎲 隨機點檯結果</h2>
@@ -114,9 +115,9 @@ ${statusHtml()}`}
   <div class=bar><input class=note placeholder="備註（例：不要辣）" value="${esc(nv)}"><button class=go ${n?'':'disabled'} onclick="GU.sendFood()">送出 ${n} 項${sum?`・$${sum}`:''}</button></div>${statusHtml()}`}}
 async function addReq(type,girls,note,extra){return addDoc(collection(db,'guestReq'),Object.assign({room:G.room,type,girls:girls||[],note:note||'',status:'已送出',createdBy:G.tokenMode?'qr':G.user.uid,fromGuest:true,createdAt:Date.now(),businessDay:day()},G.tokenMode?{guestToken:G.token}:{},extra||{}))}
 function shuffle(arr){const x=arr.slice();for(let i=x.length-1;i>0;i--){const buf=new Uint32Array(1);crypto.getRandomValues(buf);const j=buf[0]%(i+1);const t=x[i];x[i]=x[j];x[j]=t}return x}
-window.GU={go:v=>{G.view=v;G.sel.clear();G.q={};if(v!='randomResult')G.randResult=null;draw()},tab:t=>{G.tab=t;draw()},pick:id=>{G.sel.has(id)?G.sel.delete(id):G.sel.add(id);draw()},q:(id,d)=>{G.q[id]=Math.max(0,(G.q[id]||0)+d);if(!G.q[id])delete G.q[id];draw()},
+window.GU={go:v=>{G.view=v;G.sel.clear();G.q={};if(v!='randomResult')G.randResult=null;draw()},tab:t=>{G.tab=t;draw()},pick:id=>{const g=(G.avail||[]).find(x=>x.id==id);if(g&&g.busy)return;G.sel.has(id)?G.sel.delete(id):G.sel.add(id);draw()},q:(id,d)=>{G.q[id]=Math.max(0,(G.q[id]||0)+d);if(!G.q[id])delete G.q[id];draw()},
  rand:d=>{G.randN=Math.max(1,Math.min(5,(G.randN||1)+d));draw()},
- sendRandom:async()=>{const want=Math.max(1,Math.min(5,G.randN||1)),pool=shuffle(G.avail||[]);if(!pool.length)return flash('目前沒有可點的小姐<br><small>請按「呼叫 少爺/公主」</small>');
+ sendRandom:async()=>{const want=Math.max(1,Math.min(5,G.randN||1)),pool=shuffle((G.avail||[]).filter(g=>!g.busy));if(!pool.length)return flash('目前沒有可點的小姐<br><small>請按「呼叫 少爺/公主」</small>');
   const picked=pool.slice(0,Math.min(want,pool.length)),short=picked.length<want;
   try{await addReq('點小姐',picked.map(g=>g.id),'',{random:true,want});G.randResult={picked,want,short};G.view='randomResult';draw()}catch(e){flash('送出失敗，請呼叫 少爺/公主')}},
  sendGirls:async()=>{const n=(document.querySelector('.note')||{}).value||'';try{await addReq('點小姐',[...G.sel],n.trim());flash('已送出 ✓<br><small>請稍候，幹部確認中</small>');G.view='home';G.sel.clear();draw()}catch(e){flash('送出失敗，請呼叫 少爺/公主')}},
