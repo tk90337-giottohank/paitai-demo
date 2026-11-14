@@ -1,0 +1,46 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>打卡紀錄</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><style>*{box-sizing:border-box}body{margin:0;background:#151018;color:#f4eef2;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif}
+header{background:linear-gradient(90deg,#3a1450,#1d1030);padding:14px 16px;font-size:20px;font-weight:800}
+.card{background:#221a2c;margin:12px;padding:14px;border-radius:16px}
+label{display:block;margin:8px 0 4px;font-size:15px}input{width:100%;min-height:44px;font-size:16px;border-radius:10px;border:0;padding:8px}
+button{min-height:48px;border:0;border-radius:14px;font-size:17px;font-weight:800;padding:10px 14px;color:#fff}
+.in{background:#2a8}.s{background:#443}.g{background:#fff;color:#222;width:100%}
+.hint{color:#aab;font-size:13px;line-height:1.45}
+#storeMap,.punchmap{height:220px;width:100%;border-radius:12px;background:#1a1520;margin:8px 0}
+.punchcard{background:#1c1626;border:1px solid #3a3144;border-radius:14px;padding:10px 12px;margin:10px 0}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #3a3144;padding:6px;text-align:left}
+.daytot{background:#1e2a22;border:1px solid #3a5;color:#cfe;padding:8px 10px;border-radius:10px}
+</style>
+<header>上下班打卡</header>
+<div class=card>
+<p>今日營業日 <b>2026-11-14</b>（07:10 分界）· 目前：<b>已上班</b></p>
+<p class=hint>店家範圍：半徑 5 公尺（座標 25.0339640, 121.5644680）。明顯超出仍可打卡，會標記給幹部審核。手機 GPS 精確度常常大於 5 公尺，每次都會記錄並顯示。</p>
+<div style="display:flex;gap:8px"><button class=in>上班打卡</button><button class=s style="background:#c45">下班打卡</button></div>
+<h3>我的今日紀錄</h3>
+<div class=punchcard>
+  <div><b>15:26</b>　上班　可能超出（GPS 誤差內）</div>
+  <div>經緯度 25.0339800, 121.5645000　距店 4 公尺　GPS 精確度 ±12 公尺</div>
+  <div id=pm1 class=punchmap></div>
+  <div style="font-size:13px"><a href="https://www.google.com/maps?q=25.03398,121.5645" style="color:#9cf">開啟地圖</a></div>
+</div>
+<h3>幹部：今日全部打卡紀錄</h3>
+<div class=punchcard>
+  <div><b>少爺 01 S1</b>　15:26　上班　可能超出（GPS 誤差內）</div>
+  <div>經緯度 25.0339800, 121.5645000　距店 4 公尺　GPS 精確度 ±12 公尺</div>
+  <div id=pm2 class=punchmap></div>
+</div>
+</div>
+<script>
+const plat=25.03398,plng=121.5645,slat=25.033964,slng=121.564468;
+function m(id){
+  const map=L.map(id,{scrollWheelZoom:false}).setView([plat,plng],19);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap'}).addTo(map);
+  L.marker([plat,plng]).addTo(map);
+  L.circle([plat,plng],{radius:12,color:'#c80',weight:1,dashArray:'4,4',fill:false}).addTo(map);
+  L.circleMarker([slat,slng],{radius:6,color:'#36f',fillColor:'#36f',fillOpacity:1}).addTo(map);
+  L.circle([slat,slng],{radius:5,color:'#36f',weight:1,fillColor:'#36f',fillOpacity:0.15}).addTo(map);
+  setTimeout(()=>map.invalidateSize(),200);
+}
+m('pm1');m('pm2');
+</script>

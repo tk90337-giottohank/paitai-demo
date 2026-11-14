@@ -1,8 +1,8 @@
-// v12.14 小姐報班獨立頁（中／越／英／泰）；07:10 營業日；只看自己的資料
+// v12.15 小姐報班（Google＋編號密碼；已取消 Apple）
 import {firebaseConfig} from '../firebase-config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence,
-  GoogleAuthProvider,OAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,updateProfile} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+  GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,updateProfile} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {initializeFirestore,persistentLocalCache,connectFirestoreEmulator,doc,getDoc,setDoc,updateDoc,collection,onSnapshot,query,where} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
 const EMU=/[?&]emu=1/.test(location.search);
@@ -104,7 +104,6 @@ function loginUI(msg){
   $('ov').innerHTML=`<div class=box><h2>${T('login')}</h2>
     ${msg?`<p class=err>${esc(msg)}</p>`:''}
     <button class="btn g" id=gGo type=button>${T('google')}</button>
-    <button class="btn a" id=aGo type=button>${T('apple')}</button>
     <p style="text-align:center;color:#887;font-size:13px;margin:10px 0">${T('or')}</p>
     <input id=sId placeholder="${T('id')}" autocapitalize=none autocomplete=username>
     <input id=sPw type=password placeholder="${T('pw')}" autocomplete=current-password>
@@ -113,19 +112,18 @@ function loginUI(msg){
   const go=async()=>{try{$('sGo').disabled=true;await signInWithEmailAndPassword(auth,mail($('sId').value),$('sPw').value)}catch(e){loginUI(e.code=='auth/network-request-failed'?T('net'):T('bad'))}};
   $('sGo').onclick=go;$('sPw').onkeydown=e=>{if(e.key==='Enter')go()};
   $('gGo').onclick=()=>social('google');
-  $('aGo').onclick=()=>social('apple');
 }
 
 async function social(kind){
+  if(kind==='apple')return loginUI('目前僅提供 Google 與編號密碼登入。');
   try{
-    const p=kind==='apple'?new OAuthProvider('apple.com'):new GoogleAuthProvider();
-    if(kind==='apple'){p.addScope('email');p.addScope('name')}
+    const p=new GoogleAuthProvider();
     if(useRedirect())await signInWithRedirect(auth,p);
     else await signInWithPopup(auth,p);
   }catch(e){
     const c=e.code||'';
     if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request')return;
-    if(c==='auth/operation-not-allowed')loginUI(kind==='apple'?T('fail')+'Apple 登入尚未開啟（需 Apple Developer）':T('fail')+'Google 登入尚未開啟');
+    if(c==='auth/operation-not-allowed')loginUI(T('fail')+'Google 登入尚未開啟');
     else loginUI(T('fail')+(c||e.message||''));
   }
 }

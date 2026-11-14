@@ -1,8 +1,8 @@
-// v12.14（打卡／請假／週排班、小姐獨立報班、Google／Apple、客人點檯 QR）＋v12.13（新店 7 包廂清單；停用舊房不刪歷史）＋v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
+// v12.15（拿掉 Apple 登入；打卡地圖／5 公尺）＋v12.14（打卡／請假／週排班、小姐獨立報班、Google 登入、客人點檯 QR）＋v12.13（新店 7 包廂清單；停用舊房不刪歷史）＋v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,updateProfile,browserLocalPersistence,setPersistence,GoogleAuthProvider,OAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,linkWithPopup,linkWithRedirect} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,updateProfile,browserLocalPersistence,setPersistence,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,linkWithPopup,linkWithRedirect} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
 const app=initializeApp(firebaseConfig),auth=getAuth(app);
@@ -72,8 +72,7 @@ const ov=document.createElement('div');ov.id='fbLogin';ov.style.cssText='positio
 function isiOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
 function useRedirect(){return isiOS()||window.matchMedia('(display-mode: standalone)').matches}
 function loginUI(msg){ov.style.display='block';ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>🔐 排檯系統登入</h2>${msg?`<p style="color:#f88">${msg}</p>`:''}
- <button id=fbG type=button style="width:100%;font-size:18px;padding:12px;margin:0 0 8px;background:#fff;color:#222;border-radius:10px;border:0;min-height:48px">使用 Google 登入</button>
- <button id=fbA type=button style="width:100%;font-size:18px;padding:12px;margin:0 0 16px;background:#000;color:#fff;border-radius:10px;border:0;min-height:48px">使用 Apple 登入</button>
+ <button id=fbG type=button style="width:100%;font-size:18px;padding:12px;margin:0 0 16px;background:#fff;color:#222;border-radius:10px;border:0;min-height:48px">使用 Google 登入</button>
  <p style="text-align:center;color:#888;font-size:13px;margin:0 0 12px">或用員工編號與密碼</p>
  <label>員工編號<br><input id=fbId autocomplete=username autocapitalize=none style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <label>密碼<br><input id=fbPw type=password autocomplete=current-password style="width:100%;font-size:20px;padding:8px"></label><br><br>
@@ -81,17 +80,17 @@ function loginUI(msg){ov.style.display='block';ov.innerHTML=`<div style="max-wid
  <p style="font-size:14px"><a href="#" id=fbBoot style="color:#9cf">首次啟用：建立最高權限帳號</a>・<a href="#" id=fbHelp style="color:#9cf">登入教學</a>・<a href="girl/" style="color:#9cf">小姐報班頁</a>${EMU?'・<b style="color:#e90">模擬器</b>':''}</p></div>`;
  const go=async()=>{const id=fbId.value,pw=fbPw.value;if(!id||!pw)return;st.manual=true;fbGo.disabled=true;fbGo.textContent='登入中…';try{await signInWithEmailAndPassword(auth,mail(id),pw)}catch(e){loginUI(e.code=='auth/network-request-failed'?'網路連不上，請稍後再試':'員工編號或密碼錯誤')}};
  fbGo.onclick=go;fbPw.onkeydown=e=>{if(e.key=='Enter')go()};fbHelp.onclick=e=>{e.preventDefault();helpOverlay()};fbBoot.onclick=e=>{e.preventDefault();bootUI()};
- fbG.onclick=()=>socialLogin('google');fbA.onclick=()=>socialLogin('apple')}
+ fbG.onclick=()=>socialLogin('google')}
 async function socialLogin(kind){
   st.manual=true;
+  if(kind==='apple')return loginUI('目前僅提供 Google 與編號密碼登入。');
   try{
-    const p=kind==='apple'?new OAuthProvider('apple.com'):new GoogleAuthProvider();
-    if(kind==='apple'){p.addScope('email');p.addScope('name')}
+    const p=new GoogleAuthProvider();
     if(useRedirect())await signInWithRedirect(auth,p);else await signInWithPopup(auth,p);
   }catch(e){
     const c=e.code||'';
     if(c=='auth/popup-closed-by-user'||c=='auth/cancelled-popup-request')return;
-    if(c=='auth/operation-not-allowed')loginUI(kind==='apple'?'Apple 登入尚未開啟。需要冠廷的 Apple Developer 帳號才能設定（見說明）。':'Google 登入尚未在 Firebase 開啟，請稍後再試或先用編號密碼。');
+    if(c=='auth/operation-not-allowed')loginUI('Google 登入尚未在 Firebase 開啟，請稍後再試或先用編號密碼。');
     else loginUI('社群登入失敗：'+(c||e.message||''));
   }
 }
@@ -104,7 +103,7 @@ function pendingUI(){
   const p=st.prof||{};
   ov.style.display='block';
   ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>等候核准</h2>
-    <p>你的 Google／Apple 帳號已進來，但還沒有權限。請等冠廷、老闆或經理核准，並綁定身分（小姐編號或少爺編號）。</p>
+    <p>你的 Google 帳號已進來，但還沒有權限。請等冠廷、老闆或經理核准，並綁定身分（小姐編號或少爺編號）。</p>
     <p>目前顯示名稱：<b>${esc(p.name||'')}</b></p>
     <label>修改顯示名稱<br><input id=pdNm value="${esc(p.name||'')}" style="width:100%;font-size:18px;padding:8px;min-height:44px"></label>
     <p><button id=pdSv type=button style="font-size:18px;padding:10px 16px;min-height:44px">儲存名字</button>
@@ -136,7 +135,7 @@ function openAccount(){const f=document.getElementById('dform'),p=st.prof||{};
  f.innerHTML=`<h3>👤 ${esc(p.name||'')}${p.role=='特殊'?'':'（'+esc(RL(p.role||''))+'）'}</h3><p style="font-size:13px">員工編號：${esc(p.staffId||'')}${p.email?'<br>'+esc(p.email):''}</p>
  <p><label>顯示名稱（可自行修改，不能改權限）<br><input id=myNm value="${esc(p.name||'')}" style="width:100%;max-width:280px;font-size:16px;padding:8px;min-height:44px"></label>
  <button type=button onclick="Cloud.setMyName()">儲存名字</button></p>
- <p><button type=button class=s onclick="Cloud.linkSocial('google')">綁定 Google</button> <button type=button class=s onclick="Cloud.linkSocial('apple')">綁定 Apple</button></p>
+ <p><button type=button class=s onclick="Cloud.linkSocial('google')">綁定 Google</button></p>
  <button type=button onclick="Cloud.changePw()">改密碼</button> ${lv()>=3?'<button type=button onclick="Cloud.openStaff()">人員帳號管理</button> ':''}${lv()>=4?'<button type=button class=s onclick="Cloud.migrate()">上傳本機資料到雲端（一次性）</button> ':''}<button type=button class=s onclick="openHelp()">登入教學</button>
  <p><button value=out>登出／切換人員</button> <button class=s value="">關閉</button></p>`;
  const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue=='out'){log(`登出：${p.name}`);signOut(auth)}};if(d.open)d.close();d.showModal()}
@@ -160,7 +159,7 @@ function staffTbl(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv());return`<t
 function drawStaff(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv()&&r!='pending');
  const pend=USERS.filter(u=>u.role=='pending'&&!u.disabled);
  pageOpen(`<h2>人員帳號管理</h2>
- ${pend.length?`<div style="background:#3a2a10;padding:12px;border-radius:12px;margin-bottom:12px"><h3>待核准的 Google／Apple 登入（${pend.length}）</h3>
+ ${pend.length?`<div style="background:#3a2a10;padding:12px;border-radius:12px;margin-bottom:12px"><h3>待核准的 Google 登入（${pend.length}）</h3>
   ${pend.map(u=>`<p style="margin:8px 0;padding:8px;background:#221">${esc(u.name)} <small>${esc(u.email||u.staffId||'')}</small><br>
     <input id="apId_${u.uid}" placeholder="員工編號或小姐編號（如 08 或 S01）" style="min-height:40px">
     <select id="apRole_${u.uid}">${roles.map(r=>`<option value="${r}" ${r=='小姐'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>
@@ -510,7 +509,7 @@ async function writePunch(rec){
     type:rec.type,day,at:Date.now(),clientAt:Date.now(),posTs:rec.posTs||Date.now(),
     lat:rec.lat,lng:rec.lng,accuracy:rec.accuracy,address:rec.address||'',
     distM:rec.distM,inRange:rec.inRange,flags,ua:rec.ua||'',
-    review:flags.length?'待審':'',
+    review:(rec.needsReview===false?'':(rec.needsReview||flags.length)?'待審':''),
   };
   await ok(setDoc(doc(db,'punches',id),row));
   if(rec.type==='in')markPresent(sid,day);
@@ -553,15 +552,15 @@ async function setMyName(){
 }
 async function linkSocial(kind){
   if(!auth.currentUser)return;
+  if(kind==='apple')return alert('目前僅提供綁定 Google。');
   try{
-    const p=kind==='apple'?new OAuthProvider('apple.com'):new GoogleAuthProvider();
-    if(kind==='apple'){p.addScope('email');p.addScope('name')}
+    const p=new GoogleAuthProvider();
     if(useRedirect())await linkWithRedirect(auth.currentUser,p);else await linkWithPopup(auth.currentUser,p);
-    alert('已綁定 '+(kind==='apple'?'Apple':'Google'));
+    alert('已綁定 Google');
   }catch(e){
     const c=e.code||'';
     if(c=='auth/credential-already-in-use')alert('這個帳號已經綁給其他使用者');
-    else if(c=='auth/operation-not-allowed')alert(kind==='apple'?'Apple 登入尚未開啟（需 Apple Developer）':'Google 登入尚未開啟');
+    else if(c=='auth/operation-not-allowed')alert('Google 登入尚未開啟');
     else if(c=='auth/popup-closed-by-user')return;
     else alert('綁定失敗：'+(c||e.message));
   }
@@ -682,5 +681,5 @@ function paintQrBtns(){
 }
 
 
-window.Cloud={ver:"v12.14",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL};
+window.Cloud={ver:"v12.15",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL};
 status();

@@ -1,0 +1,32 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>店家設定／打卡地圖</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><style>*{box-sizing:border-box}body{margin:0;background:#151018;color:#f4eef2;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif}
+header{background:linear-gradient(90deg,#3a1450,#1d1030);padding:14px 16px;font-size:20px;font-weight:800}
+.card{background:#221a2c;margin:12px;padding:14px;border-radius:16px}
+label{display:block;margin:8px 0 4px;font-size:15px}input{width:100%;min-height:44px;font-size:16px;border-radius:10px;border:0;padding:8px}
+button{min-height:48px;border:0;border-radius:14px;font-size:17px;font-weight:800;padding:10px 14px;color:#fff}
+.in{background:#2a8}.s{background:#443}.g{background:#fff;color:#222;width:100%}
+.hint{color:#aab;font-size:13px;line-height:1.45}
+#storeMap,.punchmap{height:220px;width:100%;border-radius:12px;background:#1a1520;margin:8px 0}
+.punchcard{background:#1c1626;border:1px solid #3a3144;border-radius:14px;padding:10px 12px;margin:10px 0}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #3a3144;padding:6px;text-align:left}
+.daytot{background:#1e2a22;border:1px solid #3a5;color:#cfe;padding:8px 10px;border-radius:10px}
+</style>
+<header>店家設定</header>
+<div class=card>
+<label>店家打卡緯度（可空白，未填會提示）</label><input id=lat value="25.033964">
+<label>店家打卡經度</label><input id=lng value="121.564468">
+<label>打卡範圍半徑（公尺，預設 5）</label><input id=rad value="5">
+<p class=hint>地圖預覽（OpenStreetMap，不必 API 金鑰）：藍點與圓圈＝店家打卡範圍（預設 5 公尺）。手機 GPS 精確度常常大於 5 公尺，打卡會一併記錄並顯示精確度；明顯超出範圍才標記給幹部審核，不會擋打卡。</p>
+<div id=storeMap></div>
+<p id=meta class=daytot>店家座標 25.0339640, 121.5644680　範圍半徑 5 公尺</p>
+<p><button class=in type=button>用目前位置設為店家打卡座標</button></p>
+</div>
+<script>
+const lat=25.033964,lng=121.564468,r=5;
+const map=L.map('storeMap',{scrollWheelZoom:false}).setView([lat,lng],19);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap'}).addTo(map);
+L.marker([lat,lng]).addTo(map);
+L.circle([lat,lng],{radius:r,color:'#2a8',weight:2,fillColor:'#2a8',fillOpacity:0.25}).addTo(map);
+setTimeout(()=>map.invalidateSize(),200);
+</script>
