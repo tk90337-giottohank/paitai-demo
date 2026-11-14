@@ -1,6 +1,7 @@
 rules_version = '2';
-// 排檯系統 paitai-system — Firestore 安全規則（v12）
-// 角色：小姐/少爺=1 < 幹部=2 < 經理=3 < 老闆=4 < 特殊（冠廷）=5；tv=唯讀看板（0）
+// 排檯系統 paitai-system — Firestore 安全規則（v12.14）
+// 角色：小姐/少爺=1 < 幹部=2 < 經理=3 < 老闆=4 < 特殊（冠廷）=5；tv=唯讀看板（0）；pending=待核准（0）
+// 小姐只能走獨立報班頁，不能讀寫營業日主檔；只讀自己的報班／台數，只寫自己的報班紀錄
     // users 文件需帶 rank 欄位且必須等於 rank(role)（供查詢過濾）
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -11,17 +12,30 @@ service cloud.firestore {
     function rank(r) { return r == '特殊' ? 5 : r == '老闆' ? 4 : r == '經理' ? 3 : r == '幹部' ? 2 : (r == '少爺' || r == '小姐') ? 1 : 0; }
     function lvl() { return active() ? rank(me().role) : 0; }
     function isTV() { return active() && me().role == 'tv'; }
-    function staff() { return lvl() >= 1; }
+    function isHostess() { return active() && me().role == '小姐'; }
+    function myGirl() { return me().get('girlId', me().get('staffId', '')); }
+    function staff() { return lvl() >= 1 && me().role != '小姐' && me().role != 'pending'; }
     function reader() { return staff() || isTV(); }
-    function validRole(r) { return r in ['小姐', '少爺', '幹部', '經理', '老闆', '特殊', 'tv', 'kitchen', 'room']; }
+    function validRole(r) { return r in ['小姐', '少爺', '幹部', '經理', '老闆', '特殊', 'tv', 'kitchen', 'room', 'pending']; }
     function isRoomTab() { return active() && me().role == 'room' && me().get('room', '') != ''; }
     function myRoom() { return me().room; }
     function isKitchen() { return active() && me().role == 'kitchen'; }
     function rankOk(d) { return d.rank == rank(d.role); }
 
+    // ---- v12.14 客人點檯 QR（未登入、持 token 只能動該房）----
+    function guestTok(t) {
+      return t is string && t.size() >= 16
+        && exists(/databases/$(database)/documents/guestTokens/$(t))
+        && get(/databases/$(database)/documents/guestTokens/$(t)).data.valid == true
+        && request.time.toMillis() < get(/databases/$(database)/documents/guestTokens/$(t)).data.expiresAtMs;
+    }
+    function guestTokRoom(t) {
+      return get(/databases/$(database)/documents/guestTokens/$(t)).data.room;
+    }
+
     // 店家設定、訊息卡、酒單：所有登入人員可讀，經理/老闆可寫
     match /config/settings {
-      allow read: if reader();
+      allow read: if reader() || isHostess();
       allow write: if lvl() >= 3;
     }
     // 首次啟用標記：與第一位老闆帳號同一批寫入，之後不可改
@@ -40,14 +54,28 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/config/boot)
         && getAfter(/databases/$(database)/documents/config/boot).data.uid == uid
         && request.resource.data.role in ['特殊', '老闆'] && rankOk(request.resource.data) && request.resource.data.get('disabled', false) == false;
+      // Google／Apple 新登入：先建立 pending，等冠廷／老闆／經理核准並綁定身分
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'pending' && request.resource.data.rank == 0
+        && request.resource.data.get('disabled', false) == false
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40;
       // 老闆以上建立其他人員；不能建立比自己高的角色（只有特殊能建立特殊）
       allow create: if lvl() >= 4 && request.auth.uid != uid && validRole(request.resource.data.role)
+        && request.resource.data.role != 'pending'
         && rank(request.resource.data.role) <= lvl() && rankOk(request.resource.data);
-      // 經理/老闆改角色或停用：不能改自己、不能改比自己高的人、不能給超過自己的角色
+      // 本人可改顯示名稱（不能改角色、編號、權限）
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40;
+      // 經理以上改角色或停用；pending 核准時可補員工編號／小姐編號
       allow update: if lvl() >= 3 && request.auth.uid != uid
         && rank(resource.data.role) <= lvl()
-        && validRole(request.resource.data.role) && rank(request.resource.data.role) <= lvl()
-        && request.resource.data.staffId == resource.data.staffId && rankOk(request.resource.data);
+        && validRole(request.resource.data.role) && request.resource.data.role != 'pending'
+        && rank(request.resource.data.role) <= lvl()
+        && (request.resource.data.staffId == resource.data.staffId || resource.data.role == 'pending')
+        && rankOk(request.resource.data);
       allow delete: if false;
     }
     // 當日營業資料（每個營業日一份文件）
@@ -94,11 +122,19 @@ service cloud.firestore {
     }
     // 點餐單（v12.2）：少爺以上點餐；廚房只能改狀態（製作中／已出餐）
     match /orders/{id} {
-      allow read: if reader() || isKitchen() || (isRoomTab() && resource.data.room == myRoom());
+      allow read: if reader() || isKitchen() || (isRoomTab() && resource.data.room == myRoom()) || (request.auth == null && resource.data.guestToken is string && guestTok(resource.data.guestToken) && resource.data.room == guestTokRoom(resource.data.guestToken));
       // 包廂平板（v12.6）：只能替自己綁定的包廂點餐／點酒
       allow create: if isRoomTab() && request.resource.data.room == myRoom()
         && request.resource.data.createdBy == request.auth.uid && request.resource.data.status == '待做'
         && request.resource.data.fromGuest == true
+        && request.resource.data.items is list && request.resource.data.items.size() > 0 && request.resource.data.items.size() <= 60
+        && request.resource.data.businessDay is string && request.resource.data.createdAt is number;
+      allow create: if request.auth == null
+        && request.resource.data.guestToken is string
+        && guestTok(request.resource.data.guestToken)
+        && request.resource.data.room == guestTokRoom(request.resource.data.guestToken)
+        && request.resource.data.fromGuest == true
+        && request.resource.data.status == '待做'
         && request.resource.data.items is list && request.resource.data.items.size() > 0 && request.resource.data.items.size() <= 60
         && request.resource.data.businessDay is string && request.resource.data.createdAt is number;
       allow create: if staff() && request.resource.data.createdBy == request.auth.uid
@@ -135,10 +171,20 @@ service cloud.firestore {
     }
     // 包廂平板（v12.6）：客人需求（點小姐／呼叫 少爺/公主）
     match /guestReq/{id} {
-      allow read: if reader() || (isRoomTab() && resource.data.room == myRoom());
+      allow read: if reader() || (isRoomTab() && resource.data.room == myRoom()) || (request.auth == null && resource.data.guestToken is string && guestTok(resource.data.guestToken) && resource.data.room == guestTokRoom(resource.data.guestToken));
       allow create: if isRoomTab() && request.resource.data.room == myRoom()
         && request.resource.data.createdBy == request.auth.uid && request.resource.data.status == '已送出'
-        && request.resource.data.type in ['點小姐', '呼叫']
+        && request.resource.data.type in ['點小姐', '呼叫', '續番選擇']
+        && request.resource.data.girls is list && request.resource.data.girls.size() <= 10
+        && request.resource.data.businessDay is string && request.resource.data.createdAt is number;
+      // 客人掃 QR（未登入）：只能替 token 綁定的包廂送出需求
+      allow create: if request.auth == null
+        && request.resource.data.guestToken is string
+        && guestTok(request.resource.data.guestToken)
+        && request.resource.data.room == guestTokRoom(request.resource.data.guestToken)
+        && request.resource.data.fromGuest == true
+        && request.resource.data.status == '已送出'
+        && request.resource.data.type in ['點小姐', '呼叫', '續番選擇']
         && request.resource.data.girls is list && request.resource.data.girls.size() <= 10
         && request.resource.data.businessDay is string && request.resource.data.createdAt is number;
       allow update: if staff()
@@ -147,6 +193,80 @@ service cloud.firestore {
       allow delete: if lvl() >= 3;
     }
     // 操作紀錄：只能新增，不能改不能刪
+
+
+    match /guestTokens/{t} {
+      // 文件 ID 即密鑰：允許單筆讀取（不可 list）；過期或作廢仍可讀以顯示失效原因
+      allow get: if true;
+      allow list: if staff() || isRoomTab();
+      allow create: if (lvl() >= 2 || isRoomTab())
+        && request.resource.data.token == t
+        && request.resource.data.room is string
+        && request.resource.data.valid == true
+        && request.resource.data.expiresAtMs is number
+        && (!isRoomTab() || request.resource.data.room == myRoom());
+      allow update: if lvl() >= 2
+        || (isRoomTab() && resource.data.room == myRoom() && request.resource.data.room == myRoom());
+      allow delete: if lvl() >= 3;
+      match /view/{id} {
+        allow read: if guestTok(t) || staff() || isRoomTab();
+        allow write: if staff() || (isRoomTab() && get(/databases/$(database)/documents/guestTokens/$(t)).data.room == myRoom());
+      }
+    }
+    // ---- v12.14 小姐自助報班（獨立頁；自動匯入今日排檯）----
+    match /girlCheckin/{id} {
+      allow read: if staff() || isRoomTab()
+        || (isHostess() && resource.data.girlId == myGirl());
+      allow create: if isHostess()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.girlId == myGirl()
+        && request.resource.data.day is string
+        && request.resource.data.on is bool;
+      allow update: if isHostess()
+        && resource.data.girlId == myGirl() && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.girlId == myGirl()
+        && request.resource.data.day == resource.data.day
+        && request.resource.data.on is bool;
+      // 幹部處理「已有番不能自行取消」等標記
+      allow update: if lvl() >= 2;
+      allow delete: if isHostess() && resource.data.girlId == myGirl() && resource.data.uid == request.auth.uid
+        || lvl() >= 3;
+    }
+    // 小姐只看自己的台數／歷史（由排檯端寫入，不經手營業日主檔）
+    match /girlHist/{id} {
+      allow read: if staff() || (isHostess() && resource.data.girlId == myGirl());
+      allow create, update: if staff();
+      allow delete: if lvl() >= 3;
+    }
+    // 少爺／公主打卡（含 GPS）；本人讀自己的，幹部以上讀全部並可標記審核
+    match /punches/{id} {
+      allow read: if staff() && (lvl() >= 2 || resource.data.uid == request.auth.uid);
+      allow create: if staff() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.type in ['in', 'out']
+        && request.resource.data.day is string
+        && request.resource.data.lat is number
+        && request.resource.data.lng is number;
+      allow update: if lvl() >= 2
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['review', 'reviewBy', 'reviewByName', 'reviewNote', 'reviewAt']);
+      allow delete: if false;
+    }
+    // 請假：本人申請／撤回；幹部以上核准或駁回
+    match /leaves/{id} {
+      allow read: if staff() && (lvl() >= 2 || resource.data.uid == request.auth.uid);
+      allow create: if staff() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == '待核准'
+        && request.resource.data.start is string && request.resource.data.end is string;
+      allow update: if staff() && resource.data.uid == request.auth.uid
+        && resource.data.status == '待核准'
+        && request.resource.data.status == '已取消'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow update: if lvl() >= 2
+        && resource.data.status == '待核准'
+        && request.resource.data.status in ['已核准', '已駁回']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedBy', 'decidedByName', 'decisionNote', 'decidedAt', 'updatedAt']);
+      allow delete: if false;
+    }
     match /audit/{id} {
       allow read: if lvl() >= 3;
       allow create: if staff() && request.resource.data.uid == request.auth.uid;

@@ -1,21 +1,23 @@
-// v12.13（新店 7 包廂清單；停用舊房不刪歷史）＋v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
+// v12.14（打卡／請假／週排班、小姐獨立報班、Google／Apple、客人點檯 QR）＋v12.13（新店 7 包廂清單；停用舊房不刪歷史）＋v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,browserLocalPersistence,setPersistence} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,updateProfile,browserLocalPersistence,setPersistence,GoogleAuthProvider,OAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,linkWithPopup,linkWithRedirect} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
 const app=initializeApp(firebaseConfig),auth=getAuth(app);
 const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
 if(EMU){connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});connectFirestoreEmulator(db,'127.0.0.1',8080)}
 const DOMAIN='paitai-system.local',mail=id=>String(id).trim().toLowerCase()+'@'+DOMAIN;
-const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'特殊':5,'tv':0,'kitchen':0,'room':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r=='room'?'房間平板':r;const ROLE_ALL=['小姐','少爺','幹部','經理','老闆','特殊','tv','kitchen','room'];
+const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'特殊':5,'tv':0,'kitchen':0,'room':0,'pending':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r=='room'?'房間平板':r=='pending'?'待核准':r;const ROLE_ALL=['小姐','少爺','幹部','經理','老闆','特殊','tv','kitchen','room','pending'];
 const LOCAL=new Set(['cur','op','users','usersExample','impSnap','wsSeq']);
 const SETTINGS=['cfg','wines','catalog','cb','attVer','cutVer','cleanVer','imp1026','beerVer','sheetLearn'];
 const isDayKey=k=>!LOCAL.has(k)&&!SETTINGS.includes(k)&&!['hist','wineStore','wsLog','ledger'].includes(k);
 const J=v=>JSON.stringify(v===undefined?null:v);
 const st={user:null,prof:null,inited:null,dayId:null,unsub:[],dayUnsub:null,last:{set:{},day:{},hist:{},wine:{},led:{},wlog:new Set()},timer:null,pending:0,err:'',online:navigator.onLine};
 const lv=()=>st.prof&&!st.prof.disabled?RANK[st.prof.role]||0:0;
+const isOps=()=>lv()>=1&&st.prof&&st.prof.role!='小姐'&&st.prof.role!='pending';
+const girlPageUrl=()=>{const p=location.pathname.replace(/index\.html$/,'').replace(/\/?$/,'/');return p+'girl/'+location.search+location.hash};
 // ---- 狀態指示 ----
 function status(){const el=document.getElementById('sync');if(!el)return;let t,c;
  if(!st.user){t='☁ 未登入';c='#888'}else if(st.err){t='⚠ '+st.err;c='#e44'}else if(st.inited===false){t='☁ 雲端尚未初始化';c='#e90'}
@@ -37,6 +39,7 @@ function startSync(){stopSync();foodSub();
  st.unsub.push(onSnapshot(doc(db,'config','settings'),snap=>{if(snap.metadata.hasPendingWrites)return;st.inited=snap.exists();
   if(snap.exists()&&applyFields(snap.data(),st.last.set,SETTINGS))rerender();status();if(!st.inited&&lv()>=4)banner();if(st.inited){syncServerTime();if(typeof maybeDayRoll==='function')setTimeout(()=>maybeDayRoll({reason:'sync'}),600)}},fail));
  subDay(S.openDay||bizDay(now()));
+ if(isOps()){subGirlCheckin();subHr()}
  if(lv()>=2){
   st.unsub.push(onSnapshot(collection(db,'hist'),qs=>{if(qs.metadata.hasPendingWrites)return;const h={};qs.forEach(d=>{h[d.id]=JSON.parse(d.data().json);st.last.hist[d.id]=d.data().json});S.hist=Object.assign(S.hist||{},h);for(const k of Object.keys(S.hist))if(!h[k]&&st.last.hist[k]){delete S.hist[k];delete st.last.hist[k]}rerender()},fail));
   st.unsub.push(onSnapshot(collection(db,'wine'),qs=>{if(qs.metadata.hasPendingWrites)return;const L=[];qs.forEach(d=>{L.push(JSON.parse(d.data().json));st.last.wine[d.id]=d.data().json});L.sort((a,b)=>a.id-b.id);S.wineStore=L;rerender()},fail));
@@ -45,8 +48,8 @@ function startSync(){stopSync();foodSub();
  status()}
 function stopSync(){F.unsub.forEach(u=>u());F.unsub=[];st.unsub.forEach(u=>u());st.unsub=[];if(st.dayUnsub)st.dayUnsub();st.dayUnsub=null}
 // ---- 由 S 寫回雲端（只寫有變動的欄位）----
-function push(now_){if(!st.user||TVMODE||lv()<1)return;clearTimeout(st.timer);st.timer=null;if(now_)return flush();st.timer=setTimeout(flush,600);status()}
-function flush(){st.timer=null;if(!st.user||st.inited!==true||lv()<1){status();return}
+function push(now_){if(!st.user||TVMODE||!isOps())return;clearTimeout(st.timer);st.timer=null;if(now_)return flush();st.timer=setTimeout(flush,600);status()}
+function flush(){st.timer=null;if(!st.user||st.inited!==true||!isOps()){status();return}
  const id=S.openDay||bizDay(now());if(id!=st.dayId)subDay(id);
  // 當日
  const dch={};for(const k of Object.keys(S))if(isDayKey(k)){const j=J(S[k]);if(st.last.day[k]!==j){dch[k]=j}}
@@ -63,16 +66,52 @@ function flush(){st.timer=null;if(!st.user||st.inited!==true||lv()<1){status();r
   if(lv()>=3)for(const k of Object.keys(st.last.led))if(!(S.ledger||[]).some(e=>String(e.id)==k)){delete st.last.led[k];ok(deleteDoc(doc(db,'ledger',k)))}
   for(const e of S.wsLog||[]){const k=`${e.t}-${e.id}-${(e.act||'').length}`;if(st.last.wlog.has(k))continue;st.last.wlog.add(k);ok(setDoc(doc(db,'wineLog',k),{uid:st.user.uid,t:e.t,json:J(e)}))}}
  status()}
-function audit(m){if(!st.user||TVMODE||lv()<1||st.inited!==true)return;addDoc(collection(db,'audit'),{uid:st.user.uid,name:st.prof.name,role:RL(st.prof.role),t:Date.now(),msg:String(m).slice(0,500)}).catch(()=>{})}
+function audit(m){if(!st.user||TVMODE||!isOps()||st.inited!==true)return;addDoc(collection(db,'audit'),{uid:st.user.uid,name:st.prof.name,role:RL(st.prof.role),t:Date.now(),msg:String(m).slice(0,500)}).catch(()=>{})}
 // ---- 登入畫面 ----
 const ov=document.createElement('div');ov.id='fbLogin';ov.style.cssText='position:fixed;inset:0;z-index:9999;background:#14161c;color:#eee;display:none;overflow:auto;padding:24px;font-size:17px';document.body.appendChild(ov);
+function isiOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
+function useRedirect(){return isiOS()||window.matchMedia('(display-mode: standalone)').matches}
 function loginUI(msg){ov.style.display='block';ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>🔐 排檯系統登入</h2>${msg?`<p style="color:#f88">${msg}</p>`:''}
+ <button id=fbG type=button style="width:100%;font-size:18px;padding:12px;margin:0 0 8px;background:#fff;color:#222;border-radius:10px;border:0;min-height:48px">使用 Google 登入</button>
+ <button id=fbA type=button style="width:100%;font-size:18px;padding:12px;margin:0 0 16px;background:#000;color:#fff;border-radius:10px;border:0;min-height:48px">使用 Apple 登入</button>
+ <p style="text-align:center;color:#888;font-size:13px;margin:0 0 12px">或用員工編號與密碼</p>
  <label>員工編號<br><input id=fbId autocomplete=username autocapitalize=none style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <label>密碼<br><input id=fbPw type=password autocomplete=current-password style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <button id=fbGo style="width:100%;font-size:20px;padding:12px">登入</button>
- <p style="font-size:14px"><a href="#" id=fbBoot style="color:#9cf">首次啟用：建立最高權限帳號</a>・<a href="#" id=fbHelp style="color:#9cf">登入教學</a>${EMU?'・<b style="color:#e90">模擬器</b>':''}</p></div>`;
+ <p style="font-size:14px"><a href="#" id=fbBoot style="color:#9cf">首次啟用：建立最高權限帳號</a>・<a href="#" id=fbHelp style="color:#9cf">登入教學</a>・<a href="girl/" style="color:#9cf">小姐報班頁</a>${EMU?'・<b style="color:#e90">模擬器</b>':''}</p></div>`;
  const go=async()=>{const id=fbId.value,pw=fbPw.value;if(!id||!pw)return;st.manual=true;fbGo.disabled=true;fbGo.textContent='登入中…';try{await signInWithEmailAndPassword(auth,mail(id),pw)}catch(e){loginUI(e.code=='auth/network-request-failed'?'網路連不上，請稍後再試':'員工編號或密碼錯誤')}};
- fbGo.onclick=go;fbPw.onkeydown=e=>{if(e.key=='Enter')go()};fbHelp.onclick=e=>{e.preventDefault();helpOverlay()};fbBoot.onclick=e=>{e.preventDefault();bootUI()}}
+ fbGo.onclick=go;fbPw.onkeydown=e=>{if(e.key=='Enter')go()};fbHelp.onclick=e=>{e.preventDefault();helpOverlay()};fbBoot.onclick=e=>{e.preventDefault();bootUI()};
+ fbG.onclick=()=>socialLogin('google');fbA.onclick=()=>socialLogin('apple')}
+async function socialLogin(kind){
+  st.manual=true;
+  try{
+    const p=kind==='apple'?new OAuthProvider('apple.com'):new GoogleAuthProvider();
+    if(kind==='apple'){p.addScope('email');p.addScope('name')}
+    if(useRedirect())await signInWithRedirect(auth,p);else await signInWithPopup(auth,p);
+  }catch(e){
+    const c=e.code||'';
+    if(c=='auth/popup-closed-by-user'||c=='auth/cancelled-popup-request')return;
+    if(c=='auth/operation-not-allowed')loginUI(kind==='apple'?'Apple 登入尚未開啟。需要冠廷的 Apple Developer 帳號才能設定（見說明）。':'Google 登入尚未在 Firebase 開啟，請稍後再試或先用編號密碼。');
+    else loginUI('社群登入失敗：'+(c||e.message||''));
+  }
+}
+async function createPending(u){
+  const name=(u.displayName||(u.email||'').split('@')[0]||'新朋友').slice(0,40);
+  const rec={staffId:('g-'+u.uid.slice(0,10)).toLowerCase(),name,role:'pending',rank:0,disabled:false,createdAt:Date.now(),provider:(u.providerData||[]).map(x=>x.providerId).join(','),email:u.email||''};
+  await setDoc(doc(db,'users',u.uid),rec);return rec;
+}
+function pendingUI(){
+  const p=st.prof||{};
+  ov.style.display='block';
+  ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>等候核准</h2>
+    <p>你的 Google／Apple 帳號已進來，但還沒有權限。請等冠廷、老闆或經理核准，並綁定身分（小姐編號或少爺編號）。</p>
+    <p>目前顯示名稱：<b>${esc(p.name||'')}</b></p>
+    <label>修改顯示名稱<br><input id=pdNm value="${esc(p.name||'')}" style="width:100%;font-size:18px;padding:8px;min-height:44px"></label>
+    <p><button id=pdSv type=button style="font-size:18px;padding:10px 16px;min-height:44px">儲存名字</button>
+       <button id=pdOut type=button class=s style="font-size:18px;padding:10px 16px;min-height:44px">登出</button></p></div>`;
+  pdSv.onclick=async()=>{const n=pdNm.value.trim().slice(0,40);if(!n)return;try{await updateDoc(doc(db,'users',st.user.uid),{name:n});st.prof={...st.prof,name:n};if(S.cur)S.cur.name=n;if(auth.currentUser)updateProfile(auth.currentUser,{displayName:n}).catch(()=>{});alert('已更新名字')}catch(e){alert('無法改名：'+(e.code||e.message))}};
+  pdOut.onclick=()=>signOut(auth);
+}
 function bootUI(msg){ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>首次啟用：建立最高權限帳號</h2><p style="font-size:14px">只能做一次。之後所有帳號都在系統內建立。</p><label>帳號類型<br><select id=bRole style="width:100%;font-size:20px;padding:8px"><option value="特殊" selected>冠廷（最高權限）</option><option value="老闆">老闆</option></select></label><br><br>${msg?`<p style="color:#f88">${msg}</p>`:''}
  <label>員工編號（英數）<br><input id=bId autocapitalize=none value="guanting" style="width:100%;font-size:20px;padding:8px"></label><br><br><label>名字<br><input id=bNm value="冠廷" style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <label>密碼（至少 6 碼）<br><input id=bPw type=password autocomplete=new-password style="width:100%;font-size:20px;padding:8px"></label><br><br><button id=bGo style="width:100%;font-size:20px;padding:12px">建立並登入</button> <p><a href="#" id=bBack style="color:#9cf">← 返回登入</a></p></div>`;
@@ -81,17 +120,23 @@ function bootUI(msg){ov.innerHTML=`<div style="max-width:380px;margin:6vh auto">
   let cred;try{cred=await createUserWithEmailAndPassword(auth,mail(id),pw)}catch(e){return bootUI(e.code=='auth/email-already-in-use'?'這個編號已存在，請直接登入':'建立失敗：'+e.code)}
   try{const b=writeBatch(db);const br=bRole.value=='老闆'?'老闆':'特殊';b.set(doc(db,'users',cred.user.uid),{staffId:id.toLowerCase(),name:bNm.value.trim()||RL(br),role:br,rank:RANK[br],disabled:false,createdAt:Date.now()});b.set(doc(db,'config','boot'),{uid:cred.user.uid,at:Date.now()});await b.commit();await savePw(cred.user.uid,pw).catch(()=>{})}
   catch(e){try{await cred.user.delete()}catch(_){}await signOut(auth).catch(()=>{});return bootUI('系統已經啟用過，不能再建立。請用老闆給你的帳號登入。')}}}
+getRedirectResult(auth).catch(()=>{});
 onAuthStateChanged(auth,async u=>{stopSync();st.user=u;st.prof=null;st.inited=null;
  if(!u){S.cur=null;status();loginUI();return}
- let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null}catch(e){p=null}
+ let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null;if(!p)p=await createPending(u)}catch(e){p=null}
  if(!p||p.disabled){await signOut(auth);loginUI(p&&p.disabled?'此帳號已停用，請找老闆':'此帳號沒有權限資料，請找老闆');return}
  if(p.role=='room'){location.replace('guest.html'+location.search);return}
- st.prof=p;S.cur={name:p.name,role:p.role,uid:u.uid,staffId:p.staffId};S.op=p.name;const op=document.getElementById('op');if(op)op.value=p.name;
+ if(p.role=='小姐'){location.replace(girlPageUrl());return}
+ st.prof=p;S.cur={name:p.name,role:p.role,uid:u.uid,staffId:p.staffId,girlId:p.girlId};S.op=p.name;const op=document.getElementById('op');if(op)op.value=p.name;
+ if(p.role=='pending'){pendingUI();status();return}
  ov.style.display='none';startSync();if(location.hash=='#kitchen')openKitchen();rerender();log(`登入：${p.name}${p.role=='特殊'?'':'（'+RL(p.role)+'）'}`);const ty=st.manual?'登入':'自動登入';st.manual=false;loginLog(ty)});
 setPersistence(auth,browserLocalPersistence).catch(()=>{});
 // ---- 帳號選單 / 人員管理 ----
 function openAccount(){const f=document.getElementById('dform'),p=st.prof||{};
- f.innerHTML=`<h3>👤 ${esc(p.name||'')}${p.role=='特殊'?'':'（'+esc(p.role||'')+'）'}</h3><p style="font-size:13px">員工編號：${esc(p.staffId||'')}</p>
+ f.innerHTML=`<h3>👤 ${esc(p.name||'')}${p.role=='特殊'?'':'（'+esc(RL(p.role||''))+'）'}</h3><p style="font-size:13px">員工編號：${esc(p.staffId||'')}${p.email?'<br>'+esc(p.email):''}</p>
+ <p><label>顯示名稱（可自行修改，不能改權限）<br><input id=myNm value="${esc(p.name||'')}" style="width:100%;max-width:280px;font-size:16px;padding:8px;min-height:44px"></label>
+ <button type=button onclick="Cloud.setMyName()">儲存名字</button></p>
+ <p><button type=button class=s onclick="Cloud.linkSocial('google')">綁定 Google</button> <button type=button class=s onclick="Cloud.linkSocial('apple')">綁定 Apple</button></p>
  <button type=button onclick="Cloud.changePw()">改密碼</button> ${lv()>=3?'<button type=button onclick="Cloud.openStaff()">人員帳號管理</button> ':''}${lv()>=4?'<button type=button class=s onclick="Cloud.migrate()">上傳本機資料到雲端（一次性）</button> ':''}<button type=button class=s onclick="openHelp()">登入教學</button>
  <p><button value=out>登出／切換人員</button> <button class=s value="">關閉</button></p>`;
  const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue=='out'){log(`登出：${p.name}`);signOut(auth)}};if(d.open)d.close();d.showModal()}
@@ -111,14 +156,22 @@ async function resetPw(uid){const u=USERS.find(x=>x.uid==uid);if(!canPw(u))retur
 function openStaff(){if(lv()<3)return alert('需經理以上');document.getElementById('dlg').close();
  if(!usersUnsub)usersUnsub=onSnapshot(query(collection(db,'users'),where('rank','<=',lv())),qs=>{USERS=[];qs.forEach(d=>USERS.push({uid:d.id,...d.data()}));USERS.sort((a,b)=>(RANK[b.role]||0)-(RANK[a.role]||0)||a.staffId.localeCompare(b.staffId));redrawTbl()},fail);drawStaff()}
 function staffTbl(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv());return`<table class=sch id=stTbl><tr><th>編號</th><th>名字</th><th>角色</th><th>狀態</th>${lv()>=4?'<th>密碼</th>':''}<th></th></tr>${USERS.map(u=>{const mine=u.uid==st.user.uid,can=!mine&&(RANK[u.role]||0)<=lv();
-  return`<tr><td>${esc(u.staffId)}${u.room?`<br><small>包廂 ${esc(u.room)}</small>`:''}</td><td>${esc(u.name)}</td><td>${can?`<select onchange="Cloud.setRole('${u.uid}',this.value)">${roles.map(r=>`<option value="${r}" ${r==u.role?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>`:esc(RL(u.role))+(mine?'（自己）':'')}</td><td>${u.disabled?'<b style="color:#e44">停用</b>':'啟用'}</td>${lv()>=4?`<td>${canPw(u)?(PWshow[u.uid]?(PW[u.uid]?`<code>${esc(PW[u.uid])}</code>`:'<span style="color:#aaa">未記錄</span>'):'••••')+` <button type=button class=s onclick="Cloud.togglePw('${u.uid}')">${PWshow[u.uid]?'隱藏':'👁 顯示'}</button> <button type=button class=s onclick="Cloud.copyPw('${u.uid}')">複製</button> <button type=button class=s onclick="Cloud.resetPw('${u.uid}')">重設密碼</button>`:'—'}</td>`:''}<td>${can?`<button type=button class=s onclick="Cloud.setDisabled('${u.uid}',${!u.disabled})">${u.disabled?'啟用':'停用'}</button>`:''}</td></tr>`}).join('')}</table>`}
-function drawStaff(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv());
- pageOpen(`<h2>人員帳號管理</h2>${lv()>=4?`<details open><summary>新增帳號（老闆以上）</summary><label>員工編號（英數）<input id=nId autocapitalize=none></label> <label>名字<input id=nNm></label> <label>角色 <select id=nRole>${roles.map(r=>`<option value="${r}" ${r=='少爺'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select></label> <label>初始密碼（≥6）<input id=nPw></label> <button type=button onclick="Cloud.createStaff()">建立</button><p><button type=button onclick="Cloud.createRoomTabs()">🔑 一鍵建立每個包廂的房間平板帳號</button></p><p style="font-size:12px;color:#aaa">TV 看板請建立角色「tv」的帳號（只能看不能改）。</p></details>`:''}
+  return`<tr><td>${esc(u.staffId)}${u.room?`<br><small>包廂 ${esc(u.room)}</small>`:''}${u.girlId?`<br><small>小姐 ${esc(u.girlId)}</small>`:''}${u.email?`<br><small>${esc(u.email)}</small>`:''}</td><td>${esc(u.name)}</td><td>${can?`<select onchange="Cloud.setRole('${u.uid}',this.value)">${roles.map(r=>`<option value="${r}" ${r==u.role?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>`:esc(RL(u.role))+(mine?'（自己）':'')}</td><td>${u.disabled?'<b style="color:#e44">停用</b>':'啟用'}</td>${lv()>=4?`<td>${canPw(u)?(PWshow[u.uid]?(PW[u.uid]?`<code>${esc(PW[u.uid])}</code>`:'<span style="color:#aaa">未記錄</span>'):'••••')+` <button type=button class=s onclick="Cloud.togglePw('${u.uid}')">${PWshow[u.uid]?'隱藏':'👁 顯示'}</button> <button type=button class=s onclick="Cloud.copyPw('${u.uid}')">複製</button> <button type=button class=s onclick="Cloud.resetPw('${u.uid}')">重設密碼</button>`:'—'}</td>`:''}<td>${can?`<button type=button class=s onclick="Cloud.setDisabled('${u.uid}',${!u.disabled})">${u.disabled?'啟用':'停用'}</button>`:''}</td></tr>`}).join('')}</table>`}
+function drawStaff(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv()&&r!='pending');
+ const pend=USERS.filter(u=>u.role=='pending'&&!u.disabled);
+ pageOpen(`<h2>人員帳號管理</h2>
+ ${pend.length?`<div style="background:#3a2a10;padding:12px;border-radius:12px;margin-bottom:12px"><h3>待核准的 Google／Apple 登入（${pend.length}）</h3>
+  ${pend.map(u=>`<p style="margin:8px 0;padding:8px;background:#221">${esc(u.name)} <small>${esc(u.email||u.staffId||'')}</small><br>
+    <input id="apId_${u.uid}" placeholder="員工編號或小姐編號（如 08 或 S01）" style="min-height:40px">
+    <select id="apRole_${u.uid}">${roles.map(r=>`<option value="${r}" ${r=='小姐'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>
+    <button type=button onclick="Cloud.approveUser('${u.uid}')">核准並綁定</button>
+    <button type=button class=s onclick="Cloud.setDisabled('${u.uid}',true)">拒絕／停用</button></p>`).join('')}</div>`:''}
+ ${lv()>=4?`<details open><summary>新增帳號（老闆以上）</summary><label>員工編號（英數）<input id=nId autocapitalize=none></label> <label>名字<input id=nNm></label> <label>角色 <select id=nRole>${roles.map(r=>`<option value="${r}" ${r=='少爺'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select></label> <label>小姐編號（角色選「小姐」時必填，如 08）<input id=nGirl placeholder="08"></label> <label>初始密碼（≥6）<input id=nPw></label> <button type=button onclick="Cloud.createStaff()">建立</button><p><button type=button onclick="Cloud.createRoomTabs()">🔑 一鍵建立每個包廂的房間平板帳號</button></p><p style="font-size:12px;color:#aaa">小姐請走獨立報班頁 <a href="girl/" target="_blank" rel="noopener">/v12/girl/</a>（不能進主系統）。TV 看板請建立角色「tv」的帳號。</p></details>`:''}
  <div class=tw>${staffTbl()}</div>
  <p style="font-size:12px;color:#aaa">密碼：老闆可看老闆以下的人；冠廷可看全部。有記錄密碼的帳號可按「重設密碼」；顯示「未記錄」的舊帳號忘記密碼時，請先停用再建立新編號。</p>`)}
-async function createStaff(){const id=nId.value.trim(),nm=nNm.value.trim()||id,role=nRole.value,pw=nPw.value;let room='';if(role=='room'){room=(prompt('這台房間平板綁定哪個包廂？（例 208）')||'').trim();if(!room)return}if(!/^[A-Za-z0-9._-]+$/.test(id))return alert('員工編號只能用英文、數字');if(pw.length<6)return alert('密碼至少 6 碼');
+async function createStaff(){const id=nId.value.trim(),nm=nNm.value.trim()||id,role=nRole.value,pw=nPw.value;let room='',girlId='';if(role=='room'){room=(prompt('這台房間平板綁定哪個包廂？（例 208）')||'').trim();if(!room)return}if(role=='小姐'){girlId=(document.getElementById('nGirl')&&nGirl.value.trim())||id;if(!girlId)return alert('請填小姐編號（如 08）')}if(role=='pending')return alert('請改選實際角色');if(!/^[A-Za-z0-9._-]+$/.test(id))return alert('員工編號只能用英文、數字');if(pw.length<6)return alert('密碼至少 6 碼');
  const sec=initializeApp(firebaseConfig,'sec'+Date.now()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
- try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid,...(room?{room}:{})});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}）`);alert(`已建立：${id}（${RL(role)}）`)}
+ try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid,...(room?{room}:{}),...(girlId?{girlId}:{})});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}${girlId?'・小姐'+girlId:''}）`);alert(`已建立：${id}（${RL(role)}${girlId?'・小姐編號 '+girlId:''}）`+(role=='小姐'?'\n請使用報班頁：'+girlPageUrl():''))}
  catch(e){alert(e.code=='auth/email-already-in-use'?'此編號已被使用':'建立失敗：'+(e.code||e.message))}finally{deleteApp(sec).catch(()=>{})}}
 // v12.6.1 一鍵建立房間平板帳號（老闆以上；走同一個建立流程，密碼存 secrets）
 async function mkUser(id,nm,role,pw,room){const sec=initializeApp(firebaseConfig,'sec'+Date.now()+Math.random()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
@@ -232,7 +285,7 @@ function gqSub(){F.unsub.push(onSnapshot(query(collection(db,'guestReq'),where('
 let gqEl=null;
 function gqDraw(){if(!gqEl){gqEl=document.createElement('div');gqEl.id='guestQ';gqEl.style.cssText='position:fixed;right:8px;bottom:8px;z-index:940;max-width:min(460px,96vw);display:flex;flex-direction:column;gap:6px';document.body.appendChild(gqEl)}
  const P=GQ.list.filter(q=>q.status=='已送出');if(!P.length){gqEl.innerHTML='';return}const ro=TVMODE||lv()<1;
- gqEl.innerHTML=`<div style="background:#123;border:2px solid #fc3;border-radius:10px;padding:6px 8px;color:#fff;box-shadow:0 2px 10px #000"><b>🛎 包廂客人需求（${P.length}）</b>${P.map(q=>`<div style="border-top:1px solid #345;padding:5px 0;font-size:17px"><b style="color:#fc3">${esc(q.room)}</b> ${q.type=='呼叫'?'<b>呼叫 少爺/公主</b>':`${q.random?'🎲 隨機點檯：':'點小姐：'}<b>${(q.girls||[]).map(id=>{const g=G(id);return esc(id)+(g?' '+esc(String(g.name).replace(/^\s*\d+\s*/,'')):'')}).join('、')}</b>`} <small>${ago(q.createdAt)}</small>${q.note?`<div style="font-size:13px">📝 ${esc(q.note)}</div>`:''}${ro?'':`<div style="margin-top:3px">${q.type=='呼叫'?`<button onclick="Food.gq('${q.id}','已處理')" style="background:#2b8;color:#fff">✓ 知道了，馬上去</button>`:`<button onclick="Food.gq('${q.id}','已確認')" style="background:#2b8;color:#fff">✓ 確認（紅勾${q.random?'・隨機':''}）</button> <button onclick="Food.gq('${q.id}','已拒絕')" class=s>✕ 婉拒</button>`}</div>`}</div>`).join('')}</div>`}
+ gqEl.innerHTML=`<div style="background:#123;border:2px solid #fc3;border-radius:10px;padding:6px 8px;color:#fff;box-shadow:0 2px 10px #000"><b>🛎 包廂客人需求（${P.length}）</b>${P.map(q=>`<div style="border-top:1px solid #345;padding:5px 0;font-size:17px"><b style="color:#fc3">${esc(q.room)}</b> ${q.type=='呼叫'?'<b>呼叫 少爺/公主</b>':q.type=='續番選擇'?('<b>續番：'+(q.renewChoice=='keep'?'維持原樣':'更換小姐')+'</b>'):`${q.random?'🎲 隨機點檯：':'點小姐：'}<b>${(q.girls||[]).map(id=>{const g=G(id);return esc(id)+(g?' '+esc(String(g.name).replace(/^\s*\d+\s*/,'')):'')}).join('、')}</b>`} <small>${ago(q.createdAt)}</small>${q.note?`<div style="font-size:13px">📝 ${esc(q.note)}</div>`:''}${ro?'':`<div style="margin-top:3px">${q.type=='呼叫'?`<button onclick="Food.gq('${q.id}','已處理')" style="background:#2b8;color:#fff">✓ 知道了，馬上去</button>`:`<button onclick="Food.gq('${q.id}','已確認')" style="background:#2b8;color:#fff">✓ 確認（紅勾${q.random?'・隨機':''}）</button> <button onclick="Food.gq('${q.id}','已拒絕')" class=s>✕ 婉拒</button>`}</div>`}</div>`).join('')}</div>`}
 async function gqAct(id,stt){const q=GQ.list.find(z=>z.id==id);if(!q)return;if(lv()<1)return alert('請先登入');
  if(stt=='已確認'){if(lv()<1)return;const x=S.rooms[q.room];if(!x)return alert(`${q.room} 目前沒有開番，請先開番再確認`);const bad=[];
   for(const gid of q.girls||[]){const g=G(gid);if(!g){bad.push(gid);continue}if(g.room&&g.room!=q.room&&!confirm(`${g.id} 目前在 ${g.room}，改到 ${q.room}？`)){bad.push(gid);continue}if(g.room!=q.room)seat(g,q.room,'red');else S.redLog.unshift({t:now(),girl:g.id,room:q.room})}
@@ -241,9 +294,9 @@ async function gqAct(id,stt){const q=GQ.list.find(z=>z.id==id);if(!q)return;if(l
  ok(updateDoc(doc(db,'guestReq',id),{status:stt,handledBy:st.user.uid,handledByName:st.prof.name,handledAt:Date.now()}))}
 // 可點小姐清單（給包廂平板，只有編號、名字、照片）
 let availLast='';
-setInterval(()=>{if(!st.user||lv()<1||TVMODE||st.inited!==true||!S.girls)return;const d=bizDay(now()),X=(S.dayExt||{})[d]||{},early=X.early||{};
+setInterval(()=>{if(!st.user||!isOps()||TVMODE||st.inited!==true||!S.girls)return;const d=bizDay(now()),X=(S.dayExt||{})[d]||{},early=X.early||{};
  const list=S.girls.filter(g=>g.on&&!g.gone&&!g.room&&!g.leave&&!early[g.id]&&g.status!='下班'&&!(X.others||[]).includes(g.id)&&!(g.priv)).map(g=>({id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{})}));
- const j=JSON.stringify({list,d});if(j==availLast)return;availLast=j;ok(setDoc(doc(db,'public','avail'),{list,day:d,at:Date.now()}))},5000);
+ const j=JSON.stringify({list,d});if(j==availLast)return;availLast=j;ok(setDoc(doc(db,'public','avail'),{list,day:d,at:Date.now()}));syncGuestTokenViews()},5000);
 async function seedDrinks(L){if(L.some(m=>m.cat=='酒水'))return;const b=writeBatch(db);let n=100;(S.wines||[]).forEach((w,i)=>{if(!w||!w.name)return;b.set(doc(db,'menu','w'+String(i+1).padStart(2,'0')),{zh:w.name,vn:'',price:+w.price||0,cat:'酒水',on:true,ord:n++})});
  [['百威','beerAdd_百威'],['金牌','beerAdd_金牌'],['海尼根','beerAdd_海尼根']].forEach(([k,c],i)=>b.set(doc(db,'menu','b'+(i+1)),{zh:k+'（一手）',vn:'',price:+((S.cfg||{})[c])||0,cat:'酒水',on:true,ord:n++}));await ok(b.commit());log('餐點：由酒單建立「酒水」分類（待確認）')}
 
@@ -287,7 +340,7 @@ st.timeOffset=0;st.pongAt=0;
 async function syncServerTime(){
  const id=S.openDay||((typeof bizDay==='function')?bizDay(Date.now()):null);if(!id)return;
  try{
-  if(lv()>=1&&!TVMODE){
+  if(isOps()&&!TVMODE){
    const ref=doc(db,'days',id);
    await setDoc(ref,{_pong:serverTimestamp()},{merge:true});
    const snap=await getDoc(ref);const ts=snap.exists()&&snap.data()._pong;
@@ -301,7 +354,7 @@ async function syncServerTime(){
 function serverNow(){if(!st.pongAt||Date.now()-st.pongAt>15*60000)syncServerTime();return Date.now()+(st.timeOffset||0)}
 function parseRoll(v){if(!v)return null;if(typeof v==='object')return v;try{return JSON.parse(v)}catch(e){return null}}
 async function tryDayRoll(from,to){
- if(!st.user||TVMODE||lv()<1||st.inited!==true)return{ok:false,reason:'no-write'};
+ if(!st.user||TVMODE||!isOps()||st.inited!==true)return{ok:false,reason:'no-write'};
  if(!from||!to||from==to)return{ok:false,reason:'same'};
  const ref=doc(db,'days',to);
  try{
@@ -319,7 +372,7 @@ async function tryDayRoll(from,to){
  }catch(e){console.warn('tryDayRoll',e);return{ok:false,reason:e.code||String(e)}}
 }
 async function markDayRollDone(from,to){
- if(lv()<1||TVMODE)return;
+ if(!isOps()||TVMODE)return;
  const rec=J({status:'done',from,to,at:Date.now(),by:(st.prof&&st.prof.name)||'',uid:st.user.uid});
  try{await setDoc(doc(db,'days',to),{dayRoll:rec},{merge:true});st.last.day.dayRoll=rec}catch(e){console.warn(e)}
 }
@@ -328,7 +381,7 @@ async function followDayRoll(from,to){
 }
 function followDay(id){if(!id)return;if(st.dayId!=id)subDay(id)}
 async function flushTo(id){
- if(!st.user||TVMODE||lv()<1||st.inited!==true)throw new Error('cannot-flush');
+ if(!st.user||TVMODE||!isOps()||st.inited!==true)throw new Error('cannot-flush');
  if(id!=st.dayId)subDay(id);
  const dch={};for(const k of Object.keys(S))if(isDayKey(k))dch[k]=J(S[k]);
  if(S.carryover)dch.carryover=J(S.carryover);
@@ -338,5 +391,296 @@ async function flushTo(id){
  if(S.hist){for(const [d,v] of Object.entries(S.hist)){const j=J(v);if(st.last.hist[d]===j)continue;if(lv()<2&&st.last.hist[d]!==undefined)continue;st.last.hist[d]=j;try{await setDoc(doc(db,'hist',d),{json:j,by:st.user.uid,at:Date.now()})}catch(e){console.warn(e)}}}
 }
 
-window.Cloud={ver:"v12.13",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,serverNow,syncServerTime,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo};
+// ---- v12.14 小姐報班自動匯入、打卡／請假、社群綁定、客人 QR ----
+window.HR=window.HR||{punches:[],leaves:[],tokens:[]};
+function girlHasSessions(id,day){
+  if((S.sheetLog||[]).some(e=>e&&e.day==day&&(e.girls||[]).includes(id)))return true;
+  if((S.taiLog||[]).some(e=>e&&e.day==day&&e.girl==id))return true;
+  for(const r of Object.keys(S.rooms||{})){
+    const x=S.rooms[r]; if(!x)continue;
+    const bans=[].concat(...(x.bans||[]));
+    if(bans.includes(id))return true;
+  }
+  return false;
+}
+function applyGirlCheckins(rows){
+  if(!isOps())return;
+  let ch=false;
+  const today=S.openDay||(typeof bizDay==='function'?bizDay(now()):'');
+  S.checkin=S.checkin||{}; S.att=S.att||{}; S.girlCancelReq=S.girlCancelReq||[];
+  (rows||[]).forEach(r=>{
+    const id=String(r.girlId||'').trim(); if(!id)return;
+    const day=r.day; if(!day)return;
+    const g=typeof G==='function'?G(id):null;
+    if(r.on && !r.cancelReq){
+      S.checkin[day]=S.checkin[day]||[];
+      if(!S.checkin[day].some(c=>c.id==id)){
+        S.checkin[day].push({order:S.checkin[day].length+1,id,t:r.at||Date.now(),src:'self'});
+        ch=true;
+      }
+      S.att[day]=S.att[day]||{};
+      if(S.att[day][id]!='上班'){S.att[day][id]='上班';ch=true}
+      if(day==today&&g){
+        if(!g.on){g.on=true;ch=true}
+        if(g.leave){g.leave=false;ch=true}
+        if(!g.clockAt)g.clockAt=r.at||Date.now();
+        if(g.status==='未到'||!g.status)g.status='休息室';
+      }
+    }else if(r.cancelReq || r.on===false){
+      if(girlHasSessions(id,day)){
+        if(r.review!='需幹部處理'){
+          ok(updateDoc(doc(db,'girlCheckin',r.id||(day+'_'+id)),{review:'需幹部處理',on:true,reviewNote:'已有番，不能自行取消',reviewAt:Date.now()}));
+        }
+        if(!S.girlCancelReq.some(x=>x.girlId==id&&x.day==day)){
+          S.girlCancelReq.push({girlId:id,name:r.name|| (g&&g.name)||id,day,at:r.cancelAt||Date.now()});
+          ch=true; if(typeof log==='function')log('小姐 '+id+' 申請取消報班，但今日已有番，請幹部處理');
+        }
+      }else{
+        const list=(S.checkin[day]||[]).filter(c=>c.id!=id);
+        if((S.checkin[day]||[]).length!=list.length){S.checkin[day]=list;ch=true}
+        if(S.att[day]&&S.att[day][id]){delete S.att[day][id];ch=true}
+        if(day==today&&g&&g.on&&!g.room){g.on=false;ch=true}
+      }
+    }
+  });
+  if(ch){if(typeof save==='function')save();publishGirlHist(today);rerender()}
+}
+function subGirlCheckin(){
+  const today=S.openDay||(typeof bizDay==='function'?bizDay(now()):'');
+  const prev=(()=>{try{const d=new Date(today+'T12:00:00');d.setDate(d.getDate()-1);return d.toISOString().slice(0,10)}catch(_){return today}})();
+  const days=[...new Set([today,prev].filter(Boolean))];
+  if(!days.length)return;
+  st.unsub.push(onSnapshot(query(collection(db,'girlCheckin'),where('day','in',days)),qs=>{
+    if(!isOps()||qs.metadata.hasPendingWrites)return;
+    applyGirlCheckins(qs.docs.map(d=>({id:d.id,...d.data()})));
+  },fail));
+}
+function girlDayStats(day,id){
+  const tai=(S.taiLog||[]).filter(e=>e&&e.day==day&&e.girl==id);
+  const rows=(S.sheetLog||[]).filter(e=>e&&e.day==day&&(e.girls||[]).includes(id));
+  const priv=tai.filter(e=>e.priv).length;
+  const order=(S.orderBonus||[]).filter(e=>e&&e.girl==id&&(e.day==day||(typeof bizDay==='function'&&bizDay(e.t)==day))).length;
+  return {day,girlId:id,name:(typeof G==='function'&&G(id)&&G(id).name)||id,tai:tai.reduce((a,e)=>a+(+e.tai||1),0)||rows.length,priv,order,sessions:rows.length,updatedAt:Date.now()};
+}
+function publishGirlHist(day){
+  if(!isOps()||!day)return;
+  const ids=new Set([...(S.checkin[day]||[]).map(c=>c.id),...Object.keys((S.att||{})[day]||{})]);
+  (S.girls||[]).forEach(g=>{if(g&&g.on)ids.add(g.id)});
+  ids.forEach(id=>{
+    const rec=girlDayStats(day,id);
+    ok(setDoc(doc(db,'girlHist',day+'_'+id),rec,{merge:true}));
+  });
+}
+function subHr(){
+  if(!isOps())return;
+  const today=S.openDay||(typeof bizDay==='function'?bizDay(now()):'');
+  st.unsub.push(onSnapshot(query(collection(db,'punches'),where('day','==',today)),qs=>{
+    HR.punches=qs.docs.map(d=>({id:d.id,...d.data()}));HR.punches.sort((a,b)=>(a.clientAt||0)-(b.clientAt||0));
+  },fail));
+  st.unsub.push(onSnapshot(collection(db,'leaves'),qs=>{
+    HR.leaves=qs.docs.map(d=>({id:d.id,...d.data()}));
+  },fail));
+  st.unsub.push(onSnapshot(query(collection(db,'guestTokens'),where('day','==',today)),qs=>{
+    HR.tokens=qs.docs.map(d=>({id:d.id,...d.data()}));
+    syncGuestTokenViews();
+  },fail));
+}
+function myStaffId(){
+  const p=st.prof||{};
+  if(p.staffId&&(S.staff||[]).some(s=>s.id==p.staffId))return p.staffId;
+  const byName=(S.staff||[]).find(s=>s.name==p.name);
+  return byName?byName.id:p.staffId||'';
+}
+function canPunchRole(){return isOps()}
+function markPresent(staffId,day){
+  if(!staffId)return;
+  S.staffPay=S.staffPay||{};
+  const rec=S.staffPay[day]||{day,present:[],saved:false};
+  rec.present=rec.present||[];
+  if(!rec.present.includes(staffId)){rec.present=rec.present.concat([staffId]);rec.auto=rec.auto||[];if(!rec.auto.includes(staffId))rec.auto.push(staffId);S.staffPay[day]=rec;if(typeof save==='function')save()}
+}
+async function writePunch(rec){
+  if(!canPunchRole())throw new Error('沒有打卡權限');
+  const day=typeof bizDay==='function'?bizDay(now()):'';
+  const sid=myStaffId();
+  const flags=rec.flags||[];
+  const id=day+'_'+(sid||st.user.uid)+'_'+rec.type+'_'+Date.now();
+  const row={
+    uid:st.user.uid,staffId:sid,name:(st.prof&&st.prof.name)||'',role:RL(st.prof&&st.prof.role),
+    type:rec.type,day,at:Date.now(),clientAt:Date.now(),posTs:rec.posTs||Date.now(),
+    lat:rec.lat,lng:rec.lng,accuracy:rec.accuracy,address:rec.address||'',
+    distM:rec.distM,inRange:rec.inRange,flags,ua:rec.ua||'',
+    review:flags.length?'待審':'',
+  };
+  await ok(setDoc(doc(db,'punches',id),row));
+  if(rec.type==='in')markPresent(sid,day);
+  if(typeof log==='function')log((rec.type==='in'?'上班':'下班')+'打卡'+(flags.length?'（'+flags.join('、')+'）':''));
+}
+async function reviewPunch(id,v,note){
+  if(lv()<2)return alert('需幹部以上');
+  await ok(updateDoc(doc(db,'punches',id),{review:v,reviewBy:st.user.uid,reviewByName:st.prof.name,reviewNote:note||'',reviewAt:Date.now()}));
+}
+async function askLeave(o){
+  const sid=myStaffId();
+  const id='L_'+st.user.uid+'_'+Date.now();
+  await ok(setDoc(doc(db,'leaves',id),{uid:st.user.uid,staffId:sid,name:st.prof.name,role:RL(st.prof.role),kind:o.kind,start:o.start,end:o.end,note:o.note||'',status:'待核准',createdAt:Date.now(),updatedAt:Date.now()}));
+  if(typeof log==='function')log('送出請假 '+o.start+'～'+o.end+'（'+o.kind+'）');
+}
+async function cancelLeave(id){await ok(updateDoc(doc(db,'leaves',id),{status:'已取消',updatedAt:Date.now()}))}
+async function decideLeave(id,okv,note){
+  if(lv()<2)return alert('需幹部以上');
+  await ok(updateDoc(doc(db,'leaves',id),{status:okv?'已核准':'已駁回',decidedBy:st.user.uid,decidedByName:st.prof.name,decisionNote:note||'',decidedAt:Date.now(),updatedAt:Date.now()}));
+  const L=(HR.leaves||[]).find(x=>x.id==id);
+  if(okv&&L){ // mark 排班 請假
+    const addDays=(s,e)=>{const a=[];let d=new Date(s+'T12:00:00');const end=new Date(e+'T12:00:00');for(;d<=end;d.setDate(d.getDate()+1))a.push(new Date(d));return a};
+    addDays(L.start,L.end).forEach(dt=>{
+      const month=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0'),day=dt.getDate();
+      if(!L.staffId)return;
+      const m=(S.sched[month]=S.sched[month]||{}),row=(m[L.staffId]=m[L.staffId]||{});
+      row[day]={st:'請假',sh:(row[day]||{}).sh||''};
+    });
+    if(typeof save==='function')save();
+  }
+}
+async function setMyName(){
+  const n=(document.getElementById('myNm')&&myNm.value.trim().slice(0,40))||'';
+  if(!n)return alert('請填顯示名稱');
+  await updateDoc(doc(db,'users',st.user.uid),{name:n});
+  st.prof={...st.prof,name:n};if(S.cur)S.cur.name=n;S.op=n;
+  if(auth.currentUser)updateProfile(auth.currentUser,{displayName:n}).catch(()=>{});
+  if(typeof log==='function')log('已修改顯示名稱');
+  alert('已更新名字');
+}
+async function linkSocial(kind){
+  if(!auth.currentUser)return;
+  try{
+    const p=kind==='apple'?new OAuthProvider('apple.com'):new GoogleAuthProvider();
+    if(kind==='apple'){p.addScope('email');p.addScope('name')}
+    if(useRedirect())await linkWithRedirect(auth.currentUser,p);else await linkWithPopup(auth.currentUser,p);
+    alert('已綁定 '+(kind==='apple'?'Apple':'Google'));
+  }catch(e){
+    const c=e.code||'';
+    if(c=='auth/credential-already-in-use')alert('這個帳號已經綁給其他使用者');
+    else if(c=='auth/operation-not-allowed')alert(kind==='apple'?'Apple 登入尚未開啟（需 Apple Developer）':'Google 登入尚未開啟');
+    else if(c=='auth/popup-closed-by-user')return;
+    else alert('綁定失敗：'+(c||e.message));
+  }
+}
+async function approveUser(uid){
+  if(lv()<3)return alert('需經理以上');
+  const u=USERS.find(x=>x.uid==uid); if(!u)return;
+  const role=(document.getElementById('apRole_'+uid)||{}).value;
+  const id=((document.getElementById('apId_'+uid)||{}).value||'').trim();
+  if(!role||role=='pending')return alert('請選擇角色');
+  if(!id)return alert('請填員工編號或小姐編號');
+  if((RANK[role]||0)>lv())return alert('不能核准比自己高的角色');
+  const upd={role,rank:RANK[role]||0,staffId:id.toLowerCase(),approvedBy:st.user.uid,approvedAt:Date.now()};
+  if(role=='小姐')upd.girlId=id.replace(/^0+/,'')===''?id:id;
+  // keep leading zeros: use as typed
+  if(role=='小姐')upd.girlId=id;
+  await ok(updateDoc(doc(db,'users',uid),upd));
+  if(typeof log==='function')log('核准社群帳號 '+ (u.name||'')+' → '+RL(role)+' '+id);
+  alert('已核准：'+RL(role)+(role=='小姐'?'（報班頁 /v12/girl/）':''));
+}
+
+function guestQrUrl(token){
+  const base=location.origin+location.pathname.replace(/index\.html$/,'').replace(/\/?$/,'/');
+  return base+'guest.html?t='+encodeURIComponent(token);
+}
+function newTokenId(){
+  const b=new Uint8Array(18);crypto.getRandomValues(b);
+  return Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
+}
+async function issueGuestToken(room, replaceId){
+  if(!(lv()>=2 || (st.prof&&st.prof.role=='room'&&st.prof.room==room)))return alert('需幹部以上，或本房平板');
+  const x=S.rooms&&S.rooms[room];
+  if(!x||!x.start)return alert(room+' 目前沒有開番，請先開番再產生 QR');
+  if(replaceId)await ok(updateDoc(doc(db,'guestTokens',replaceId),{valid:false,voidedAtMs:Date.now(),voidedBy:st.user.uid}));
+  const t=newTokenId(), nowMs=Date.now(), exp=nowMs+2*3600*1000;
+  const rec={
+    token:t,room,day:S.openDay||(typeof bizDay==='function'?bizDay(x.start||nowMs):''),
+    sessionStart:x.sesStart||x.start,sessions:x.sessions||1,
+    issuedAtMs:nowMs,expiresAtMs:exp,valid:true,renewAsk:0,
+    issuedBy:st.user.uid,issuedByName:(st.prof&&st.prof.name)||'',issuedByRole:RL(st.prof&&st.prof.role)
+  };
+  await ok(setDoc(doc(db,'guestTokens',t),rec));
+  await writeTokenViews(t,room);
+  if(typeof log==='function')log(room+' 產生客人點檯 QR（兩小時內有效）');
+  return t;
+}
+async function writeTokenViews(t,room){
+  const avail=((typeof window!=='undefined'&&document.getElementById('sync'))?null:null);
+  // use same list as public/avail
+  const d=S.openDay||(typeof bizDay==='function'?bizDay(now()):'');
+  const X=(S.dayExt||{})[d]||{},early=X.early||{};
+  const list=(S.girls||[]).filter(g=>g.on&&!g.gone&&!g.room&&!g.leave&&!early[g.id]&&g.status!='下班'&&!(X.others||[]).includes(g.id)&&!(g.priv)).map(g=>({id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{})}));
+  const menu=(window.Food&&Food.state&&Food.state.menu)||[];
+  await ok(setDoc(doc(db,'guestTokens',t,'view','avail'),{list,day:d,room,at:Date.now()}));
+  await ok(setDoc(doc(db,'guestTokens',t,'view','menu'),{list:menu.filter(m=>m&&m.on!==false).map(m=>({id:m.id,zh:m.zh,vn:m.vn,en:m.en,th:m.th,price:m.price,cat:m.cat,short:m.short})),at:Date.now()}));
+}
+function syncGuestTokenViews(){
+  if(!isOps()&&!(st.prof&&st.prof.role=='room'))return;
+  const nowMs=Date.now();
+  (HR.tokens||[]).filter(t=>t.valid&&t.expiresAtMs>nowMs).forEach(t=>writeTokenViews(t.id||t.token,t.room));
+}
+async function invalidateGuestTokens(room){
+  const nowMs=Date.now();
+  const list=(HR.tokens||[]).filter(t=>t.room==room&&t.valid);
+  for(const t of list){
+    await ok(updateDoc(doc(db,'guestTokens',t.id||t.token),{valid:false,voidedAtMs:nowMs,voidReason:'買單',voidedBy:st.user?st.user.uid:''}));
+  }
+}
+async function extendGuestTokens(room){
+  const x=S.rooms&&S.rooms[room]; if(!x)return;
+  const nowMs=Date.now(), exp=nowMs+2*3600*1000;
+  const list=(HR.tokens||[]).filter(t=>t.room==room&&t.valid);
+  for(const t of list){
+    await ok(updateDoc(doc(db,'guestTokens',t.id||t.token),{expiresAtMs:exp,renewAsk:(x.sessions||1),renewAtMs:nowMs,sessionStart:x.sesStart||x.start,sessions:x.sessions||1}));
+  }
+}
+function openGuestQr(room){
+  if(!(lv()>=2 || (st.prof&&st.prof.role=='room'&&st.prof.room==room)))return alert('需幹部以上，或本房平板');
+  const x=S.rooms&&S.rooms[room];
+  if(!x||!x.start)return alert(room+' 目前沒有開番，請先開番再產生 QR');
+  const live=(HR.tokens||[]).filter(t=>t.room==room&&t.valid&&t.expiresAtMs>Date.now()).sort((a,b)=>b.issuedAtMs-a.issuedAtMs)[0];
+  const show=async tok=>{
+    const url=guestQrUrl(tok);
+    const exp=(HR.tokens||[]).find(t=>(t.id||t.token)==tok);
+    const until=exp?new Date(exp.expiresAtMs).toLocaleTimeString('zh-TW',{hour12:false}):'';
+    const f=document.getElementById('dform');
+    f.innerHTML=`<h3>${esc(room)} 客人點檯 QR</h3>
+      <p style="text-align:center"><img alt="QR" style="width:min(86vw,360px);height:auto;background:#fff;padding:12px;border-radius:12px" src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&ecc=M&data=${encodeURIComponent(url)}"></p>
+      <p style="word-break:break-all;font-size:13px;color:#aaa">${esc(url)}</p>
+      <p>效期至 <b>${esc(until)}</b>（開出後 2 小時；買單立即失效；續番再延長 2 小時）</p>
+      <p><button type=button onclick="Cloud.reissueGuestQr('${esc(room)}','${esc(tok)}')">重新產生</button>
+         <button type=button class=s onclick="Cloud.voidGuestQr('${esc(tok)}','${esc(room)}')">作廢</button>
+         <button type=button class=s value="">關閉</button></p>`;
+    const d=document.getElementById('dlg');d.returnValue='';d.showModal();
+  };
+  if(live)return show(live.id||live.token);
+  issueGuestToken(room).then(t=>{if(t){// allow snapshot to land
+    setTimeout(()=>show(t),400);}});
+}
+async function reissueGuestQr(room,old){const t=await issueGuestToken(room,old);if(t)openGuestQr(room)}
+async function voidGuestQr(id,room){
+  if(!confirm('作廢這個 QR？客人將無法再用。'))return;
+  await ok(updateDoc(doc(db,'guestTokens',id),{valid:false,voidedAtMs:Date.now(),voidReason:'作廢',voidedBy:st.user.uid}));
+  if(typeof log==='function')log((room||'')+' 客人點檯 QR 已作廢');
+  const d=document.getElementById('dlg');if(d&&d.open)d.close();
+}
+function paintQrBtns(){
+  if(TVMODE||!(lv()>=2))return;
+  document.querySelectorAll('#rooms .room').forEach((el,i)=>{
+    const r=(typeof roomList==='function'?roomList():[])[i];
+    if(!r||!S.rooms||!S.rooms[r]||el.querySelector('.qrbtn'))return;
+    const b=document.createElement('button');
+    b.className='s qrbtn';b.type='button';b.textContent='出 QR 給客人';
+    b.style.cssText='margin:6px 4px 0;min-height:40px';
+    b.onclick=ev=>{ev.stopPropagation();openGuestQr(r)};
+    el.appendChild(b);
+  });
+}
+
+
+window.Cloud={ver:"v12.14",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL};
 status();

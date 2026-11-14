@@ -23,7 +23,18 @@ input.note{font-size:20px;padding:12px;border-radius:12px;border:0;flex:1;min-wi
 #msg{position:fixed;left:50%;top:30%;transform:translateX(-50%);background:#2fb47a;color:#fff;font-size:30px;padding:24px 40px;border-radius:20px;display:none;z-index:99;text-align:center}
 #ov{position:fixed;inset:0;background:#120d1a;z-index:50;display:flex;align-items:center;justify-content:center}#ov .box{background:#221a2c;padding:24px;border-radius:18px;width:min(440px,92vw)}#ov input{width:100%;font-size:22px;padding:12px;margin:6px 0;border-radius:10px;border:0}#ov button{font-size:22px;padding:12px 20px;border-radius:12px;border:0;margin-top:8px}
 .tabs{display:flex;gap:8px;margin-bottom:8px}.tabs button{font-size:20px;padding:10px 18px;border-radius:12px;border:0;background:#332a40;color:#fff}.tabs button.on{background:#f08c2a}
+
+#renew{position:fixed;inset:0;background:#000c;z-index:80;display:none;align-items:center;justify-content:center;padding:16px}
+#renew .box{background:#221a2c;padding:22px;border-radius:18px;width:min(440px,94vw)}
+#renew h2{font-size:26px;margin:0 0 10px}
+#renew p{font-size:18px;color:#cbb;line-height:1.45}
+#renew button{width:100%;min-height:56px;font-size:22px;font-weight:800;border:0;border-radius:14px;margin:8px 0;color:#fff}
+#dead{padding:40px 20px;text-align:center}
+#dead h2{color:#fc8}
+#qrbox{position:fixed;inset:0;background:#000c;z-index:70;display:none;align-items:center;justify-content:center;padding:16px;overflow:auto}
+#qrbox .box{background:#221a2c;padding:18px;border-radius:18px;width:min(440px,94vw);text-align:center}
+#qrbox img{width:min(86vw,340px);background:#fff;padding:10px;border-radius:12px}
 </style></head><body>
 <div id=top><span class=rm id=rm>包廂</span><span class=t id=tt>歡迎光臨</span><button id=lock title="員工">🔒</button></div>
-<main id=main></main><div id=msg></div><div id=ov style="display:none"></div>
-<script type=module src="guest.js?v=12.9"></script></body></html>
+<main id=main></main><div id=msg></div><div id=ov style="display:none"></div><div id=renew></div><div id=qrbox></div>
+<script type=module src="guest.js?v=12.14"></script></body></html>

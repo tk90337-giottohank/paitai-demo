@@ -1,0 +1,46 @@
+<!doctype html><html lang=zh-Hant><head>
+<meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name=apple-mobile-web-app-capable content=yes>
+<meta name=apple-mobile-web-app-status-bar-style content=black-translucent>
+<title>小姐報班</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#140d18;color:#fff;font-family:-apple-system,"PingFang TC","Noto Sans TC","Noto Sans",sans-serif}
+#top{display:flex;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(90deg,#4a1840,#1c1028)}
+#top .brand{font-size:22px;font-weight:800;color:#ffcf5a}
+#top .who{flex:1;font-size:15px;color:#cbb;text-align:right}
+#langs{display:flex;gap:4px;padding:0 14px 8px;background:#1c1028}
+#langs button{border:0;border-radius:10px;padding:6px 10px;font-size:13px;background:#33243c;color:#ddd;min-height:36px}
+#langs button.on{background:#f08c2a;color:#fff;font-weight:700}
+main{padding:16px 16px 40px}
+.clock{font-size:15px;color:#aab;margin:0 0 14px}
+.card{background:#23182c;border-radius:18px;padding:18px;margin:0 0 16px}
+.big{width:100%;border:0;border-radius:20px;padding:22px 12px;font-size:26px;font-weight:800;color:#fff;min-height:88px;margin:8px 0}
+.b-on{background:linear-gradient(135deg,#2fb47a,#16805a)}
+.b-off{background:linear-gradient(135deg,#c4475a,#8a2030)}
+.b-out{background:#3a3344;color:#ddd}
+h2{margin:0 0 10px;font-size:20px}
+.hint{font-size:14px;color:#b9a;line-height:1.5}
+.warn{background:#5a2030;color:#fcc;padding:12px 14px;border-radius:14px;margin:10px 0;font-size:15px}
+.ok{background:#1a4a32;color:#cfe;padding:12px 14px;border-radius:14px;margin:10px 0;font-size:15px}
+.row{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #3a2a44;font-size:16px}
+.row:last-child{border:0}
+#ov{position:fixed;inset:0;background:#140d18;z-index:50;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 16px}
+#ov .box{background:#23182c;padding:24px;border-radius:18px;width:min(440px,100%)}
+#ov h2{font-size:24px}
+#ov input,#ov button.btn{width:100%;font-size:18px;padding:14px;margin:8px 0;border-radius:12px;border:0;min-height:48px}
+#ov button.btn{background:#2fb47a;color:#fff;font-weight:800}
+#ov button.g{background:#fff;color:#222}
+#ov button.a{background:#000;color:#fff}
+#ov button.s{background:#443;color:#fff}
+#ov .err{color:#f88;font-size:15px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.bar button{border:0;border-radius:12px;padding:10px 16px;font-size:16px;background:#3a3344;color:#fff;min-height:44px}
+</style></head><body>
+<div id=top><span class=brand id=brand>小姐報班</span><span class=who id=who></span></div>
+<div id=langs></div>
+<main id=main></main>
+<div id=ov style="display:none"></div>
+<script type=module src="app.js?v=12.14"></script>
+</body></html>
