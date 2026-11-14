@@ -1,3 +1,4 @@
+// v12.21.3 報班頁絕不跳轉；房間平板等非小姐／非幹部帳號留在登入畫面並可切換
 // v12.19 報班頁改中＋越並列（不再切換語言）
 // v12.15 小姐報班（Google＋編號密碼；已取消 Apple）
 import {firebaseConfig} from '../firebase-config.js';
@@ -123,7 +124,9 @@ const bizDay=ts=>dkey((ts??Date.now())-cutM()*60000);
 const hm=ts=>new Date(ts).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'});
 
 function girlIdOf(p){return String((p&&(p.girlId||(/^\d{1,3}$/.test(String(p.staffId||''))?p.staffId:'')))||'').trim()}
-function isStaff(p){const r=p&&p.role;return r&&r!=='小姐'&&r!=='pending'&&r!=='room'}
+function isStaff(p){const r=p&&p.role;return r==='少爺'||r==='幹部'||r==='經理'||r==='老闆'||r==='特殊'}
+function canUseGirlPage(p){return !!(p&&(p.role==='小姐'||p.role==='pending'||isStaff(p)))}
+function wrongRoleCopy(p){const r=(p&&p.role)||'';const room=String((p&&p.room)||String((p&&p.staffId)||'').replace(/^room-?/i,'')||'');if(r==='room')return{zh:'此裝置目前以「'+(room||'?')+' 包廂平板」登入。小姐報班請先登出，再改用小姐帳號。',vi:'Thiết bị này đang đăng nhập tài khoản máy tính bảng phòng '+(room||'?')+'. Để điểm danh, hãy đăng xuất rồi dùng tài khoản tiếp viên.'};const who=esc((p&&(p.name||p.staffId))||r||'');return{zh:'此裝置目前登入的不是小姐或幹部帳號（'+who+'）。小姐報班請先登出，再改用小姐帳號。',vi:'Thiết bị này đang đăng nhập tài khoản không phải tiếp viên hoặc cán bộ. Hãy đăng xuất rồi dùng tài khoản tiếp viên.'}}
 
 function langsBar(){
   const el=$('langs'); if(!el)return;
@@ -131,11 +134,14 @@ function langsBar(){
   el.onclick=null;
 }
 
-function loginUI(msg){
+function loginUI(msg, wrongProf){
   $('ov').style.display='flex';
   $('who').textContent='';
   $('brand').textContent=T('brand');
-  $('ov').innerHTML=`<div class=box><h2>${T('login')}</h2>
+  const w=wrongProf?wrongRoleCopy(wrongProf):null;
+  $('ov').innerHTML=`<div class=box><h2>${T('login')}<span class=vi>Đăng nhập điểm danh</span></h2>
+    ${w?`<div class=warn id=wrongRole><b>${esc(w.zh)}</b><span class=vi>${esc(w.vi)}</span></div>
+      <button class="btn s" id=gSwitch type=button>登出／切換帳號<span class=vi>Đăng xuất / Đổi tài khoản</span></button>`:''}
     ${msg?`<p class=err>${esc(msg)}</p>`:''}
     <button class="btn g" id=gGo type=button>${T('google')}</button>
     <p style="text-align:center;color:#887;font-size:13px;margin:10px 0">${T('or')}</p>
@@ -143,9 +149,10 @@ function loginUI(msg){
     <input id=sPw type=password placeholder="${T('pw')}" autocomplete=current-password>
     <button class=btn id=sGo type=button>${T('go')}</button>
   </div>`;
-  const go=async()=>{try{$('sGo').disabled=true;await signInWithEmailAndPassword(auth,mail($('sId').value),$('sPw').value)}catch(e){loginUI(e.code=='auth/network-request-failed'?T('net'):T('bad'))}};
+  const go=async()=>{try{$('sGo').disabled=true;if(auth.currentUser){G._switch=true;try{await signOut(auth)}finally{G._switch=false}}await signInWithEmailAndPassword(auth,mail($('sId').value),$('sPw').value)}catch(e){G._switch=false;loginUI(e.code=='auth/network-request-failed'?T('net'):T('bad'),wrongProf)}};
   $('sGo').onclick=go;$('sPw').onkeydown=e=>{if(e.key==='Enter')go()};
-  $('gGo').onclick=()=>social('google');
+  $('gGo').onclick=async()=>{try{if(auth.currentUser){G._switch=true;try{await signOut(auth)}finally{G._switch=false}}}catch(_){G._switch=false}social('google')};
+  const sw=$('gSwitch');if(sw)sw.onclick=()=>signOut(auth);
 }
 
 async function social(kind){
@@ -175,12 +182,14 @@ async function ensurePending(u){
 function stop(){G.unsub.forEach(f=>f());G.unsub=[]}
 
 onAuthStateChanged(auth,async u=>{
-  stop();G.user=u;G.prof=null;G.checkin=null;G.hist=[];
+  if(G._switch)return;
+  stop();G.user=u;G.prof=null;G.checkin=null;G.hist=[];G.staffMode=false;
   if(!u){loginUI();draw();return}
   let p=null;
   try{p=await ensurePending(u)}catch(e){await signOut(auth);loginUI(T('fail')+(e.code||e.message||''));return}
   if(!p||p.disabled){await signOut(auth);loginUI(p&&p.disabled?T('disabled'):T('needLogin'));return}
-  if(p.role==='room'){location.replace('../guest.html'+location.search);return}
+  // 絕不離開報班頁（即使本機已登入房間平板或帶著 ?t= 客人 QR 參數）
+  if(!canUseGirlPage(p)){loginUI('',p);draw();return}
   G.prof=p;G.staffMode=isStaff(p);
   $('ov').style.display=p.role==='pending'?'flex':'none';
   subs();draw();
