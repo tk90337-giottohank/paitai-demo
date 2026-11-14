@@ -1,4 +1,4 @@
-// v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
+// v12.13（新店 7 包廂清單；停用舊房不刪歷史）＋v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
@@ -35,7 +35,7 @@ function fail(e){console.warn(e);st.err=e.code=='permission-denied'?'權限不�
 function startSync(){stopSync();foodSub();
  if(isKit()){openKitchen();status();return}
  st.unsub.push(onSnapshot(doc(db,'config','settings'),snap=>{if(snap.metadata.hasPendingWrites)return;st.inited=snap.exists();
-  if(snap.exists()&&applyFields(snap.data(),st.last.set,SETTINGS))rerender();if(snap.exists()&&lv()>=3&&S.cfg){const cur=roomList(),miss=FOOD_ROOMS.filter(r=>!cur.includes(r));if(miss.length){S.cfg.rooms=cur.concat(miss).join(',');log('包廂清單補上：'+miss.join(','));save()}}status();if(!st.inited&&lv()>=4)banner();if(st.inited){syncServerTime();if(typeof maybeDayRoll==='function')setTimeout(()=>maybeDayRoll({reason:'sync'}),600)}},fail));
+  if(snap.exists()&&applyFields(snap.data(),st.last.set,SETTINGS))rerender();status();if(!st.inited&&lv()>=4)banner();if(st.inited){syncServerTime();if(typeof maybeDayRoll==='function')setTimeout(()=>maybeDayRoll({reason:'sync'}),600)}},fail));
  subDay(S.openDay||bizDay(now()));
  if(lv()>=2){
   st.unsub.push(onSnapshot(collection(db,'hist'),qs=>{if(qs.metadata.hasPendingWrites)return;const h={};qs.forEach(d=>{h[d.id]=JSON.parse(d.data().json);st.last.hist[d.id]=d.data().json});S.hist=Object.assign(S.hist||{},h);for(const k of Object.keys(S.hist))if(!h[k]&&st.last.hist[k]){delete S.hist[k];delete st.last.hist[k]}rerender()},fail));
@@ -124,7 +124,7 @@ async function createStaff(){const id=nId.value.trim(),nm=nNm.value.trim()||id,r
 async function mkUser(id,nm,role,pw,room){const sec=initializeApp(firebaseConfig,'sec'+Date.now()+Math.random()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
  try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid,...(room?{room}:{})});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}${room?'・'+room:''}）`);return c.user.uid}finally{deleteApp(sec).catch(()=>{})}}
 function rndPw(){const A='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789',b=new Uint32Array(16);crypto.getRandomValues(b);return [...b].map(x=>A[x%A.length]).join('')}
-async function createRoomTabs(){if(lv()<4)return alert('只有老闆以上可以建立');const have=new Set(USERS.filter(u=>u.role=='room'&&u.room).map(u=>u.room));const todo=roomList().filter(r=>!have.has(r));
+async function createRoomTabs(){if(lv()<4)return alert('只有老闆以上可以建立');const have=new Set(USERS.filter(u=>u.role=='room'&&u.room).map(u=>u.room));const todo=(typeof officialRooms==='function'?officialRooms():roomList()).filter(r=>!have.has(r));
  if(!todo.length)return alert('每個包廂都已經有房間平板帳號');if(!confirm(`建立 ${todo.length} 個房間平板帳號？\n${todo.map(r=>'room-'+r.toLowerCase()+' → '+r).join('\n')}\n（密碼隨機產生，可在本頁「查看密碼」）`))return;
  const done=[],bad=[];for(const r of todo){const id='room-'+r.toLowerCase();try{await mkUser(id,r+' 平板','room',rndPw(),r);done.push(id+'→'+r)}catch(e){bad.push(id+'：'+(e.code=='auth/email-already-in-use'?'編號已被使用':(e.code||e.message)))}}
  alert(`已建立 ${done.length} 個：\n${done.join('\n')}${bad.length?'\n\n失敗：\n'+bad.join('\n'):''}`);openStaff()}
@@ -151,7 +151,7 @@ const HELP=`<h2>📖 登入教學</h2>
 <h3>6. 右上角的同步燈號</h3><p>✓ 已同步＝所有裝置都看到一樣的資料；⟳ 同步中＝正在上傳；📴 離線＝網路斷了，資料先存在這台，恢復網路後會自動上傳；⚠＝權限不足或錯誤。</p>`;
 function helpOverlay(){ov.innerHTML=`<div style="max-width:560px;margin:3vh auto">${HELP}<p><button id=hBack style="font-size:18px;padding:10px">← 返回登入</button></p></div>`;hBack.onclick=()=>loginUI()}
 // ===== v12.2 餐點系統＋廚房收單 =====
-const FOOD_ROOMS=['201','202','203','205','111','206','207','208','VIP'];
+const FOOD_ROOMS=['102','103','105','106','201','202','203'];
 const KIT_ST=['待做','製作中','已出餐'];
 const MENU_SEED=[
  ['炒泡麵','Mì xào',0,'套餐內含'],['炒飯','Cơm chiên',0,'套餐內含'],['水餃','Sủi cảo',0,'套餐內含'],['蛋湯','Canh trứng',0,'套餐內含'],['桌面','Đồ ăn bàn（待確認）',0,'套餐內含'],
@@ -338,5 +338,5 @@ async function flushTo(id){
  if(S.hist){for(const [d,v] of Object.entries(S.hist)){const j=J(v);if(st.last.hist[d]===j)continue;if(lv()<2&&st.last.hist[d]!==undefined)continue;st.last.hist[d]=j;try{await setDoc(doc(db,'hist',d),{json:j,by:st.user.uid,at:Date.now()})}catch(e){console.warn(e)}}}
 }
 
-window.Cloud={ver:"v12.12",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,serverNow,syncServerTime,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo};
+window.Cloud={ver:"v12.13",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,serverNow,syncServerTime,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo};
 status();
