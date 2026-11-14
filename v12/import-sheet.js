@@ -545,7 +545,11 @@ function renderPreview(){
     const lowRow=r.conf<0.7;
     const marksHtml=ms.map((m,i)=>{
       const low=m[3]<0.7||(typeof G==='function'&&!G(m[1]));
-      return`<td class="${low?'low':''}"><div>${esc(m[1])}${m[5]&&m[6]&&m[5]!==m[6]?`<br><small>${esc(m[5])}→${esc(m[6])}</small>`:''}</div>
+      const roster=(typeof G==='function'&&G(m[1])&&G(m[1]).name)?String(G(m[1]).name).replace(/^\s*\d+\s*/,''):'';
+      const paper=m[5]||'';
+      const label=esc(m[1])+(roster?' '+esc(roster):'');
+      const hint=(paper&&roster&&paper!==roster)?`<br><small>紙本寫「${esc(paper)}」</small>`:'';
+      return`<td class="${low?'low':''}"><div>${label}${hint}</div>
         <select data-mark data-id="${esc(m[1])}">${markMenu(m[2])}</select></td>`
     }).join('')+`<td><input data-k=newid placeholder="加號碼" style="width:64px"> <select data-k=newty>${markMenu('紅')}</select></td>`;
     return`<tr data-seq="${esc(seq)}">
