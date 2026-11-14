@@ -1,4 +1,4 @@
-// v12.17 匯入傳統排檯表（CSV／Excel 應用內解析；照片上傳佇列＋對照核對，不在客戶端放 AI 金鑰）
+// v12.18 匯入傳統排檯表（照片立即壓縮上傳、分塊、辨識後填入核對表；不在客戶端放 AI 金鑰）
 (function(global){
 const MARKS=['紅','藍','私檯','訂番'];
 const XLSX_SRC='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
@@ -279,27 +279,55 @@ function fileKind(f){
   return t.startsWith('image/')?'photo':'unknown';
 }
 
-function compressPhoto(file,maxW,qual){
-  return new Promise((resolve,reject)=>{
-    if(file.type==='image/heic'||file.type==='image/heif'||/\.heic$|\.heif$/i.test(file.name||'')){
-      const r=new FileReader();r.onload=()=>resolve({name:file.name,mime:file.type||'image/heic',dataUrl:r.result,w:0,h:0,note:'HEIC 未壓縮，若上傳失敗請改用 JPG'});r.onerror=reject;r.readAsDataURL(file);return;
-    }
-    const url=URL.createObjectURL(file);
+function isHeicFile(file){
+  const n=(file&&file.name||'').toLowerCase(), typ=(file&&file.type||'').toLowerCase();
+  return typ==='image/heic'||typ==='image/heif'||/\.heic$|\.heif$/.test(n);
+}
+function dataUrlSize(u){return u?u.length:0}
+async function blobToJpegDataUrl(blob,maxW,qual,hard){
+  const src=await new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(blob);
     const img=new Image();
-    img.onload=()=>{
-      const scale=Math.min(1,(maxW||1600)/Math.max(img.width,img.height));
-      const w=Math.max(1,Math.round(img.width*scale)),h=Math.max(1,Math.round(img.height*scale));
-      const c=document.createElement('canvas');c.width=w;c.height=h;
-      c.getContext('2d').drawImage(img,0,0,w,h);
-      let q=qual||0.7,data=c.toDataURL('image/jpeg',q);
-      while(data.length>700000&&q>0.4){q-=0.1;data=c.toDataURL('image/jpeg',q)}
-      URL.revokeObjectURL(url);
-      resolve({name:file.name,mime:'image/jpeg',dataUrl:data,w,h});
-    };
-    img.onerror=()=>{URL.revokeObjectURL(url);const r=new FileReader();r.onload=()=>resolve({name:file.name,mime:file.type||'image/*',dataUrl:r.result,w:0,h:0});r.onerror=reject;r.readAsDataURL(file)};
+    let done=false;
+    const fin=(ok,err)=>{if(done)return;done=true;clearTimeout(tm);try{URL.revokeObjectURL(url)}catch(e){};ok?resolve(img):reject(new Error(err))};
+    const tm=setTimeout(()=>fin(false,'timeout'),15000);
+    img.onload=()=>fin(true);img.onerror=()=>fin(false,'decode');
     img.src=url;
   });
+  const iw=src.naturalWidth||src.width, ih=src.naturalHeight||src.height;
+  if(!iw||!ih)throw new Error('decode');
+  let max=maxW||1280, q=qual||0.72, data='', w=0, h=0;
+  const limit=hard||500000;
+  while(true){
+    const scale=Math.min(1,max/Math.max(iw,ih));
+    w=Math.max(1,Math.round(iw*scale));h=Math.max(1,Math.round(ih*scale));
+    const c=document.createElement('canvas');c.width=w;c.height=h;
+    c.getContext('2d').drawImage(src,0,0,w,h);
+    data=c.toDataURL('image/jpeg',q);
+    if(data.length<=limit)break;
+    if(q>0.4){q=Math.max(0.4,q-0.1);continue}
+    if(max>720){max=Math.round(max*0.75);q=0.62;continue}
+    break;
+  }
+  return {name:'photo.jpg',mime:'image/jpeg',dataUrl:data,w,h,bytes:data.length};
 }
+function compressPhoto(file,maxW,qual){
+  return new Promise(async(resolve,reject)=>{
+    try{
+      // iOS 在 accept=image/* 時通常會把 HEIC 轉成 JPEG；若仍是 HEIC 先嘗試解碼再壓縮
+      const out=await blobToJpegDataUrl(file,maxW||1280,qual||0.72,500000);
+      out.name=(file.name||'photo').replace(/\.(heic|heif)$/i,'.jpg');
+      resolve(out);
+    }catch(e){
+      if(isHeicFile(file)){
+        reject(new Error('這張照片無法在手機上讀取（可能是 HEIC）。請改用「相簿」選取，或在「照片」App 匯出為 JPEG 後再傳。'));
+        return;
+      }
+      reject(new Error('照片無法預覽或壓縮。請改傳較清楚的近拍 JPEG／PNG（單張請小於約 8 MB）。'));
+    }
+  });
+}
+
 
 async function readOne(file,day){
   const kind=fileKind(file);
@@ -316,24 +344,104 @@ async function readOne(file,day){
 }
 
 async function ingestFiles(fileList){
-  ST.err='';
+  ST.err='';ST.msg='';
   const day=ST.day||todayBiz();
   let p=ST.parsed&&ST.parsed.rows&&Object.keys(ST.parsed.rows).length?ST.parsed:emptyParsed(day);
   p.day=day||p.day;
   const arr=[...fileList];
+  const newPhotos=[];
   for(const f of arr){
     ST.files.push({name:f.name,size:f.size,type:f.type});
+    ST.msg='正在處理「'+(f.name||'檔案')+'」…';
     try{
       const r=await readOne(f,p.day||day);
       if(r.error)ST.err=(ST.err?ST.err+'；':'')+r.error;
-      if(r.photo){ST.photos.push(r.photo);p.photos.push(r.photo)}
+      if(r.photo){ST.photos.push(r.photo);p.photos.push(r.photo);newPhotos.push(r.photo);
+        const kb=Math.round((r.photo.dataUrl||'').length/1024);
+        if(kb>680)ST.err=(ST.err?ST.err+'；':'')+'壓縮後仍偏大（'+kb+' KB），已嘗試縮小。若上傳失敗請改傳較近的一張。';
+      }
       if(r.parsed){if(r.parsed.day&&!day)p.day=r.parsed.day;p=mergeParsed(p,r.parsed);p.day=ST.day||p.day||r.parsed.day}
-    }catch(e){ST.err=(ST.err?ST.err+'；':'')+(f.name+'：'+(e.message||e))}
+    }catch(e){ST.err=(ST.err?ST.err+'；':'')+(f.name?f.name+'：':'')+(e.message||e)}
   }
   p.day=ST.day||p.day;
   p.photos=ST.photos.slice();
   ST.parsed=p;
+  if(newPhotos.length){
+    ST.msg='正在上傳照片…';
+    await uploadAndWatch(newPhotos);
+  }else{
+    ST.msg='';
+  }
 }
+function applyDraft(draft){
+  if(!draft)return;
+  const day=draft.day||ST.day||todayBiz();
+  const p=ST.parsed&&Object.keys(ST.parsed.rows||{}).length?ST.parsed:emptyParsed(day);
+  p.day=day;
+  if(draft.rows)p.rows=draft.rows;
+  if(draft.marks)p.marks=draft.marks;
+  p.tbd=(p.tbd||[]).concat(draft.tbd||[]);
+  p.bad=(p.bad||[]).concat(draft.bad||[]);
+  p.unk=(p.unk||[]).concat(draft.unk||[]);
+  if(draft.ext)p.ext=Object.assign(p.ext||{},draft.ext);
+  ST.parsed=p;ST.day=day;
+}
+async function uploadAndWatch(photos){
+  if(!photos||!photos.length)return;
+  if(!global.Cloud||typeof Cloud.queueSheetImport!=='function'){
+    ST.err=(ST.err?ST.err+'；':'')+'雲端尚未就緒，照片先留在本機核對畫面。請確認已登入後再傳一次。';
+    ST.msg='';return;
+  }
+  try{
+    const id=await Cloud.queueSheetImport({
+      day:ST.day||todayBiz(),status:'queued',note:'傳統排檯表照片，待辨識',
+      files:ST.files,sessions:ST.parsed?Object.keys(ST.parsed.rows||{}).length:0,
+      marks:ST.parsed?(ST.parsed.marks||[]).length:0
+    },photos);
+    ST.queueId=id||'';
+    ST.msg='照片已上傳，正在辨識…（通常十多秒，完成後會自動填入核對表。確認寫入前不會改到當日資料。）';
+    if(ST.queueId)watchImport(ST.queueId);
+  }catch(e){
+    const m=String(e&&e.message||e||'');
+    let tip='照片上傳失敗：'+m;
+    if(/permission|insufficient|PERMISSION/i.test(m))tip='沒有權限上傳（需幹部以上，並已登入）。';
+    else if(/too.?large|exceeds|resource-exhausted|invalid-argument/i.test(m))tip='照片仍超過系統上限，請改傳較近、較清楚的一張（或先在相簿壓縮）。';
+    else if(/offline|network|unavailable|Failed to fetch/i.test(m))tip='網路不穩，上傳失敗。請檢查網路後再傳一次。';
+    ST.err=(ST.err?ST.err+'；':'')+tip;
+    ST.msg='';
+  }
+}
+function watchImport(id){
+  if(ST._watch){clearInterval(ST._watch);ST._watch=null}
+  let n=0;
+  const tick=async()=>{
+    n++;
+    try{
+      if(!Cloud.getSheetImport)return;
+      const rec=await Cloud.getSheetImport(id);
+      if(!rec)return;
+      if(rec.status==='已辨識，待核對'&&(rec.draft||rec.draftJson)){
+        let d=rec.draft||rec.draftJson;if(typeof d==='string'){try{d=JSON.parse(d)}catch(e){d=null}}
+        if(d)applyDraft(d);
+        ST.msg='已辨識，請核對黃框後再確認寫入。辨識結果尚未寫入當日排檯表。';
+        clearInterval(ST._watch);ST._watch=null;
+        if(ST.step==='preview')renderPreview();else renderPick();
+      }else if(rec.status==='辨識失敗'){
+        ST.err=(ST.err?ST.err+'；':'')+(rec.error||'照片辨識失敗，請在核對畫面依照片手動填寫，或改傳更清楚的近拍。');
+        ST.msg='';
+        clearInterval(ST._watch);ST._watch=null;
+        if(ST.step==='preview')renderPreview();else renderPick();
+      }else if(n>40){
+        ST.msg='辨識還在排隊中。你可以先對照照片手動填格子；完成後若仍開著此頁會自動填入。確認寫入前不會改到當日資料。';
+        clearInterval(ST._watch);ST._watch=null;
+        if(ST.step==='pick')renderPick();
+      }
+    }catch(e){}
+  };
+  ST._watch=setInterval(tick,3000);
+  tick();
+}
+
 
 function markMenu(cur){return MARKS.map(m=>`<option value="${m}" ${m===cur?'selected':''}>${m}</option>`).join('')+'<option value="" '+(cur?'':'selected')+'>（無）</option>'}
 
@@ -352,8 +460,9 @@ function renderPick(){
     </div>
     <p class=files>已選：${files}</p>
     <div class=thumbs>${thumbs}</div>
-    <p class=hint>試算表／CSV（含 Numbers 匯出的 Excel／CSV，或以前 11/13 那種 <code>sessions.csv</code>＋<code>marks.csv</code>）會在手機上直接解析成格子。<br>
-    照片<b>不會在 App 裡自動辨識</b>（公開網頁不能放 AI 金鑰）。照片會顯示在核對畫面供你對照改正，並上傳到佇列由我們稍後協助辨識。若之後要在手機上自動辨識，需再開 App Check。</p>
+    <p class=hint>試算表／CSV（含 Numbers 匯出的 Excel／CSV）會在手機上直接解析成格子。<br>
+    選好照片後會先壓縮再上傳；辨識完成會自動填入核對表（黃框請改正）。<b>確認寫入前不會改到當日資料</b>。若相簿是 HEIC、預覽失敗，請在「照片」App 匯出 JPEG 再傳（選「相簿」時 iPhone 通常會自動轉 JPEG）。</p>
+    ${ST.msg?`<p class=hint style="color:#8fd">${esc(ST.msg)}</p>`:''}
     ${ST.err?`<p class=err>${esc(ST.err)}</p>`:''}
     <div class=row>
       <button type=button id=piGo>開始核對</button>
@@ -365,7 +474,8 @@ function renderPick(){
   const onFiles=async ev=>{
     const list=ev.target.files;if(!list||!list.length)return;
     ST.day=(document.getElementById('piDay')||{}).value||ST.day;
-    ST.busy=true;try{await ingestFiles(list)}finally{ST.busy=false;ev.target.value='';renderPick()}
+    ST.busy=true;ST.msg='正在壓縮照片…';ST.err='';renderPick();
+    try{await ingestFiles(list)}finally{ST.busy=false;ev.target.value='';renderPick()}
   };
   document.getElementById('piCam').onchange=onFiles;
   document.getElementById('piAlbum').onchange=onFiles;
@@ -476,6 +586,7 @@ function renderPreview(){
         <option value=replace ${ST.livePol==='replace'?'selected':''}>取代現場該番</option>
       </select></label>
     </div>
+    ${ST.msg?`<p class=hint style="color:#8fd">${esc(ST.msg)}</p>`:''}
     ${ST.err?`<p class=err>${esc(ST.err)}</p>`:''}
     <div class=row>
       <button type=button id=piCommit>確認寫入</button>
@@ -495,22 +606,10 @@ function renderPreview(){
 }
 
 async function queuePhotos(p){
+  if(ST.queueId)return ST.queueId;
   if(!ST.photos.length)return'';
-  if(!global.Cloud||typeof Cloud.queueSheetImport!=='function'){
-    ST.err=(ST.err?ST.err+'；':'')+'目前無法上傳照片佇列（雲端尚未就緒），格子資料仍可寫入。';
-    return'';
-  }
-  try{
-    const id=await Cloud.queueSheetImport({
-      day:p.day,status:'queued',note:'傳統排檯表照片，待辨識',
-      files:ST.files,sessions:Object.keys(p.rows).length,marks:p.marks.length
-    },ST.photos);
-    ST.queueId=id||'';
-    return ST.queueId;
-  }catch(e){
-    ST.err=(ST.err?ST.err+'；':'')+'照片佇列上傳失敗：'+(e.message||e);
-    return'';
-  }
+  await uploadAndWatch(ST.photos);
+  return ST.queueId||'';
 }
 
 function toApplyShape(p){

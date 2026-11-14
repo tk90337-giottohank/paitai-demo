@@ -1,5 +1,5 @@
 rules_version = '2';
-// 排檯系統 paitai-system — Firestore 安全規則（v12.17）
+// 排檯系統 paitai-system — Firestore 安全規則（v12.18）
 // 角色：小姐/少爺=1 < 幹部=2 < 經理=3 < 老闆=4 < 特殊（冠廷）=5；tv=唯讀看板（0）；pending=待核准（0）
 // 小姐只能走獨立報班頁，不能讀寫營業日主檔；只讀自己的報班／台數，只寫自己的報班紀錄
     // users 文件需帶 rank 欄位且必須等於 rank(role)（供查詢過濾）
@@ -276,7 +276,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // v12.17 傳統排檯表照片／匯入佇列（幹部以上）
+    // v12.18 傳統排檯表照片／匯入佇列（幹部以上；照片可分塊）
     match /sheetImports/{id} {
       allow read: if lvl() >= 2;
       allow create: if lvl() >= 2
@@ -286,6 +286,11 @@ service cloud.firestore {
       allow update: if lvl() >= 2;
       allow delete: if lvl() >= 3;
       match /photos/{pid} {
+        allow read: if lvl() >= 2;
+        allow create, update: if lvl() >= 2;
+        allow delete: if lvl() >= 3;
+      }
+      match /chunks/{cid} {
         allow read: if lvl() >= 2;
         allow create, update: if lvl() >= 2;
         allow delete: if lvl() >= 3;

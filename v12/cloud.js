@@ -1,4 +1,4 @@
-// v12.17 匯入傳統排檯表照片佇列
+// v12.18 照片壓縮上傳＋分塊＋辨識佇列
 // v12.16（過期換日不把已關帳舊房寫進今日；小姐報班頁幹部不導走）＋v12.15（拿掉 Apple 登入；打卡地圖／5 公尺）＋v12.14（打卡／請假／週排班、小姐獨立報班、Google 登入、客人點檯 QR）＋v12.13（新店 7 包廂清單；停用舊房不刪歷史）＋v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
@@ -697,6 +697,7 @@ function paintQrBtns(){
 
 async function queueSheetImport(meta,photos){
   if(lv()<2)throw new Error('需幹部以上才能上傳排檯表照片');
+  const CHUNK=400000;
   const rec={
     day:String((meta&&meta.day)||''),
     status:'queued',
@@ -713,14 +714,26 @@ async function queueSheetImport(meta,photos){
   const ref=await addDoc(collection(db,'sheetImports'),rec);
   for(let i=0;i<(photos||[]).length;i++){
     const p=photos[i]||{};
-    const data=(p.dataUrl&&p.dataUrl.length<=900000)?p.dataUrl:'';
+    const data=p.dataUrl||'';
+    const chunks=[];
+    if(data){for(let o=0;o<data.length;o+=CHUNK)chunks.push(data.slice(o,o+CHUNK))}
     await setDoc(doc(db,'sheetImports',ref.id,'photos',String(i)),{
       name:p.name||('photo-'+i),mime:p.mime||'image/jpeg',w:p.w||0,h:p.h||0,
-      createdAt:Date.now(),data:data||null,tooLarge:!data&&!!p.dataUrl
+      createdAt:Date.now(),chunkCount:chunks.length,tooLarge:false,
+      data:chunks.length<=1?(data||null):null
     });
+    for(let c=0;c<chunks.length;c++){
+      if(chunks.length===1)break;
+      await setDoc(doc(db,'sheetImports',ref.id,'chunks',i+'-'+c),{photo:String(i),i:c,data:chunks[c]});
+    }
   }
   return ref.id;
 }
+async function getSheetImport(id){
+  if(!id||lv()<2)return null;
+  const d=await getDoc(doc(db,'sheetImports',id));
+  return d.exists()?Object.assign({id:d.id},d.data()):null;
+}
 
-window.Cloud={ver:"v12.17",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport};
+window.Cloud={ver:"v12.18",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport};
 status();

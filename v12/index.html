@@ -1049,4 +1049,4 @@ ${sug.ranked.length?`<ol class=slrank>${sug.ranked.map((r,i)=>`<li style="${sug.
 function sheetLearnRebuild(){const days=new Set((S.sheetLog||[]).filter(e=>e&&e.imp&&e.day).map(e=>e.day));Object.values(S.rooms||{}).forEach(x=>{if(x&&x.imp&&x.start&&typeof bizDay==='function')days.add(bizDay(x.start))});if(!days.size)days.add(S.openDay||bizDay(now()));[...days].forEach(d=>sheetLearnIngest(d));const lab=[...days].sort().join('、');log('自動排台學習：已納入 '+lab);save();toast('已重建學習資料（'+lab+'）');openSheetLearn()}
 
 document.getElementById('op').value=S.op||'';render();setInterval(tick,1000);
-</script><script src="grid.js?v=12.17"></script><script src="transfer.js?v=12.17"></script><script src="dayroll.js?v=12.17"></script><script src="att.js?v=12.17"></script><script src="import-sheet.js?v=12.17"></script><script type=module src="cloud.js?v=12.17"></script></body></html>
+</script><script src="grid.js?v=12.18"></script><script src="transfer.js?v=12.18"></script><script src="dayroll.js?v=12.18"></script><script src="att.js?v=12.18"></script><script src="import-sheet.js?v=12.18"></script><script type=module src="cloud.js?v=12.18"></script></body></html>
