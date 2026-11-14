@@ -140,8 +140,8 @@ function loginUI(msg, wrongProf){
   $('brand').textContent=T('brand');
   const w=wrongProf?wrongRoleCopy(wrongProf):null;
   $('ov').innerHTML=`<div class=box><h2>${T('login')}<span class=vi>Đăng nhập điểm danh</span></h2>
-    ${w?`<div class=warn id=wrongRole><b>${esc(w.zh)}</b><span class=vi>${esc(w.vi)}</span></div>
-      <button class="btn s" id=gSwitch type=button>登出／切換帳號<span class=vi>Đăng xuất / Đổi tài khoản</span></button>`:''}
+    ${w?`<div class=warn id=wrongRole data-no-i18n><b>${esc(w.zh)}</b><span class=vi>${esc(w.vi)}</span></div>
+      <button class="btn s" id=gSwitch type=button data-no-i18n>登出／切換帳號<span class=vi>Đăng xuất / Đổi tài khoản</span></button>`:''}
     ${msg?`<p class=err>${esc(msg)}</p>`:''}
     <button class="btn g" id=gGo type=button>${T('google')}</button>
     <p style="text-align:center;color:#887;font-size:13px;margin:10px 0">${T('or')}</p>
