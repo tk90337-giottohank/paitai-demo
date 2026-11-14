@@ -1,4 +1,4 @@
-// v12.14 客人掃 QR 點檯（兩小時／買單失效／續番延長並詢問換人）＋v12.9 隨機點檯＋v12.6 四語
+// v12.20.1 hotfix：QR 模式 draw() 不再因沒有 G.prof 而空白；四語首頁維持原樣
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
@@ -22,7 +22,7 @@ const day=()=>G.day||new Date(Date.now()-7.17*36e5).toLocaleDateString('sv-SE');
 function setupUI(err){const o=$('ov');o.style.display='flex';o.innerHTML=`<div class=box><h2>包廂平板設定</h2><p style="color:#aab">請幹部用「房間平板」帳號登入（老闆在人員帳號管理建立，角色選「房間平板」並綁定包廂）。</p>${err?`<p style="color:#f66">${esc(err)}</p>`:''}
  <input id=sId placeholder="平板帳號（例 room208）" autocapitalize=none><input id=sPw type=password placeholder="密碼"><button id=sGo style="background:#2fb47a;color:#fff">登入並綁定</button></div>`;
  $('sGo').onclick=async()=>{try{$('sGo').disabled=true;await signInWithEmailAndPassword(auth,mail($('sId').value),$('sPw').value)}catch(e){setupUI('登入失敗：'+(e.code||''))}}}
-if(TOKEN){startTokenMode()}
+if(TOKEN){G.prof=G.prof||{name:'客人',role:'guest'};draw();startTokenMode()}
 else onAuthStateChanged(auth,async u=>{G.unsub.forEach(f=>f());G.unsub=[];G.user=u;if(!u)return setupUI();
  let p=null;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null}catch(e){}
  if(!p||p.disabled||p.role!='room'||!p.room){await signOut(auth);return setupUI(p&&p.role!='room'?'這不是房間平板帳號（員工請用一般排檯系統）':'此帳號未綁定包廂或已停用')}
@@ -34,6 +34,7 @@ function startTokenMode(){
     const t=s.data();G.tok=t;
     if(!t.valid||Date.now()>=(t.expiresAtMs||0))return showDead('此 QR 已失效（逾時或本房已買單）。請請少爺／公主重新產生。');
     G.room=t.room; if(t.day)G.day=t.day;
+    G.prof=G.prof||{name:'客人',role:'guest',room:t.room};
     const rm=$('rm'); if(rm)rm.textContent=t.room+' 包廂';
     const ov=$('ov'); if(ov)ov.style.display='none';
     maybeRenewPrompt(t);
@@ -88,7 +89,7 @@ const ST={'已送出':['已送出・請稍候','t0'],'已確認':['已確認','t
 const OST={'待做':['已送出・準備中','t0'],'製作中':['製作中','t0'],'已出餐':['已送達','t1'],'取消':['已取消','t2']};
 function statusHtml(){const R=G.reqs.slice(0,6),O=G.orders.slice(0,6);if(!R.length&&!O.length)return'';
  return`<div class=st><b>目前狀態</b>${R.map(q=>`<div>${new Date(q.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} ${q.type=='呼叫'?'呼叫 少爺/公主':q.type=='續番選擇'?('續番：'+(q.renewChoice=='keep'?'維持原樣':'更換小姐')):((q.random?'🎲 隨機點檯 ':'點小姐 ')+(q.girls||[]).map(esc).join('、'))}<span class="tag ${ST[q.status]?.[1]||'t0'}">${ST[q.status]?.[0]||esc(q.status)}</span></div>`).join('')}${O.map(o=>`<div>${new Date(o.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} ${o.items.map(i=>esc(i.name)+'×'+i.qty).join('、')}<span class="tag ${OST[o.status]?.[1]||'t0'}">${OST[o.status]?.[0]||esc(o.status)}</span></div>`).join('')}</div>`}
-function draw(soft){if(!G.prof)return;const m=$('main');if(soft&&document.activeElement&&document.activeElement.classList.contains('note'))return;const note=document.querySelector('.note');const nv=note?note.value:'';
+function draw(soft){if(!G.tokenMode&&!G.prof)return;const m=$('main');if(!m)return;if(soft&&document.activeElement&&document.activeElement.classList.contains('note'))return;const note=document.querySelector('.note');const nv=note?note.value:'';
  if(G.view=='home')m.innerHTML=`<div class=home><button class="big b1" onclick="GU.go('girls')">💃 點小姐<small>Chọn tiếp viên<br>Choose hostess<br>เลือกพนักงานต้อนรับ</small></button><button class="big b5" onclick="GU.go('random')">🎲 隨機點檯<small>Chọn ngẫu nhiên<br>Random Pick<br>เลือกแบบสุ่ม</small></button><button class="big b2" onclick="GU.go('food')">🍽 點菜<small>Gọi món<br>Order food<br>สั่งอาหาร</small></button><button class="big b3" onclick="GU.go('drink')">🍾 點酒<small>Gọi đồ uống<br>Order drinks<br>สั่งเครื่องดื่ม</small></button><button class="big b4" onclick="GU.call()">🛎 呼叫 少爺/公主<small>Gọi phục vụ<br>Call staff<br>เรียกพนักงาน</small></button></div>${G.tokenMode?'':`<p style="text-align:center;margin-top:12px"><button class=back type=button onclick="GU.showQr()">📱 出 QR 給客人掃描</button></p>`}${statusHtml()}`;
  else if(G.view=='girls'){const A=G.avail;m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> 點小姐（可複選）</h2>${A.length?`<div class=cards>${A.map(g=>`<div class="card ${G.sel.has(g.id)?'sel':''}" onclick="GU.pick('${esc(g.id)}')">${g.photo?`<img src="${esc(g.photo)}" alt="">`:''}<div class=no>${esc(g.id)}</div><div class=nm>${esc(g.name)}</div></div>`).join('')}</div>`:'<p style="font-size:22px">目前沒有可點的小姐，請按「呼叫 少爺/公主」。</p>'}
   <div class=bar><input class=note placeholder="備註（選填）" value="${esc(nv)}"><button class=go ${G.sel.size?'':'disabled'} onclick="GU.sendGirls()">送出（${G.sel.size} 位）</button></div>${statusHtml()}`}
