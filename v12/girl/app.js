@@ -26,6 +26,15 @@ const I18N={
   noLink:'此帳號尚未綁定小姐編號，請等主管核准／綁定後再報班。',
   pending:'等候核准',disabled:'此帳號已停用，請找幹部。',
   notGirl:'這不是小姐報班帳號。職員請走排檯系統。',
+  staffMode:'幹部代為報班',
+  staffHint:'這是小姐報班頁。你是職員帳號，不會被帶到主系統。可在這裡幫小姐報班或取消報班，或開啟排檯系統。',
+  pickGirl:'選擇小姐',
+  pickFirst:'請先選擇小姐',
+  forHer:'代為',
+  openMain:'開啟排檯系統',
+  todayList:'今日報班名單',
+  testSelf:'以測試小姐身分報班',
+  testSelfHint:'這是測試身分，報班紀錄會標記為測試，不會匯入正式排檯或台數。',
   needLogin:'請先登入',statOn:'今日已報班',statOff:'尚未報班',
   myTai:'我的台數',noTai:'今天還沒有台數（上台後會顯示）。',hist:'歷史台數',
   tai:'台數',priv:'私檯',order:'訂番',when:'時間',empty:'沒有紀錄',
@@ -40,6 +49,15 @@ const I18N={
   noLink:'Tài khoản chưa gắn số tiếp viên. Vui lòng chờ quản lý.',
   pending:'Đang chờ duyệt',disabled:'Tài khoản đã khóa.',
   notGirl:'Đây không phải tài khoản tiếp viên.',
+  staffMode:'Quản lý điểm danh hộ',
+  staffHint:'Đây là trang điểm danh. Tài khoản nhân viên không bị chuyển sang hệ thống chính. Bạn có thể điểm danh hộ, hoặc mở hệ thống chính.',
+  pickGirl:'Chọn tiếp viên',
+  pickFirst:'Hãy chọn tiếp viên',
+  forHer:'Điểm danh hộ',
+  openMain:'Mở hệ thống chính',
+  todayList:'Danh sách hôm nay',
+  testSelf:'Điểm danh với身分 thử',
+  testSelfHint:'Bản ghi thử, không vào danh sách chính.',
   needLogin:'Vui lòng đăng nhập',statOn:'Đã điểm danh hôm nay',statOff:'Chưa điểm danh',
   myTai:'Số bàn của tôi',noTai:'Hôm nay chưa có bàn.',hist:'Lịch sử',
   tai:'Bàn',priv:'Bàn riêng',order:'Đặt',when:'Thời gian',empty:'Không có dữ liệu',
@@ -54,6 +72,15 @@ const I18N={
   noLink:'This account is not linked to a hostess number yet.',
   pending:'Pending approval',disabled:'This account is disabled.',
   notGirl:'This is not a hostess account. Staff should use the main system.',
+  staffMode:'Check in for a hostess',
+  staffHint:'This is the hostess check-in page. Staff accounts stay here (no auto-redirect). You can check a hostess in or out, or open the main system.',
+  pickGirl:'Choose hostess',
+  pickFirst:'Please choose a hostess first',
+  forHer:'For her: ',
+  openMain:'Open main system',
+  todayList:'Checked in today',
+  testSelf:'Check in as test hostess',
+  testSelfHint:'Marked as a test record and not added to the live floor list or 台數.',
   needLogin:'Please sign in',statOn:'Checked in today',statOff:'Not checked in yet',
   myTai:'My tables',noTai:'No tables yet today.',hist:'History',
   tai:'Tables',priv:'Private',order:'Booked',when:'Time',empty:'No records',
@@ -68,6 +95,15 @@ const I18N={
   noLink:'บัญชียังไม่ได้ผูกหมายเลขพนักงาน',
   pending:'รออนุมัติ',disabled:'บัญชีถูกปิด',
   notGirl:'นี่ไม่ใช่บัญชีพนักงานต้อนรับ',
+  staffMode:'เช็กอินให้พนักงาน',
+  staffHint:'นี่คือหน้าเช็กอิน จะไม่พาบัญชีพนักงานไประบบหลัก คุณเช็กอินให้ได้ หรือเปิดระบบหลัก',
+  pickGirl:'เลือกพนักงาน',
+  pickFirst:'กรุณาเลือกพนักงานก่อน',
+  forHer:'ทำแทน ',
+  openMain:'เปิดระบบหลัก',
+  todayList:'รายชื่อวันนี้',
+  testSelf:'เช็กอินด้วย身分ทดสอบ',
+  testSelfHint:'บันทึกทดสอบ จะไม่เข้าสู่รายการจริง',
   needLogin:'กรุณาเข้าสู่ระบบ',statOn:'เช็กอินวันนี้แล้ว',statOff:'ยังไม่ได้เช็กอิน',
   myTai:'จำนวนโต๊ะของฉัน',noTai:'วันนี้ยังไม่มีโต๊ะ',hist:'ประวัติ',
   tai:'โต๊ะ',priv:'ส่วนตัว',order:'จอง',when:'เวลา',empty:'ไม่มีข้อมูล',
@@ -91,6 +127,7 @@ const bizDay=ts=>dkey((ts??Date.now())-cutM()*60000);
 const hm=ts=>new Date(ts).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'});
 
 function girlIdOf(p){return String((p&&(p.girlId||(/^\d{1,3}$/.test(String(p.staffId||''))?p.staffId:'')))||'').trim()}
+function isStaff(p){const r=p&&p.role;return r&&r!=='小姐'&&r!=='pending'&&r!=='room'}
 
 function langsBar(){
   $('langs').innerHTML=LANGS.map(([k,l])=>`<button class="${k===lang?'on':''}" type=button data-l="${k}">${l}</button>`).join('');
@@ -147,8 +184,7 @@ onAuthStateChanged(auth,async u=>{
   try{p=await ensurePending(u)}catch(e){await signOut(auth);loginUI(T('fail')+(e.code||e.message||''));return}
   if(!p||p.disabled){await signOut(auth);loginUI(p&&p.disabled?T('disabled'):T('needLogin'));return}
   if(p.role==='room'){location.replace('../guest.html'+location.search);return}
-  if(p.role&&p.role!=='小姐'&&p.role!=='pending'){location.replace('../'+location.search);return}
-  G.prof=p;
+  G.prof=p;G.staffMode=isStaff(p);
   $('ov').style.display=p.role==='pending'?'flex':'none';
   subs();draw();
 });
@@ -160,6 +196,18 @@ function subs(){
     G.day=bizDay(Date.now());
     subMine();draw();
   },f));
+  if(G.staffMode){
+    const day=()=>G.day||bizDay(Date.now());
+    G.unsub.push(onSnapshot(doc(db,'days',day()),s=>{
+      try{let raw=s.exists()?s.data().girls:null;if(typeof raw==='string')raw=JSON.parse(raw);if(typeof raw==='string')raw=JSON.parse(raw);G.roster=Array.isArray(raw)?raw:[]}catch(_){G.roster=G.roster||[]}
+      if(!Array.isArray(G.roster))G.roster=[];
+      draw(true);
+    },f));
+    G.unsub.push(onSnapshot(query(collection(db,'girlCheckin'),where('day','==',day())),qs=>{
+      const L=[];qs.forEach(d=>L.push({id:d.id,...d.data()}));
+      L.sort((a,b)=>(b.at||0)-(a.at||0));G.todayList=L;draw(true);
+    },f));
+  }
 }
 let mineUnsub=[];
 function subMine(){
@@ -187,15 +235,19 @@ async function setName(){
   }catch(e){G.msg=T('fail')+(e.code||e.message);draw()}
 }
 
-async function punch(on){
-  const id=girlIdOf(G.prof);
-  if(!id){G.msg=T('noLink');draw();return}
+async function punch(on,forId){
+  const staff=isStaff(G.prof);
+  const g=staff?(G.roster||[]).find(x=>String(x.id)===String(forId||G.pickId)) : G.prof;
+  const id=staff?String(forId||G.pickId||'').trim():girlIdOf(G.prof);
+  if(!id){G.msg=staff?T('pickFirst'):T('noLink');draw();return}
   const day=bizDay(Date.now());
   G.day=day;
   const rec={
-    uid:G.user.uid,girlId:id,name:G.prof.name||id,day,on,at:Date.now(),
-    src:'self',tz:'Asia/Taipei'
+    uid:G.user.uid,girlId:id,name:staff?((g&&(g.name||g.nm))||id):(G.prof.name||id),day,on,at:Date.now(),
+    src:staff?'staff':'self',by:staff?(G.prof.name||G.prof.staffId||''):'',tz:'Asia/Taipei'
   };
+  if(staff&&(G.prof.girlId||G.prof.test)&&String(id)===String(G.prof.girlId||'T57')){rec.test=true;rec.src='test'}
+
   if(!on){rec.cancelAt=Date.now();rec.cancelReq=true}
   try{
     await setDoc(doc(db,'girlCheckin',day+'_'+id),rec,{merge:true});
@@ -222,6 +274,7 @@ function draw(){
     return;
   }
   $('ov').style.display='none';
+  if(isStaff(G.prof)){drawStaff();return}
   const day=G.day||bizDay(Date.now());
   const on=!!(G.checkin&&G.checkin.on);
   const hold=!!(G.checkin&&G.checkin.review==='需幹部處理'&&G.checkin.cancelReq&&!G.checkin.on===false?false:G.checkin&&G.checkin.review==='需幹部處理');
@@ -258,6 +311,53 @@ function draw(){
   $('bOut').onclick=()=>signOut(auth);
 }
 
+function drawStaff(){
+  const day=G.day||bizDay(Date.now());
+  const roster=(G.roster||[]).filter(g=>g&&g.id&&!g.off);
+  const list=G.todayList||[];
+  const onIds=new Set(list.filter(x=>x.on).map(x=>String(x.girlId)));
+  const pick=G.pickId||'';
+  const picked=roster.find(g=>String(g.id)===String(pick));
+  const nm=g=>String((g&&(g.name||g.nm))||'').replace(/^\s*\d+\s*號?\s*/,'');
+  $('who').textContent=(G.prof.name||'')+' · '+(G.prof.role==='特殊'?'冠廷':G.prof.role);
+  $('main').innerHTML=`
+    <div class=clock>${T('today')} <b>${esc(day)}</b> · ${T('clock')} ${hm(Date.now())}（07:10）</div>
+    <div class=card>
+      <h2>${T('staffMode')}</h2>
+      <p class=hint>${T('staffHint')}</p>
+      <p><a class="btn" href="../" style="display:inline-block;text-align:center;text-decoration:none;background:#3a8fe0">${T('openMain')}</a></p>
+      <label style="display:block;margin:12px 0 6px">${T('pickGirl')}</label>
+      <select id=gPick style="width:100%;min-height:48px;font-size:18px;border-radius:12px;border:0;padding:8px">
+        <option value="">—</option>
+        ${roster.map(g=>`<option value="${esc(g.id)}" ${String(g.id)===String(pick)?'selected':''}>${esc(g.id)} ${esc(nm(g))}${onIds.has(String(g.id))?' · '+T('statOn'):''}</option>`).join('')}
+      </select>
+      ${G.msg?`<div class=ok style="margin-top:8px">${esc(G.msg)}</div>`:''}
+      <button class="big b-on" type=button id=bOn ${pick?'':'disabled'}>${T('forHer')}${T('on')}</button>
+      <button class="big b-off" type=button id=bOff ${pick?'':'disabled'}>${T('forHer')}${T('off')}</button>
+    </div>
+    ${G.prof.girlId||G.prof.test?`<div class=card><h2>${T('testSelf')}（${esc(G.prof.girlId||'T57')}）</h2>
+      <p class=hint>${T('testSelfHint')}</p>
+      <button class="big b-on" type=button id=tOn>${T('on')}</button>
+      <button class="big b-off" type=button id=tOff>${T('off')}</button>
+    </div>`:''}
+    <div class=card>
+      <h2>${T('todayList')}</h2>
+      ${list.filter(x=>x.on).length?list.filter(x=>x.on).map(x=>`<div class=row><span>${esc(x.girlId)} ${esc(x.name||'')}</span><span>${x.at?hm(x.at):''}${x.src==='staff'?' · '+esc(x.by||''):''}</span></div>`).join(''):`<p class=hint>${T('empty')}</p>`}
+    </div>
+    <div class=bar>
+      <button type=button id=bName>${T('editName')}</button>
+      <button type=button id=bOut>${T('out')}</button>
+    </div>`;
+  $('gPick').onchange=e=>{G.pickId=e.target.value;draw()};
+  $('bOn').onclick=()=>punch(true,G.pickId);
+  $('bOff').onclick=()=>punch(false,G.pickId);
+  const tOn=$('tOn'),tOff=$('tOff');
+  if(tOn)tOn.onclick=()=>punch(true,G.prof.girlId||'T57');
+  if(tOff)tOff.onclick=()=>punch(false,G.prof.girlId||'T57');
+  $('bName').onclick=setName;
+  $('bOut').onclick=()=>signOut(auth);
+}
+
 getRedirectResult(auth).catch(e=>{if(e&&e.code&&e.code!=='auth/popup-closed-by-user')console.warn(e)});
 langsBar();$('brand').textContent=T('brand');
-setInterval(()=>{if(G.prof&&G.prof.role==='小姐'){const d=bizDay(Date.now());if(d!==G.day){G.day=d;subMine();draw()}}},30000);
+setInterval(()=>{if(G.prof&&(G.prof.role==='小姐'||isStaff(G.prof))){const d=bizDay(Date.now());if(d!==G.day){G.day=d;if(G.staffMode){stop();subs()}else subMine();draw()}}},30000);

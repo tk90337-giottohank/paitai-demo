@@ -1,3 +1,4 @@
+// v12.16 換日：今日已開檔則跟隨、不把過期裝置的舊未關帳包廂寫進今日；已買單殘留不列入未完成
 // v12.12 營業日 07:10 自動換日＋昨日未完成事項＋重設包廂
 function rollNow(){return(typeof maybeDayRoll==='function'&&maybeDayRoll._now)?maybeDayRoll._now():(window.Cloud&&typeof window.Cloud.serverNow==='function'?window.Cloud.serverNow():now())}
 function carryItemId(type,day,key){return type+':'+day+':'+key}
@@ -5,7 +6,7 @@ function collectCarryover(day){
  const items=[],who=()=>S.cur?S.cur.name:(S.op||'系統');
  const add=(type,key,title,detail,link,extra)=>{items.push(Object.assign({id:carryItemId(type,day,key),type,day,title,detail:detail||'',link:link||'',done:false,doneAt:null,doneBy:null},extra||{}))};
  // 未結束／未買單包廂
- Object.entries(S.rooms||{}).forEach(([r,x])=>{if(!x)return;if(x.carryDay&&x.carryDay!=day)return;const gs=(S.girls||[]).filter(g=>g.room==r).map(g=>g.id+' '+(typeof slNick==='function'?slNick(g.id):g.name));
+ Object.entries(S.rooms||{}).forEach(([r,x])=>{if(!x)return;if(x.carryDay&&x.carryDay!=day)return;if(typeof roomSessionBilled==='function'&&roomSessionBilled(r,x))return;const gs=(S.girls||[]).filter(g=>g.room==r).map(g=>g.id+' '+(typeof slNick==='function'?slNick(g.id):g.name));
   const tot=(typeof bill==='function'?bill(Object.assign({id:r},x)).total:0);
   add('open-room',r,r+' 番尚未結束／未買單',`${x.guests==null?'人數未填':'人數 '+x.guests}・第 ${x.sessions||1} 番${x.imp?'（匯入未結束）':''}${gs.length?'・小姐 '+gs.join('、'):'・房內無小姐'}・帳面 ${tot.toLocaleString()} 元`,'payFlow:'+r,{room:r,total:tot})});
  // 掛帳等已結但未入帳
@@ -90,6 +91,15 @@ async function maybeDayRoll(opts){
  maybeDayRoll._busy=true;
  try{
   const Cld=window.Cloud;
+  // 若今日營業日檔已存在（已開檔或已換日完成），過期裝置不得把舊的 openDay 再換日並把舊包廂寫進來
+  if(Cld&&typeof Cld.peekDay==='function'){
+   const peek=await Cld.peekDay(to);
+   if(peek&&peek.exists&&(peek.openDay===to||(peek.dayRoll&&peek.dayRoll.status==='done'&&peek.dayRoll.to===to))){
+    applyRolloverLocal(from,to,{follow:true});
+    if(Cld.followDay)Cld.followDay(to);
+    return
+   }
+  }
   if(!Cld||typeof Cld.tryDayRoll!=='function'||(typeof Cld.lv==='function'&&Cld.lv()<1)||(typeof TVMODE!=='undefined'&&TVMODE)){
    if(Cld&&typeof Cld.followDayRoll==='function'){const ok=await Cld.followDayRoll(from,to);if(ok)applyRolloverLocal(from,to,{follow:true})}
    return
@@ -113,6 +123,7 @@ async function performDayRoll(from,to){
  const keep=x=>{if(!x)return false;const t=x.start||x.t;if(!t)return true;return bizDay(t)>=to};
  ['sheetLog','taiLog','revenue','visitLog','orderBonus','redLog','blueLog','finds','decisions'].forEach(k=>{if(Array.isArray(S[k]))S[k]=S[k].filter(e=>keep(e))});
  S.openDay=to;
+ if(typeof pruneBilledGhostRooms==='function')pruneBilledGhostRooms();
  log('自動換日：'+from+' → '+to+'（未完成事項 '+(items.length)+' 項；未關帳包廂仍顯示至買單）');
  if(window.Cloud&&window.Cloud.flushTo)await window.Cloud.flushTo(to);
  else save();

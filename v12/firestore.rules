@@ -1,5 +1,5 @@
 rules_version = '2';
-// 排檯系統 paitai-system — Firestore 安全規則（v12.14）
+// 排檯系統 paitai-system — Firestore 安全規則（v12.16）
 // 角色：小姐/少爺=1 < 幹部=2 < 經理=3 < 老闆=4 < 特殊（冠廷）=5；tv=唯讀看板（0）；pending=待核准（0）
 // 小姐只能走獨立報班頁，不能讀寫營業日主檔；只讀自己的報班／台數，只寫自己的報班紀錄
     // users 文件需帶 rank 欄位且必須等於 rank(role)（供查詢過濾）
@@ -222,11 +222,19 @@ service cloud.firestore {
         && request.resource.data.girlId == myGirl()
         && request.resource.data.day is string
         && request.resource.data.on is bool;
+      allow create: if lvl() >= 2
+        && request.resource.data.girlId is string
+        && request.resource.data.day is string
+        && request.resource.data.on is bool
+        && request.resource.data.src in ['staff', 'test'];
       allow update: if isHostess()
         && resource.data.girlId == myGirl() && resource.data.uid == request.auth.uid
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.girlId == myGirl()
         && request.resource.data.day == resource.data.day
+        && request.resource.data.on is bool;
+      allow update: if lvl() >= 2
+        && request.resource.data.girlId is string
         && request.resource.data.on is bool;
       // 幹部處理「已有番不能自行取消」等標記
       allow update: if lvl() >= 2;
