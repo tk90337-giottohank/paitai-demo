@@ -1,4 +1,4 @@
-// v12.21 可點名單含在檯（標忙碌）；QR 可讀菜單／酒水（menu 唯讀＋view/menu 後備）；點菜分頁上中下外文
+// v12.21.2 可點規則：滿 bookedMax／他房私檯／暫停才灰；隨機只抽亮燈
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
@@ -93,15 +93,15 @@ function statusHtml(){const R=G.reqs.slice(0,6),O=G.orders.slice(0,6);if(!R.leng
  return`<div class=st><b>目前狀態</b>${R.map(q=>`<div>${new Date(q.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} ${q.type=='呼叫'?'呼叫 少爺/公主':q.type=='續番選擇'?('續番：'+(q.renewChoice=='keep'?'維持原樣':'更換小姐')):((q.random?'🎲 隨機點檯 ':'點小姐 ')+(q.girls||[]).map(esc).join('、'))}<span class="tag ${ST[q.status]?.[1]||'t0'}">${ST[q.status]?.[0]||esc(q.status)}</span></div>`).join('')}${O.map(o=>`<div>${new Date(o.createdAt).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'})} ${o.items.map(i=>esc(i.name)+'×'+i.qty).join('、')}<span class="tag ${OST[o.status]?.[1]||'t0'}">${OST[o.status]?.[0]||esc(o.status)}</span></div>`).join('')}</div>`}
 function draw(soft){if(!G.tokenMode&&!G.prof)return;const m=$('main');if(!m)return;if(soft&&document.activeElement&&document.activeElement.classList.contains('note'))return;const note=document.querySelector('.note');const nv=note?note.value:'';
  if(G.view=='home')m.innerHTML=`<div class=home><button class="big b1" onclick="GU.go('girls')">💃 點小姐<small>Chọn tiếp viên<br>Choose hostess<br>เลือกพนักงานต้อนรับ</small></button><button class="big b5" onclick="GU.go('random')">🎲 隨機點檯<small>Chọn ngẫu nhiên<br>Random Pick<br>เลือกแบบสุ่ม</small></button><button class="big b2" onclick="GU.go('food')">🍽 點菜<small>Gọi món<br>Order food<br>สั่งอาหาร</small></button><button class="big b3" onclick="GU.go('drink')">🍾 點酒<small>Gọi đồ uống<br>Order drinks<br>สั่งเครื่องดื่ม</small></button><button class="big b4" onclick="GU.call()">🛎 呼叫 少爺/公主<small>Gọi phục vụ<br>Call staff<br>เรียกพนักงาน</small></button></div>${G.tokenMode?'':`<p style="text-align:center;margin-top:12px"><button class=back type=button onclick="GU.showQr()">📱 出 QR 給客人掃描</button></p>`}${statusHtml()}`;
- else if(G.view=='girls'){const A=G.avail||[],free=A.filter(g=>!g.busy);m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> 點小姐（可複選）</h2>${A.length?`<p class=hint>可點 ${free.length} 位${A.length>free.length?'・在檯／忙碌 '+(A.length-free.length)+' 位':''}</p><div class=cards>${A.map(g=>`<div class="card ${G.sel.has(g.id)?'sel':''}${g.busy?' busy':''}" ${g.busy?'':'onclick="GU.pick(\''+esc(g.id)+'\')"'}">${g.photo?`<img src="${esc(g.photo)}" alt="">`:''}<div class=no>${esc(g.id)}</div><div class=nm>${esc(g.name||'')}</div>${g.busy?`<div class=bz>忙碌 / Bận / Busy${g.room?' · '+esc(g.room):''}</div>`:''}</div>`).join('')}</div>`:'<p style="font-size:22px">目前沒有已報班的小姐，請按「呼叫 少爺/公主」。</p>'}
+ else if(G.view=='girls'){const A=G.avail||[],free=A.filter(g=>!g.busy);m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> 點小姐（可複選）</h2>${A.length?`<p class=hint>可點 ${free.length} 位${A.length>free.length?'・不可點 '+(A.length-free.length)+' 位':''}</p><div class=cards>${A.map(g=>`<div class="card ${G.sel.has(g.id)?'sel':''}${g.busy?' busy':''}" ${g.busy?'':'onclick="GU.pick(\''+esc(g.id)+'\')"'}">${g.photo?`<img src="${esc(g.photo)}" alt="">`:''}<div class=no>${esc(g.id)}</div><div class=nm>${esc(g.name||'')}</div>${g.busy?`<div class=bz>${esc(reasonLabel(g))}</div>`:''}</div>`).join('')}</div>`:'<p style="font-size:22px">目前沒有已報班的小姐，請按「呼叫 少爺/公主」。</p>'}
   <div class=bar><input class=note placeholder="備註（選填）" value="${esc(nv)}"><button class=go ${G.sel.size?'':'disabled'} onclick="GU.sendGirls()">送出（${G.sel.size} 位）</button></div>${statusHtml()}`}
  else if(G.view=='random'){const n=Math.max(1,Math.min(5,G.randN||1)),A=G.avail||[],free=A.filter(g=>!g.busy),max=free.length,busyN=A.length-max;
   m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> 隨機點檯</h2>
 <p class=hint>Chọn ngẫu nhiên · Random Pick · เลือกแบบสุ่ม<br>從今日已報班、目前可點的小姐中隨機抽出，送出後由幹部確認排檯。</p>
-<p class=hint>目前可點 <b style="color:#ffcf5a;font-size:26px">${max}</b> 位${busyN?`　在檯／忙碌 ${busyN} 位`:''}</p>
-${A.length?`<div class=cards>${A.map(g=>`<div class="card${g.busy?' busy':''}"><div class=no>${esc(g.id)}</div><div class=nm>${esc(g.name||'')}</div>${g.busy?`<div class=bz>忙碌 / Bận / Busy${g.room?' · '+esc(g.room):''}</div>`:''}</div>`).join('')}</div>`:''}
+<p class=hint>目前可點 <b style="color:#ffcf5a;font-size:26px">${max}</b> 位${busyN?`　不可點 ${busyN} 位`:''}</p>
+${A.length?`<div class=cards>${A.map(g=>`<div class="card${g.busy?' busy':''}"><div class=no>${esc(g.id)}</div><div class=nm>${esc(g.name||'')}</div>${g.busy?`<div class=bz>${esc(reasonLabel(g))}</div>`:''}</div>`).join('')}</div>`:''}
 ${max?`<div class=step><span class=lab>要幾位</span><button class=q onclick="GU.rand(-1)">−</button><span class=qn>${n}</span><button class=q onclick="GU.rand(1)">＋</button></div>
-<button class=go style="width:100%;min-height:64px" onclick="GU.sendRandom()">抽出並送出</button>`:(A.length?'<p class=warn>目前在檯／忙碌，請按「呼叫 少爺/公主」或等小姐回休息室。</p>':'<p class=warn>目前沒有已報班的小姐，請按「呼叫 少爺/公主」。</p>')}
+<button class=go style="width:100%;min-height:64px" onclick="GU.sendRandom()">抽出並送出</button>`:(A.length?'<p class=warn>目前沒有可點的小姐（已滿／私檯／暫停），請按「呼叫 少爺/公主」。</p>':'<p class=warn>目前沒有已報班的小姐，請按「呼叫 少爺/公主」。</p>')}
 ${statusHtml()}`}
  else if(G.view=='randomResult'){const R=G.randResult||{picked:[],want:0,short:false};
   m.innerHTML=`<h2>🎲 隨機點檯結果</h2>
@@ -158,3 +158,4 @@ $('lock').onclick=()=>{const o=$('ov');o.style.display='flex';o.innerHTML=`<div 
   catch(e){$('uErr').textContent='帳號或密碼錯誤'}finally{deleteApp(sec).catch(()=>{})}}};
 history.pushState(null,'',location.href);addEventListener('popstate',()=>history.pushState(null,'',location.href));
 idle();
+function reasonLabel(g){const m={已滿:'已滿 / Đã đủ / Full',私檯:'私檯 / Riêng / Private',暫停:'暫停 / Tạm dừng / Paused'};return(m[g.reason]||g.reason||'不可點')+(g.room?' · '+g.room:'')}

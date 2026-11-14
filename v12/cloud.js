@@ -1,4 +1,4 @@
-// v12.21 改名（幹部+）＋101 加回＋匯入自動報班＋客人可點名單含在檯（忙碌）
+// v12.21.2 可點規則：滿 bookedMax 間／他房私檯／暫停才灰；1–2 間仍可點
 // v12.18 照片壓縮上傳＋分塊＋辨識佇列
 // v12.16（過期換日不把已關帳舊房寫進今日；小姐報班頁幹部不導走）＋v12.15（拿掉 Apple 登入；打卡地圖／5 公尺）＋v12.14（打卡／請假／週排班、小姐獨立報班、Google 登入、客人點檯 QR）＋v12.13（新店 7 包廂清單；停用舊房不刪歷史）＋v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
@@ -302,12 +302,10 @@ async function gqAct(id,stt){const q=GQ.list.find(z=>z.id==id);if(!q)return;if(l
  ok(updateDoc(doc(db,'guestReq',id),{status:stt,handledBy:st.user.uid,handledByName:st.prof.name,handledAt:Date.now()}))}
 // 可點小姐清單（給包廂平板，只有編號、名字、照片）
 let availLast='';
-function buildAvailList(){if(typeof guestAvailList==='function')return guestAvailList();
+function buildAvailList(room){if(typeof guestAvailList==='function')return guestAvailList(room);
+ if(typeof guestPickState==='function')return(S.girls||[]).map(g=>{const st=guestPickState(g,room);if(st.st=='hide')return null;const item={id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{})};if(st.st=='grey'){item.busy=true;item.reason=st.reason;if(st.room)item.room=st.room}return item}).filter(Boolean);
  const d=bizDay(now()),X=(S.dayExt||{})[d]||{},early=X.early||{};
- return (S.girls||[]).filter(g=>g&&g.on&&!g.gone&&!g.leave&&g.status!='下班'&&!(early&&early[g.id])&&!((X.others||[]).includes(g.id))).map(g=>{
-  const room=g.room||(g.priv&&g.priv.room)||'';
-  let busyRoom=room;if(!busyRoom){for(const r in (S.rooms||{})){if(((S.rooms[r].bans)||[]).some(b=>b&&b.includes(g.id))){busyRoom=r;break}}}
-  return{id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{}),...(busyRoom?{busy:true,room:String(busyRoom)}:{})}})}
+ return (S.girls||[]).filter(g=>g&&g.on&&!g.gone&&!g.leave&&g.status!='下班'&&!(early&&early[g.id])&&!((X.others||[]).includes(g.id))).map(g=>({id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,'')}))}
 setInterval(()=>{if(!st.user||!isOps()||TVMODE||st.inited!==true||!S.girls)return;const d=bizDay(now());
  const list=buildAvailList();
  const j=JSON.stringify({list,d});if(j==availLast)return;availLast=j;ok(setDoc(doc(db,'public','avail'),{list,day:d,at:Date.now()}));syncGuestTokenViews()},5000);
@@ -639,7 +637,7 @@ async function writeTokenViews(t,room){
   // use same list as public/avail
   const d=S.openDay||(typeof bizDay==='function'?bizDay(now()):'');
   const X=(S.dayExt||{})[d]||{},early=X.early||{};
-  const list=buildAvailList();
+  const list=buildAvailList(room);
   const menu=((window.Food&&Food.state&&Food.state.menu)||[]).filter(m=>m&&m.on!==false);
   await ok(setDoc(doc(db,'guestTokens',t,'view','avail'),{list,day:d,room,at:Date.now()}));
   if(menu.length){
@@ -751,5 +749,5 @@ async function getSheetImport(id){
   return d.exists()?Object.assign({id:d.id},d.data()):null;
 }
 
-window.Cloud={ver:"v12.21",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+window.Cloud={ver:"v12.21.2",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();

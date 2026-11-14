@@ -126,9 +126,37 @@ const t=ts=>new Date(ts).toLocaleTimeString('zh-TW',{hour12:false});const mmss=m
 function log(m){window.Cloud&&Cloud.audit(m);S.log.unshift(t(now())+' '+m);S.log=S.log.slice(0,200);save()}
 const G=id=>S.girls.find(g=>g.id==id);const gNick=g=>String((g&&g.name)||'').replace(/^\s*\d+\s*號?\s*/,'');const gActive=g=>g&&!g.gone;
 function applyRosterNames(){const m=S.rosterNames||{};(S.girls||[]).forEach(g=>{if(!g||!g.id)return;const nm=m[g.id]||m[String(g.id).padStart(2,'0')];if(nm)g.name=g.id+' '+nm})}
-function girlInRoom(g){if(!g)return'';if(g.room)return String(g.room);if(g.priv&&g.priv.room)return String(g.priv.room);const rooms=S.rooms||{};for(const r in rooms){const x=rooms[r];if(!x)continue;if((x.bans||[]).some(b=>b&&b.includes(g.id)))return r}return ''}
-function guestAvailList(){const d=(typeof bizDay==='function'?bizDay(now()):'')||S.openDay||'';const X=(S.dayExt||{})[d]||{},early=X.early||{};
- return (S.girls||[]).filter(g=>g&&g.on&&!g.gone&&!g.leave&&g.status!='下班'&&!(early&&early[g.id])&&!((X.others||[]).includes(g.id))).map(g=>{const room=girlInRoom(g);return{id:g.id,name:gNick(g),...(g.photo?{photo:g.photo}:{}),...(room?{busy:true,room}:{})}})}
+function girlInRoom(g){const rs=girlBoardRooms(g);return rs[0]||''}
+function boardOpenRooms(){const o={};for(const r in(S.rooms||{})){const x=S.rooms[r];if(x&&!x.ended)o[r]=x}return o}
+function lastIds(arr,i){if(!arr||!arr.length)return[];const x=arr[i>=0?i:arr.length-1];return Array.isArray(x)?x:(x?[x]:[])}
+function hasGid(arr,id){id=String(id||'');return(arr||[]).some(x=>String(x)===id)}
+function girlBoardRooms(g,except){const id=g&&g.id,set=new Set();if(!id)return[];
+ if(g.room&&g.room!=except)set.add(String(g.room));
+ if(g.priv&&g.priv.room&&g.priv.room!=except)set.add(String(g.priv.room));
+ (g.holds||[]).forEach(r=>{if(r&&r!=except)set.add(String(r))});
+ const rooms=boardOpenRooms();
+ for(const r in rooms){if(except&&String(r)===String(except))continue;const x=rooms[r],i=(x.bans||[]).length-1;
+  if(hasGid(lastIds(x.bans,i),id)||hasGid(lastIds(x.privBans,i),id))set.add(String(r))}
+ return[...set]}
+function girlPrivRooms(g){const id=g&&g.id,set=new Set();if(!id)return[];
+ if(g.priv&&g.priv.room)set.add(String(g.priv.room));
+ const rooms=boardOpenRooms();
+ for(const r in rooms){const x=rooms[r],i=(x.bans||[]).length-1;if(hasGid(lastIds(x.privBans,i),id))set.add(String(r))}
+ return[...set]}
+function guestPickState(g,viewRoom){if(!g||!g.on||g.gone||g.leave||g.status=='下班')return{st:'hide'};
+ const d=(typeof bizDay==='function'?bizDay(now()):'')||S.openDay||'';const X=(S.dayExt||{})[d]||{},early=X.early||{};
+ if(early&&early[g.id])return{st:'hide'};if((X.others||[]).includes(g.id))return{st:'hide'};
+ if(g.gov=='pause')return{st:'grey',reason:'暫停'};
+ if(g.gov=='open')return{st:'lit'};
+ const rooms=girlBoardRooms(g),max=Math.max(1,+((typeof C==='function'&&C().bookedMax)||3)||3);
+ if(rooms.length>=max)return{st:'grey',reason:'已滿',room:rooms.join('、'),rooms};
+ const privs=girlPrivRooms(g),other=privs.find(r=>String(r)!==String(viewRoom||''));
+ if(other)return{st:'grey',reason:'私檯',room:String(other),privRooms:privs};
+ return{st:'lit',rooms}}
+function guestAvailList(viewRoom){return(S.girls||[]).map(g=>{const st=guestPickState(g,viewRoom);if(st.st=='hide')return null;
+ const item={id:g.id,name:gNick(g),...(g.photo?{photo:g.photo}:{})};
+ if(st.st=='grey'){item.busy=true;item.reason=st.reason;if(st.room)item.room=st.room}
+ return item}).filter(Boolean)}
 function sheetImportCheckin(p,d){if(!p||!d)return 0;const today=(typeof bizDay==='function'?bizDay(now()):'');if(d!=today)return 0;
  const ids=new Set();(p.marks||[]).forEach(m=>{const id=String(m&&m[1]||'').trim();if(id)ids.add(id)});
  Object.values(p.rows||{}).forEach(r=>{if(!r)return;(r.girls||[]).forEach(id=>{if(id)ids.add(String(id))});Object.keys(r.marks||{}).forEach(id=>ids.add(String(id)))});
@@ -314,7 +342,7 @@ let audioCtx=null;function beep(){if(C().beep!='開')return;try{audioCtx=audioCt
 function addCall(type,g,r,extra){S.calls=S.calls||[];if(S.calls.some(c=>c.type==type&&c.girl==g.id&&c.room==r))return;S.calls.push(Object.assign({id:now()+g.id+type,type,girl:g.id,room:r,t:now()},extra||{}));
  const txt=type=='報到'?`${g.id} → ${r} 報到`:type=='回檯'?`${g.id} 請回檯 → ${r}（${g.loc||'外出'}）`:`${g.id} 回檯買單 → ${r}`;toast(txt,type!='報到');beep()}
 function clearCalls(g,r){S.calls=(S.calls||[]).filter(c=>!(c.girl==g.id&&(!r||c.room==r)))};
-function guestState(g){if(g.priv&&g.priv.room!=guestRoom&&g.on&&!g.leave)return'grey';return guestState0(g)}
+function guestState(g){return guestPickState(g,guestRoom).st}
 function seat1(g,r,src){if(g.priv&&g.priv.room!=r){toast(`${g.id}號 私檯中（${g.priv.room}），不能派往 ${r}`,true);return}seat0(g,r,src);if(src=='tag'){g.inRoom=true;g.loc=null;clearCalls(g,r)}else{g.inRoom=false;g.loc='報到中';g.outSince=now();clearCalls(g);addCall('報到',g,r)}}
 function leave(g,why){clearCalls(g);leave0(g,why);g.inRoom=undefined;g.loc=null}
 function setLoc(id,loc){const g=G(id);if(!g.room)return;if(loc=='在房'){g.inRoom=true;g.loc=null;clearCalls(g,g.room);log(`${g.name} 回到 ${g.room}（手動）`)}else{g.inRoom=false;g.loc=loc;g.outSince=now();log(`${g.name} 離開 ${g.room} → ${loc}（手動）`)}render()}
@@ -344,7 +372,10 @@ function locTag0(g){if(!g.room)return'';const st=g.inRoom===false?`<span class=p
 function openFind(id){const f=document.getElementById('dform');f.innerHTML=`<h3>外找（有人要找小姐）</h3><label>小姐編號 <input id=fG value="${id||''}" style="width:80px"></label><label>誰要找 <select id=fW><option value=幹部>幹部</option><option value=客人>客人（包廂）</option><option value=急事>急事</option></select></label><label>幹部名／包廂號 <input id=fN value="${esc(S.op||'')}" placeholder="例 阿豪 或 203"></label><label>備註（可空白）<input id=fM></label><label>請她到 <select id=fT><option>控台</option><option>櫃台</option>${roomList().map(r=>`<option>${r}</option>`).join('')}</select></label><button value=ok>叫她</button> <button class=s value="">取消</button>`;
  const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue!='ok')return;const g=G(fG.value.trim());if(!g)return alert('找不到此編號');const who=fW.value=='幹部'?(fN.value.trim()||'未填')+'幹部':fW.value=='客人'?'客人 '+(fN.value.trim()||''):'急事';
   addCall('外找',g,fT.value,{who,note:fM.value.trim()});S.finds.push({t:now(),girl:g.id,who,note:fM.value.trim(),target:fT.value,by:S.op||'未填'});log(`外找：${g.name} → ${fT.value}（${who}${fM.value?'・'+fM.value:''}）`);render()};if(d.open)d.close();setTimeout(()=>d.showModal(),0)}
-function bookedRooms(g,except){const b=bookedRooms0(g,except);if(C().visitCountsFull=='是'&&g.visit&&g.visit.room!=except&&!b.includes(g.visit.room))b.push(g.visit.room);return b}
+function bookedRooms(g,except){const b=girlBoardRooms(g,except);
+ if(C().visitCountsFull=='是'&&g.visit&&g.visit.room&&g.visit.room!=except&&!b.includes(String(g.visit.room)))b.push(String(g.visit.room));
+ (S.reqs||[]).forEach(q=>{if(q&&q.girl==g.id&&q.room&&q.room!=except&&!b.includes(String(q.room)))b.push(String(q.room))});
+ return b}
 function openVisit(r){const f=document.getElementById('dform'),cand=S.girls.filter(g=>gActive(g)&&g.on&&!g.leave&&!g.visit&&(g.status=='休息室'||(g.priv&&g.priv.visiting&&g.priv.room!=r))).sort((a,b)=>(a.tables||0)-(b.tables||0)||(a.idleSince||0)-(b.idleSince||0));
  f.innerHTML=`<h3>${r} 訪客（帶小姐讓客人看／介紹新小姐）</h3><div style="max-height:55vh;overflow:auto">${cand.map(g=>`<label><input type=checkbox class=vC value="${g.id}"> ${g.name}${g.isNew?' <span class=pen style="background:#e7a">新小姐 介紹</span>':''}${g.priv?' <span class=pen style="background:#c39">私檯轉台</span>':''}・今日 ${g.tables||0} 檯・訪 ${g.visits||0}/點 ${g.picked||0}</label>`).join('')||'無可訪客小姐'}</div><button value=ok>帶去訪客</button> <button class=s value="">取消</button>`;
  const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue!='ok')return;f.querySelectorAll('.vC:checked').forEach(i=>{const g=G(i.value);g.visit={room:r,state:'前往',t:now(),prevStatus:g.status};if(!g.priv)g.status='訪客';g.visits=(g.visits||0)+1;addCall('訪客',g,r,{isNew:g.isNew});log(`訪客：${g.name} → ${r}${g.isNew?'（新小姐介紹）':''}`)});render()};d.showModal()}
@@ -1087,4 +1118,4 @@ ${sug.ranked.length?`<ol class=slrank>${sug.ranked.map((r,i)=>`<li style="${sug.
 function sheetLearnRebuild(){const days=new Set((S.sheetLog||[]).filter(e=>e&&e.imp&&e.day).map(e=>e.day));Object.values(S.rooms||{}).forEach(x=>{if(x&&x.imp&&x.start&&typeof bizDay==='function')days.add(bizDay(x.start))});if(!days.size)days.add(S.openDay||bizDay(now()));[...days].forEach(d=>sheetLearnIngest(d));const lab=[...days].sort().join('、');log('自動排台學習：已納入 '+lab);save();toast('已重建學習資料（'+lab+'）');openSheetLearn()}
 
 document.getElementById('op').value=S.op||'';render();setInterval(tick,1000);
-</script><script src="grid.js?v=12.21"></script><script src="transfer.js?v=12.21"></script><script src="dayroll.js?v=12.21"></script><script src="att.js?v=12.21"></script><script src="import-sheet.js?v=12.21.1"></script><script src="i18n-data.js?v=12.21"></script><script src="i18n.js?v=12.21"></script><script type=module src="cloud.js?v=12.21"></script></body></html>
+</script><script src="grid.js?v=12.21"></script><script src="transfer.js?v=12.21"></script><script src="dayroll.js?v=12.21"></script><script src="att.js?v=12.21"></script><script src="import-sheet.js?v=12.21.2"></script><script src="i18n-data.js?v=12.21"></script><script src="i18n.js?v=12.21"></script><script type=module src="cloud.js?v=12.21.2"></script></body></html>
