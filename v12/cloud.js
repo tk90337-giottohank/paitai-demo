@@ -640,9 +640,11 @@ async function writeTokenViews(t,room){
   const d=S.openDay||(typeof bizDay==='function'?bizDay(now()):'');
   const X=(S.dayExt||{})[d]||{},early=X.early||{};
   const list=buildAvailList();
-  const menu=(window.Food&&Food.state&&Food.state.menu)||[];
+  const menu=((window.Food&&Food.state&&Food.state.menu)||[]).filter(m=>m&&m.on!==false);
   await ok(setDoc(doc(db,'guestTokens',t,'view','avail'),{list,day:d,room,at:Date.now()}));
-  await ok(setDoc(doc(db,'guestTokens',t,'view','menu'),{list:menu.filter(m=>m&&m.on!==false).map(m=>({id:m.id,zh:m.zh,vn:m.vn,en:m.en,th:m.th,price:m.price,cat:m.cat,short:m.short})),at:Date.now()}));
+  if(menu.length){
+    await ok(setDoc(doc(db,'guestTokens',t,'view','menu'),{list:menu.map(m=>({id:m.id,zh:m.zh,vn:m.vn,en:m.en,th:m.th,price:m.price,cat:m.cat,short:m.short})),at:Date.now()}));
+  }
 }
 function syncGuestTokenViews(){
   if(!isOps()&&!(st.prof&&st.prof.role=='room'))return;

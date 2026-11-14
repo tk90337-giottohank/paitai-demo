@@ -120,9 +120,9 @@ service cloud.firestore {
         || lvl() >= 5 || (lvl() == 4 && targetRank() < 4);
       allow delete: if false;
     }
-    // 餐點菜單（v12.2）：登入人員與廚房可讀；經理以上可改
+    // 餐點菜單（v12.21）：公開唯讀（客人 QR 點菜／點酒只需品名與價格）；經理以上可改
     match /menu/{id} {
-      allow read: if reader() || isKitchen() || isRoomTab();
+      allow read: if true;
       allow write: if lvl() >= 3;
     }
     // 點餐單（v12.2）：少爺以上點餐；廚房只能改狀態（製作中／已出餐）

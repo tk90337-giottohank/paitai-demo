@@ -1,4 +1,4 @@
-// v12.21 可點名單含在檯（標忙碌）；QR 模式 draw hotfix 仍有效
+// v12.21 可點名單含在檯（標忙碌）；QR 可讀菜單／酒水（menu 唯讀＋view/menu 後備）；點菜分頁上中下外文
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
@@ -44,8 +44,10 @@ function startTokenMode(){
 }
 function showDead(msg){const m=$('main');if(m)m.innerHTML=`<div id=dead><h2>無法使用點檯</h2><p class=hint>${esc(msg)}</p></div>`;const ov=$('ov');if(ov)ov.style.display='none'}
 function subTokenViews(){const f=e=>console.warn(e);
- G.unsub.push(onSnapshot(doc(db,'guestTokens',TOKEN,'view','avail'),s=>{const d=s.exists()?s.data():{};G.avail=d.list||[];if(d.day&&d.day!=G.day){G.day=d.day;subDay()}draw(true)},f));
- G.unsub.push(onSnapshot(doc(db,'guestTokens',TOKEN,'view','menu'),s=>{if(s.exists()){G.menu=s.data().list||[]}draw(true)},f));
+ G.unsub.push(onSnapshot(doc(db,'guestTokens',TOKEN,'view','avail'),s=>{const d=s.exists()?s.data():{};if((d.list||[]).length||!G.avail.length){G.avail=d.list||[]}if(d.day&&d.day!=G.day){G.day=d.day;subDay()}draw(true)},f));
+ G.unsub.push(onSnapshot(doc(db,'guestTokens',TOKEN,'view','menu'),s=>{const L=s.exists()?(s.data().list||[]):[];if(L.length){G.menu=L;draw(true)}},f));
+ // QR 無房間平板登入：菜單／酒水改讀公開唯讀的 menu 集合（view/menu 僅作後備）
+ G.unsub.push(onSnapshot(collection(db,'menu'),qs=>{const L=[];qs.forEach(d=>L.push({id:d.id,...d.data()}));L.sort((a,b)=>(a.ord||0)-(b.ord||0));const live=L.filter(m=>m.on!==false);if(live.length)G.menu=live;draw(true)},f));
 }
 function renewCopy(){
   const lang=(localStorage.getItem('guestLang')||(navigator.language||'zh')).slice(0,2);
@@ -110,7 +112,7 @@ ${R.short?`<p class=warn>目前僅有 ${R.picked.length} 位可點（您要 ${R.
 ${statusHtml()}`}
  else{const cats=G.view=='drink'?['酒水']:['套餐內含','加點'];if(!cats.includes(G.tab))G.tab=cats[cats.length-1];const items=G.menu.filter(x=>x.cat==G.tab);
   const sum=Object.entries(G.q).reduce((a,[id,q])=>{const x=G.menu.find(z=>z.id==id);return a+(x&&x.cat!='套餐內含'?(+x.price||0)*q:0)},0),n=Object.values(G.q).reduce((a,b)=>a+b,0);
-  m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> ${G.view=='drink'?'點酒':'點菜'}</h2>${cats.length>1?`<div class=tabs>${cats.map(c=>`<button class="${c==G.tab?'on':''}" onclick="GU.tab('${c}')">${c=='套餐內含'?'套餐附餐（免費）<small> Free · ฟรี</small>':'加點<small> Extra · สั่งเพิ่ม</small>'}</button>`).join('')}</div>`:''}
+  m.innerHTML=`<h2><button class=back onclick="GU.go('home')">← 返回</button> ${G.view=='drink'?'點酒':'點菜'}</h2>${cats.length>1?`<div class=tabs>${cats.map(c=>`<button class="${c==G.tab?'on':''}" onclick="GU.tab('${c}')">${c=='套餐內含'?'套餐附餐（免費）<small>Free · ฟรี</small>':'加點<small>Extra · สั่งเพิ่ม</small>'}</button>`).join('')}</div>`:''}
   ${items.length?items.map(x=>{const q=G.q[x.id]||0;return`<div class=item><div class=n><b>${esc(x.zh)}</b><div class=tr>${[x.vn,x.en,x.th].filter(Boolean).map(esc).join('<br>')}</div></div><div class=p>${x.cat=='套餐內含'?'免費':'$'+(+x.price||0)}</div><button class=q onclick="GU.q('${x.id}',-1)">−</button><span class=qn>${q}</span><button class=q onclick="GU.q('${x.id}',1)">＋</button></div>`}).join(''):'<p style="font-size:22px">目前沒有品項</p>'}
   <div class=bar><input class=note placeholder="備註（例：不要辣）" value="${esc(nv)}"><button class=go ${n?'':'disabled'} onclick="GU.sendFood()">送出 ${n} 項${sum?`・$${sum}`:''}</button></div>${statusHtml()}`}}
 async function addReq(type,girls,note,extra){return addDoc(collection(db,'guestReq'),Object.assign({room:G.room,type,girls:girls||[],note:note||'',status:'已送出',createdBy:G.tokenMode?'qr':G.user.uid,fromGuest:true,createdAt:Date.now(),businessDay:day()},G.tokenMode?{guestToken:G.token}:{},extra||{}))}

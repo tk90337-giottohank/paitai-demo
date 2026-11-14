@@ -1,4 +1,4 @@
-// v12.18 匯入傳統排檯表（照片立即壓縮上傳、分塊、辨識後填入核對表；不在客戶端放 AI 金鑰）
+// v12.21 匯入傳統排檯表（照片辨識先讀編號對名冊，名字只做交叉核對；不符或號碼不清才黃框）
 (function(global){
 const MARKS=['紅','藍','私檯','訂番'];
 const XLSX_SRC='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
@@ -423,7 +423,7 @@ function watchImport(id){
       if(rec.status==='已辨識，待核對'&&(rec.draft||rec.draftJson)){
         let d=rec.draft||rec.draftJson;if(typeof d==='string'){try{d=JSON.parse(d)}catch(e){d=null}}
         if(d)applyDraft(d);
-        ST.msg='已辨識，請核對黃框後再確認寫入。辨識結果尚未寫入當日排檯表。';
+        ST.msg='已辨識，請核對黃框後再確認寫入（黃框＝號碼與名字不符，或號碼看不清）。辨識結果尚未寫入當日排檯表。';
         clearInterval(ST._watch);ST._watch=null;
         if(ST.step==='preview')renderPreview();else renderPick();
       }else if(rec.status==='辨識失敗'){
@@ -461,7 +461,7 @@ function renderPick(){
     <p class=files>已選：${files}</p>
     <div class=thumbs>${thumbs}</div>
     <p class=hint>試算表／CSV（含 Numbers 匯出的 Excel／CSV）會在手機上直接解析成格子。<br>
-    選好照片後會先壓縮再上傳；辨識完成會自動填入核對表（黃框請改正）。<b>確認寫入前不會改到當日資料</b>。若相簿是 HEIC、預覽失敗，請在「照片」App 匯出 JPEG 再傳（選「相簿」時 iPhone 通常會自動轉 JPEG）。</p>
+    選好照片後會先壓縮再上傳；辨識先讀編號對名冊填名字，再用紙本名字交叉核對。號碼與名字一致會直接帶入；不符或號碼看不清會黃框（例如「57 冰冰 → 名單:寶貝」）。<b>確認寫入前不會改到當日資料</b>。若相簿是 HEIC、預覽失敗，請在「照片」App 匯出 JPEG 再傳（選「相簿」時 iPhone 通常會自動轉 JPEG）。</p>
     ${ST.msg?`<p class=hint style="color:#8fd">${esc(ST.msg)}</p>`:''}
     ${ST.err?`<p class=err>${esc(ST.err)}</p>`:''}
     <div class=row>
@@ -517,7 +517,11 @@ function collectEdits(p){
       const ty=sel.value;
       if(id&&MARKS.includes(ty)){
         const low=sel.closest('td')&&sel.closest('td').classList.contains('low');
-        marks.push([seq,id,ty,low?0.45:1,'','','']);
+        const oldm=(p.marks||[]).find(x=>String(x[0])===String(seq)&&String(x[1])===String(id));
+        const paper=sel.getAttribute('data-paper')||(oldm&&oldm[5])||'';
+        const sys=sel.getAttribute('data-sys')||(oldm&&oldm[6])||'';
+        const note=(oldm&&oldm[4])||'';
+        marks.push([seq,id,ty,low?0.45:1,note,paper,sys]);
       }
     });
     // new mark row inputs
@@ -544,13 +548,19 @@ function renderPreview(){
     const ms=p.marks.filter(m=>String(m[0])===String(seq));
     const lowRow=r.conf<0.7;
     const marksHtml=ms.map((m,i)=>{
-      const low=m[3]<0.7||(typeof G==='function'&&!G(m[1]));
-      const roster=(typeof G==='function'&&G(m[1])&&G(m[1]).name)?String(G(m[1]).name).replace(/^\s*\d+\s*/,''):'';
+      const roster=(m[6]||((typeof G==='function'&&G(m[1])&&G(m[1]).name)?String(G(m[1]).name).replace(/^\s*\d+\s*號?\s*/,''):''))||'';
       const paper=m[5]||'';
-      const label=esc(m[1])+(roster?' '+esc(roster):'');
-      const hint=(paper&&roster&&paper!==roster)?`<br><small>紙本寫「${esc(paper)}」</small>`:'';
+      const np=String(paper).replace(/\s+/g,'').replace(/^\d+號?/,''), nr=String(roster).replace(/\s+/g,'').replace(/^\d+號?/,'');
+      const disagree=!!(paper&&roster&&np!==nr);
+      const noId=!String(m[1]||'').trim();
+      const low=m[3]<0.7||disagree||noId||(typeof G==='function'&&m[1]&&!G(m[1]));
+      let label;
+      if(disagree) label=`${esc(m[1]||'？')} ${esc(paper)} → 名單:${esc(roster)}`;
+      else if(noId) label=`？${paper?' '+esc(paper):''}${roster?' → 名單:'+esc(roster):''}`;
+      else label=esc(m[1])+(roster?' '+esc(roster):(paper?' '+esc(paper):''));
+      const hint=m[4]?`<br><small>${esc(m[4])}</small>`:(disagree?`<br><small>紙本寫「${esc(paper)}」，名冊是「${esc(roster)}」</small>`:'');
       return`<td class="${low?'low':''}"><div>${label}${hint}</div>
-        <select data-mark data-id="${esc(m[1])}">${markMenu(m[2])}</select></td>`
+        <select data-mark data-id="${esc(m[1])}" data-paper="${esc(paper)}" data-sys="${esc(roster)}">${markMenu(m[2])}</select></td>`
     }).join('')+`<td><input data-k=newid placeholder="加號碼" style="width:64px"> <select data-k=newty>${markMenu('紅')}</select></td>`;
     return`<tr data-seq="${esc(seq)}">
       <th>${esc(seq)}</th>
@@ -562,7 +572,7 @@ function renderPreview(){
       ${marksHtml}
     </tr>`}).join('');
   const warn=[
-    tot.tbd?`<p class=warn>待確認／低信心 ${tot.tbd} 項（黃框），請點進去改。</p>`:'',
+    tot.tbd?`<p class=warn>待確認／低信心 ${tot.tbd} 項（黃框：號碼與名字不符或號碼看不清），請改正。</p>`:'',
     tot.unk?`<p class=warn>不在名冊或號碼待確認：${esc((p.unk||[]).slice(0,8).join('；'))}${(p.unk||[]).length>8?'…':''}</p>`:'',
     tot.bad?`<p class=err>無法讀取 ${tot.bad} 行：${esc((p.bad||[]).slice(0,5).join('；'))}</p>`:'',
     tot.skipped?`<p class=hint>已排除不匯入 ${tot.skipped} 筆（含記號 x）。</p>`:'',
