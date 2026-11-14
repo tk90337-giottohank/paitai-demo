@@ -1,3 +1,4 @@
+// v12.19 介面繁中＋越南文並列
 // v12.18 照片壓縮上傳＋分塊＋辨識佇列
 // v12.16（過期換日不把已關帳舊房寫進今日；小姐報班頁幹部不導走）＋v12.15（拿掉 Apple 登入；打卡地圖／5 公尺）＋v12.14（打卡／請假／週排班、小姐獨立報班、Google 登入、客人點檯 QR）＋v12.13（新店 7 包廂清單；停用舊房不刪歷史）＋v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
@@ -207,7 +208,7 @@ function helpOverlay(){ov.innerHTML=`<div style="max-width:560px;margin:3vh auto
 const FOOD_ROOMS=['102','103','105','106','201','202','203'];
 const KIT_ST=['待做','製作中','已出餐'];
 const MENU_SEED=[
- ['炒泡麵','Mì xào',0,'套餐內含'],['炒飯','Cơm chiên',0,'套餐內含'],['水餃','Sủi cảo',0,'套餐內含'],['蛋湯','Canh trứng',0,'套餐內含'],['桌面','Đồ ăn bàn（待確認）',0,'套餐內含'],
+ ['炒泡麵','Mì xào',0,'套餐內含'],['炒飯','Cơm chiên',0,'套餐內含'],['水餃','Sủi cảo',0,'套餐內含'],['蛋湯','Canh trứng',0,'套餐內含'],['桌面','Đồ ăn bàn',0,'套餐內含'],
  ['鹹豬肉','Thịt heo muối',300,'加點'],['乾煎虱目魚肚','Cá đối phi lê chiên',300,'加點','肚'],['炸物拼盤','Món chiên tổng hợp',500,'加點','炸'],['炸斑鳩','Chim cút chiên',300,'加點'],
  ['香腸','Lạp sườn chiên',300,'加點'],['烤魷魚','Mực nướng',300,'加點','魷'],['炸魚下巴','Mang cá chiên',300,'加點'],['虱目魚肚湯','Bụng cá đối nấu canh',300,'加點'],
  ['烤扁魚','Nướng cá chỉ vàng',300,'加點','烏'],['和風洋蔥','Nộm hành tây',300,'加點'],['炸雞翅（待確認）','Cánh gà rán',300,'加點'],['烤五花（待確認）','Thịt ba chỉ quay',300,'加點']];
@@ -735,5 +736,5 @@ async function getSheetImport(id){
   return d.exists()?Object.assign({id:d.id},d.data()):null;
 }
 
-window.Cloud={ver:"v12.18",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport};
+window.Cloud={ver:"v12.19",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport};
 status();

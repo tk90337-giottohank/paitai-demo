@@ -1,3 +1,4 @@
+// v12.19 報班頁改中＋越並列（不再切換語言）
 // v12.15 小姐報班（Google＋編號密碼；已取消 Apple）
 import {firebaseConfig} from '../firebase-config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
@@ -56,7 +57,7 @@ const I18N={
   forHer:'Điểm danh hộ',
   openMain:'Mở hệ thống chính',
   todayList:'Danh sách hôm nay',
-  testSelf:'Điểm danh với身分 thử',
+  testSelf:'Điểm danh với tư cách tiếp viên thử',
   testSelfHint:'Bản ghi thử, không vào danh sách chính.',
   needLogin:'Vui lòng đăng nhập',statOn:'Đã điểm danh hôm nay',statOff:'Chưa điểm danh',
   myTai:'Số bàn của tôi',noTai:'Hôm nay chưa có bàn.',hist:'Lịch sử',
@@ -111,13 +112,8 @@ const I18N={
   lang:'ภาษา'}
 };
 const LANGS=[['zh','中文'],['vi','Tiếng Việt'],['en','English'],['th','ไทย']];
-function detectLang(){
-  const s=localStorage.getItem('girlLang'); if(s&&I18N[s])return s;
-  const n=(navigator.language||'zh').toLowerCase();
-  if(n.startsWith('vi'))return 'vi'; if(n.startsWith('en'))return 'en'; if(n.startsWith('th'))return 'th';
-  return 'zh';
-}
-let lang=detectLang();
+function detectLang(){return 'zh'}
+let lang='zh';
 const T=k=>(I18N[lang]&&I18N[lang][k])||I18N.zh[k]||k;
 
 const G={user:null,prof:null,cfg:{},checkin:null,hist:[],day:'',unsub:[],msg:''};
@@ -130,8 +126,9 @@ function girlIdOf(p){return String((p&&(p.girlId||(/^\d{1,3}$/.test(String(p.sta
 function isStaff(p){const r=p&&p.role;return r&&r!=='小姐'&&r!=='pending'&&r!=='room'}
 
 function langsBar(){
-  $('langs').innerHTML=LANGS.map(([k,l])=>`<button class="${k===lang?'on':''}" type=button data-l="${k}">${l}</button>`).join('');
-  $('langs').onclick=e=>{const b=e.target.closest('button');if(!b)return;lang=b.dataset.l;localStorage.setItem('girlLang',lang);$('brand').textContent=T('brand');draw();if($('ov').style.display!='none')loginUI()};
+  const el=$('langs'); if(!el)return;
+  el.innerHTML='<span class="bi">中文 / Tiếng Việt</span>';
+  el.onclick=null;
 }
 
 function loginUI(msg){
@@ -361,3 +358,5 @@ function drawStaff(){
 getRedirectResult(auth).catch(e=>{if(e&&e.code&&e.code!=='auth/popup-closed-by-user')console.warn(e)});
 langsBar();$('brand').textContent=T('brand');
 setInterval(()=>{if(G.prof&&(G.prof.role==='小姐'||isStaff(G.prof))){const d=bizDay(Date.now());if(d!==G.day){G.day=d;if(G.staffMode){stop();subs()}else subMine();draw()}}},30000);
+
+try{window.draw=draw;window.loginUI=loginUI}catch(e){}

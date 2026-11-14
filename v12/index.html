@@ -637,8 +637,8 @@ function undoImport(){if(!needRole(2)||!S.impSnap)return;if(!confirm('復原最�
 
 // ===== v9：叫檯看板（仿磁鐵白板） =====
 if(!S.cb){S.cb={msgs:[
- {id:'over',zh:'時間到',vi:'HẾT GiỜ'},{id:'bill',zh:'小姐回檯買單',vi:'Hũy THÃi Mãi TAN'},{id:'ret',zh:'回檯',vi:'HUỹ THÃi'},{id:'find',zh:'外找',vi:''},
- {id:'add',zh:'續單',vi:'THÊM GiỜ'},{id:'bao',zh:'報檯',vi:'BÁO THÃi GẤP'},{id:'wait',zh:'客人正在等包廂',vi:'Khách đang chờ phòng'},{id:'dance',zh:'小姐熱舞（帶動氣氛）',vi:'Các em ơi, lên nhảy khuấy động không khí nào!'}],cbVer:6,cards:[],dis:{},seen:{},log:[]}}
+ {id:'over',zh:'時間到',vi:'HẾT GIỜ'},{id:'bill',zh:'小姐回檯買單',vi:'Các em về phòng thanh toán'},{id:'ret',zh:'回檯',vi:'Các em quay lại phòng'},{id:'find',zh:'外找',vi:'Có người tìm em'},
+ {id:'add',zh:'續單',vi:'Thêm giờ'},{id:'bao',zh:'報檯',vi:'Báo phòng gấp'},{id:'wait',zh:'客人正在等包廂',vi:'Khách đang chờ phòng'},{id:'dance',zh:'小姐熱舞（帶動氣氛）',vi:'Các em ơi, lên nhảy khuấy động không khí nào!'}],cbVer:6,cards:[],dis:{},seen:{},log:[]}}
 if(S.cb.cbVer!=3){const ms=S.cb.msgs,F=id=>ms.find(m=>m.id==id),VI={over:['HẾT GiỜ','Hết giờ'],bill:['Hũy THÃi Mãi TAN','Các em về phòng tính tiền'],ret:['HUỹ THÃi','Quay lại phòng'],find:['','Có người tìm em'],wait:['KHÁCH CHỜ PHONG','Khách chờ phòng']};
  for(const id in VI){const m=F(id);if(m&&(m.vi==VI[id][0]||m.vi==VI[id][1]))m.vi=VI[id][1]}
  let ad=F('add');if(!ad){ad={id:'add',zh:'續單',vi:'Thêm giờ'};const i=ms.findIndex(m=>m.id=='bao');ms.splice(i>=0?i:ms.length,0,ad)}else{if(ad.zh=='加時')ad.zh='續單';if(ad.vi=='THÊM GiỜ')ad.vi='Thêm giờ'}
@@ -654,6 +654,9 @@ if(S.cb.cbVer!=5){const U={bill:['Các em về phòng tính tiền','Các em qua
  S.cb.msgs.forEach(m=>{const u=U[m.id];if(u&&m.vi==u[0])m.vi=u[1]});S.cb.cbVer=5;(S.cb.log=S.cb.log||[]).unshift(t(now())+' 訊息卡更新：回檯買單、回檯、報檯越南文');save()}
 if(S.cb.cbVer!=6){const U={over:['Hết giờ','HẾT GiỜ'],bill:['Các em quay lại phòng, khách chuẩn bị tính tiền','Hũy THÃi Mãi TAN'],ret:['Các em quay lại phòng','HUỹ THÃi'],find:['Có người tìm em',''],add:['Thêm giờ','THÊM GiỜ'],bao:['Gấp! Em đã được chọn, vào phòng ngay','BÁO THÃi GẤP']};
  S.cb.msgs.forEach(m=>{const u=U[m.id];if(u&&m.vi==u[0])m.vi=u[1]});S.cb.cbVer=6;(S.cb.log=S.cb.log||[]).unshift(t(now())+' 訊息卡越南文改回卡片原文');save()}
+if(S.cb.cbVer!=7){const U={over:['HẾT GiỜ','HẾT GIỜ'],bill:['Hũy THÃi Mãi TAN','Các em về phòng thanh toán'],ret:['HUỹ THÃi','Các em quay lại phòng'],find:['','Có người tìm em'],add:['THÊM GiỜ','Thêm giờ'],bao:['BÁO THÃi GẤP','Báo phòng gấp']};
+ S.cb.msgs.forEach(m=>{const u=U[m.id];if(!u)return;if(!m.vi||m.vi==u[0]||/THÃi|Hũy|HUỹ|GiỜ/.test(m.vi))m.vi=u[1]});
+ S.cb.cbVer=7;(S.cb.log=S.cb.log||[]).unshift(t(now())+' 訊息卡越南文錯字修正');save()}
 function cbLogSafe(m){(S.cb.log=S.cb.log||[]).unshift(t(now())+' '+m)}
 const CBM=id=>S.cb.msgs.find(m=>m.id==id)||{zh:id,vi:''};
 let CBsel={room:'',msg:'',girls:[],custom:'',all:false};
@@ -1049,4 +1052,4 @@ ${sug.ranked.length?`<ol class=slrank>${sug.ranked.map((r,i)=>`<li style="${sug.
 function sheetLearnRebuild(){const days=new Set((S.sheetLog||[]).filter(e=>e&&e.imp&&e.day).map(e=>e.day));Object.values(S.rooms||{}).forEach(x=>{if(x&&x.imp&&x.start&&typeof bizDay==='function')days.add(bizDay(x.start))});if(!days.size)days.add(S.openDay||bizDay(now()));[...days].forEach(d=>sheetLearnIngest(d));const lab=[...days].sort().join('、');log('自動排台學習：已納入 '+lab);save();toast('已重建學習資料（'+lab+'）');openSheetLearn()}
 
 document.getElementById('op').value=S.op||'';render();setInterval(tick,1000);
-</script><script src="grid.js?v=12.18.1"></script><script src="transfer.js?v=12.18.1"></script><script src="dayroll.js?v=12.18.1"></script><script src="att.js?v=12.18.1"></script><script src="import-sheet.js?v=12.18.1"></script><script type=module src="cloud.js?v=12.18.1"></script></body></html>
+</script><script src="grid.js?v=12.19"></script><script src="transfer.js?v=12.19"></script><script src="dayroll.js?v=12.19"></script><script src="att.js?v=12.19"></script><script src="import-sheet.js?v=12.19"></script><script src="i18n-data.js?v=12.19"></script><script src="i18n.js?v=12.19"></script><script type=module src="cloud.js?v=12.19"></script></body></html>
