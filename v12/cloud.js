@@ -1,3 +1,4 @@
+// v12.21.4 換日補跑＋交易鎖修正（不把複製的舊 dayRoll 當成已完成）
 // v12.21.2 可點規則：滿 bookedMax 間／他房私檯／暫停才灰；1–2 間仍可點
 // v12.18 照片壓縮上傳＋分塊＋辨識佇列
 // v12.16（過期換日不把已關帳舊房寫進今日；小姐報班頁幹部不導走）＋v12.15（拿掉 Apple 登入；打卡地圖／5 公尺）＋v12.14（打卡／請假／週排班、小姐獨立報班、Google 登入、客人點檯 QR）＋v12.13（新店 7 包廂清單；停用舊房不刪歷史）＋v12.12（07:10 自動換日＋昨日未完成＋重設包廂）＋v12.11（自動排台計分：偏藍勾＋今日台數＋無資料補台）＋v12.10（自動排台學習）＋v12.9（客人隨機點檯）＋v12.6（客人點檯平板）＋v12.5（換包廂・時間調整）＋v12.4（傳統排檯表）＋v12.3（登入紀錄）＋v12.2.1（餐點系統＋廚房收單）
@@ -14,11 +15,13 @@ const DOMAIN='paitai-system.local',mail=id=>String(id).trim().toLowerCase()+'@'+
 const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'特殊':5,'tv':0,'kitchen':0,'room':0,'pending':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r=='room'?'房間平板':r=='pending'?'待核准':r;const ROLE_ALL=['小姐','少爺','幹部','經理','老闆','特殊','tv','kitchen','room','pending'];
 const LOCAL=new Set(['cur','op','users','usersExample','impSnap','wsSeq','rosterNames','renameLog']);
 const SETTINGS=['cfg','wines','catalog','cb','attVer','cutVer','cleanVer','imp1026','beerVer','sheetLearn'];
-const isDayKey=k=>!LOCAL.has(k)&&!SETTINGS.includes(k)&&!['hist','wineStore','wsLog','ledger'].includes(k);
+const isDayKey=k=>!LOCAL.has(k)&&!SETTINGS.includes(k)&&!['hist','wineStore','wsLog','ledger','dayRoll'].includes(k);
 const J=v=>JSON.stringify(v===undefined?null:v);
 const st={user:null,prof:null,inited:null,dayId:null,unsub:[],dayUnsub:null,last:{set:{},day:{},hist:{},wine:{},led:{},wlog:new Set()},timer:null,pending:0,err:'',online:navigator.onLine};
 const lv=()=>st.prof&&!st.prof.disabled?RANK[st.prof.role]||0:0;
 const isOps=()=>lv()>=1&&st.prof&&st.prof.role!='小姐'&&st.prof.role!='pending';
+const ROLL_ROLES=['特殊','老闆','經理','幹部','少爺','小姐','room','tv','kitchen'];
+const canRoll=()=>!!(st.user&&st.inited===true&&st.prof&&!st.prof.disabled&&ROLL_ROLES.includes(st.prof.role));
 const girlPageUrl=()=>{const p=location.pathname.replace(/index\.html$/,'').replace(/\/?$/,'/');return p+'girl/'+location.search+location.hash};
 // ---- 狀態指示 ----
 function status(){const el=document.getElementById('sync');if(!el)return;let t,c;
@@ -374,7 +377,7 @@ async function peekDay(id){
  }catch(e){return{exists:false}}
 }
 async function tryDayRoll(from,to){
- if(!st.user||TVMODE||!isOps()||st.inited!==true)return{ok:false,reason:'no-write'};
+ if(!canRoll())return{ok:false,reason:'no-write'};
  if(!from||!to||from==to)return{ok:false,reason:'same'};
  const ref=doc(db,'days',to);
  try{
@@ -384,30 +387,35 @@ async function tryDayRoll(from,to){
    const cur=parseRoll(data.dayRoll);
    const open=parseOpenDay(data.openDay);
    const age=cur&&cur.at?Date.now()-cur.at:9e99;
-   if(cur&&cur.status==='done')return false;
-   // 今日檔已開過，禁止過期裝置從更早的 openDay 再換日並合併舊包廂
-   if(open===to||(open&&open!==from&&open<=to))return false;
-   if(cur&&cur.status==='pending'&&age<120000&&cur.uid!==st.user.uid)return false;
-   tx.set(ref,{dayRoll:J({status:'pending',from,to,at:Date.now(),by:(st.prof&&st.prof.name)||'',uid:st.user.uid})},{merge:true});
-   return true
+   // 只有「同一段 from→to 已完成」才算已換日；複製過來的舊 dayRoll（from/to 不同）不當成完成
+   if(cur&&cur.status==='done'&&cur.from===from&&cur.to===to)return 'done';
+   if(open===to&&cur&&cur.status==='done'&&cur.to===to&&cur.from===from)return 'done';
+   if(cur&&cur.status==='pending'&&age<120000&&cur.uid&&st.user&&cur.uid!==st.user.uid)return 'busy';
+   tx.set(ref,{dayRoll:J({status:'pending',from,to,at:Date.now(),by:(st.prof&&st.prof.name)||'',uid:st.user&&st.user.uid})},{merge:true});
+   return 'won'
   });
-  return{ok:true,won:!!won}
+  if(won==='done')return{ok:true,won:false,already:true};
+  if(won==='busy')return{ok:true,won:false,reason:'busy'};
+  return{ok:true,won:won==='won'}
  }catch(e){console.warn('tryDayRoll',e);return{ok:false,reason:e.code||String(e)}}
 }
 async function markDayRollDone(from,to){
- if(!isOps()||TVMODE)return;
- const rec=J({status:'done',from,to,at:Date.now(),by:(st.prof&&st.prof.name)||'',uid:st.user.uid});
- try{await setDoc(doc(db,'days',to),{dayRoll:rec},{merge:true});st.last.day.dayRoll=rec}catch(e){console.warn(e)}
+ if(!canRoll())return;
+ const rec=J({status:'done',from,to,at:Date.now(),by:(st.prof&&st.prof.name)||'',uid:st.user&&st.user.uid});
+ try{await setDoc(doc(db,'days',to),{dayRoll:rec,openDay:J(to)},{merge:true});if(st.last.day)st.last.day.dayRoll=rec}catch(e){console.warn(e)}
 }
 async function followDayRoll(from,to){
- try{const snap=await getDoc(doc(db,'days',to));const cur=parseRoll(snap.exists()?snap.data().dayRoll:null);return!!(cur&&cur.status==='done'&&(!from||cur.from===from||cur.to===to))}catch(e){return false}
+ try{const snap=await getDoc(doc(db,'days',to));if(!snap.exists())return false;const cur=parseRoll(snap.data().dayRoll);const open=parseOpenDay(snap.data().openDay);
+  return!!((cur&&cur.status==='done'&&cur.to===to&&(!from||cur.from===from))||(open===to&&cur&&cur.status==='done'&&cur.to===to))}catch(e){return false}
 }
 function followDay(id){if(!id)return;if(st.dayId!=id)subDay(id)}
-async function flushTo(id){
- if(!st.user||TVMODE||!isOps()||st.inited!==true)throw new Error('cannot-flush');
+async function flushTo(id,extra){
+ if(!canRoll())throw new Error('cannot-flush');
  if(id!=st.dayId)subDay(id);
  const dch={};for(const k of Object.keys(S))if(isDayKey(k))dch[k]=J(S[k]);
  if(S.carryover)dch.carryover=J(S.carryover);
+ if(S.openDay)dch.openDay=J(id);
+ if(extra&&('dayRoll' in extra)){if(extra.dayRoll==null){/* 歸檔舊日時不要把新日的鎖寫回去 */}else dch.dayRoll=typeof extra.dayRoll==='string'?extra.dayRoll:J(extra.dayRoll)}
  Object.assign(st.last.day,dch);
  st.pending++;status();
  try{await setDoc(doc(db,'days',id),dch,{merge:true})}finally{st.pending=Math.max(0,st.pending-1);status()}
@@ -749,5 +757,5 @@ async function getSheetImport(id){
   return d.exists()?Object.assign({id:d.id},d.data()):null;
 }
 
-window.Cloud={ver:"v12.21.2",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+window.Cloud={ver:"v12.21.4",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();

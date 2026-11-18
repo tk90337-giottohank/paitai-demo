@@ -1,3 +1,4 @@
+// v12.21.4 報班頁開啟時也補跑錯過的換日（交易鎖，只跑一次）
 // v12.21.3 報班頁絕不跳轉；房間平板等非小姐／非幹部帳號留在登入畫面並可切換
 // v12.19 報班頁改中＋越並列（不再切換語言）
 // v12.15 小姐報班（Google＋編號密碼；已取消 Apple）
@@ -5,7 +6,7 @@ import {firebaseConfig} from '../firebase-config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence,
   GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,updateProfile} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import {initializeFirestore,persistentLocalCache,connectFirestoreEmulator,doc,getDoc,setDoc,updateDoc,collection,onSnapshot,query,where} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {initializeFirestore,persistentLocalCache,connectFirestoreEmulator,doc,getDoc,setDoc,updateDoc,collection,onSnapshot,query,where,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
 const EMU=/[?&]emu=1/.test(location.search);
 const app=initializeApp(firebaseConfig),auth=getAuth(app);
@@ -199,7 +200,7 @@ function subs(){
   const f=e=>console.warn(e);
   G.unsub.push(onSnapshot(doc(db,'config','settings'),s=>{
     try{G.cfg=s.exists()?JSON.parse(s.data().cfg||'{}'):{}}catch(_){G.cfg={}}
-    G.day=bizDay(Date.now());
+    G.day=bizDay(Date.now());try{girlCatchUpRoll()}catch(e){}
     subMine();draw();
   },f));
   G.unsub.push(onSnapshot(doc(db,'config','roster'),s=>{
@@ -371,5 +372,81 @@ function drawStaff(){
 getRedirectResult(auth).catch(e=>{if(e&&e.code&&e.code!=='auth/popup-closed-by-user')console.warn(e)});
 langsBar();$('brand').textContent=T('brand');
 setInterval(()=>{if(G.prof&&(G.prof.role==='小姐'||isStaff(G.prof))){const d=bizDay(Date.now());if(d!==G.day){G.day=d;if(G.staffMode){stop();subs()}else subMine();draw()}}},30000);
+setInterval(()=>{if(G.prof)girlCatchUpRoll()},30000);
+
+function nextBizDay(d){const dt=new Date(d+'T12:00:00');dt.setDate(dt.getDate()+1);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')}
+function prevBizDay(d){const dt=new Date(d+'T12:00:00');dt.setDate(dt.getDate()-1);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')}
+function parseRoll(v){if(!v)return null;if(typeof v==='object'&&v.status)return v;try{return typeof v==='string'?JSON.parse(v):v}catch(e){return null}}
+function parseOpenDay(v){if(v==null||v==='')return'';if(typeof v==='object')return v.day||v.id||'';try{const x=typeof v==='string'?JSON.parse(v):v;return typeof x==='string'?x:(x&&(x.day||x.id)||'')}catch(e){return String(v)}}
+function parseJsonField(v,fb){if(v==null)return fb;if(typeof v!=='string')return v;try{return JSON.parse(v)}catch(e){return fb}}
+let _rollBusy=false;
+async function girlCatchUpRoll(){
+  if(_rollBusy||!auth.currentUser)return;
+  const today=bizDay(Date.now());
+  _rollBusy=true;
+  try{
+    let open=null, cursor=today;
+    for(let i=0;i<14;i++){
+      const snap=await getDoc(doc(db,'days',cursor));
+      if(snap.exists()){open=parseOpenDay(snap.data().openDay)||cursor;break}
+      cursor=prevBizDay(cursor);
+    }
+    if(!open||open>=today){G.day=today;return}
+    let from=open;
+    while(from<today){
+      const to=nextBizDay(from);
+      const toRef=doc(db,'days',to);
+      const won=await runTransaction(db,async tx=>{
+        const snap=await tx.get(toRef);
+        const data=snap.exists()?snap.data():{};
+        const cur=parseRoll(data.dayRoll);
+        const age=cur&&cur.at?Date.now()-cur.at:9e99;
+        if(cur&&cur.status==='done'&&((cur.from===from&&cur.to===to)||(cur.to===to&&parseOpenDay(data.openDay)===to)))return 'done';
+        if(cur&&cur.status==='pending'&&age<120000&&cur.uid!==auth.currentUser.uid)return 'busy';
+        tx.set(toRef,{dayRoll:JSON.stringify({status:'pending',from,to,at:Date.now(),by:(G.prof&&(G.prof.name||G.prof.role))||'報班頁',uid:auth.currentUser.uid})},{merge:true});
+        return 'won';
+      });
+      if(won==='done'){from=to;continue}
+      if(won==='busy'){await new Promise(r=>setTimeout(r,500));continue}
+      if(won!=='won')break;
+      const fromSnap=await getDoc(doc(db,'days',from));
+      const histRef=doc(db,'hist',from);
+      const histSnap=await getDoc(histRef);
+      const raw=fromSnap.exists()?(fromSnap.data()||{}):{};
+      const rooms=parseJsonField(raw.rooms,{})||{};
+      const revAll=parseJsonField(raw.revenue,[])||[];
+      const revDay=Array.isArray(revAll)?revAll.filter(v=>v&&(v.day===from||(!v.day&&v.t&&bizDay(v.t)===from))):[];
+      const live={};
+      Object.entries(rooms).forEach(([rid,x])=>{if(!x)return;live[rid]={guests:x.guests,start:x.start,end:x.end,sessions:x.sessions,wine:x.wine,orders:x.orders,carryDay:x.carryDay||from,paperSeq:x.paperSeq||null,imp:!!x.imp,bans:x.bans,privBans:x.privBans||[],drink:x.drink||'',billCall:!!x.billCall}});
+      if(fromSnap.exists()&&!histSnap.exists()){
+        const rec={day:from,closedAt:Date.now(),closedBy:'系統（07:10 自動／報班頁補跑）',rows:[],checkin:(parseJsonField(raw.checkin,{})||{})[from]||[],att:(parseJsonField(raw.att,{})||{})[from]||{},clockOut:(parseJsonField(raw.clockOut,{})||{})[from]||{},revenue:revDay,orderBonus:(parseJsonField(raw.orderBonus,[])||[]).filter(v=>v&&(v.day===from||(v.t&&bizDay(v.t)===from))),girls:{},staff:[],staffPay:(parseJsonField(raw.staffPay,{})||{})[from]||null,live,finds:[],visits:[],audit:[],log:[],cbLog:[],dayExt:null,ledger:[]};
+        await setDoc(histRef,{json:JSON.stringify(rec),by:auth.currentUser.uid,at:Date.now()});
+      }
+      // 開新日：帶過未關帳包廂與待辦，不改 revenue／voidedRevenue／staffPay 內容
+      const carry=parseJsonField(raw.carryTodos,{version:1,items:[]})||{version:1,items:[]};
+      carry.items=Array.isArray(carry.items)?carry.items.slice():[];
+      const have=new Set(carry.items.map(x=>x&&x.id));
+      Object.entries(rooms).forEach(([rid,x])=>{
+        if(!x)return;
+        const id='open-room:'+(x.carryDay||from)+':'+rid;
+        if(have.has(id))return;
+        have.add(id);
+        const ban=x.paperSeq?('紙本番 '+x.paperSeq):'';
+        carry.items.push({id,type:'open-room',day:x.carryDay||from,title:rid+' 番尚未結束／未買單',detail:(x.imp?'（匯入未結束）':'')+(ban?'・'+ban:''),link:'payFlow:'+rid,done:false,doneAt:null,doneBy:null,room:rid});
+      });
+      carry.updatedAt=Date.now();carry.from=from;
+      const payload=Object.assign({},raw,{
+        openDay:JSON.stringify(to),
+        carryTodos:JSON.stringify(carry),
+        dayRoll:JSON.stringify({status:'done',from,to,at:Date.now(),by:(G.prof&&(G.prof.name||G.prof.role))||'報班頁',uid:auth.currentUser.uid})
+      });
+      await setDoc(toRef,payload,{merge:true});
+      from=to;
+    }
+    G.day=today;
+  }catch(e){console.warn('girlCatchUpRoll',e)}
+  finally{_rollBusy=false}
+}
+
 
 try{window.draw=draw;window.loginUI=loginUI}catch(e){}

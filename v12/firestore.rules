@@ -20,6 +20,14 @@ service cloud.firestore {
     function isRoomTab() { return active() && me().role == 'room' && me().get('room', '') != ''; }
     function myRoom() { return me().room; }
     function isKitchen() { return active() && me().role == 'kitchen'; }
+    function canRoll() {
+      return active() && me().role in ['特殊', '老闆', '經理', '幹部', '少爺', '小姐', 'room', 'tv', 'kitchen'];
+    }
+    function billFieldsUntouched() {
+      return (!('revenue' in resource.data) || request.resource.data.revenue == resource.data.revenue)
+        && (!('voidedRevenue' in resource.data) || request.resource.data.voidedRevenue == resource.data.voidedRevenue)
+        && (!('staffPay' in resource.data) || request.resource.data.staffPay == resource.data.staffPay);
+    }
     function rankOk(d) { return d.rank == rank(d.role); }
 
     // ---- v12.14 客人點檯 QR（未登入、持 token 只能動該房）----
@@ -85,14 +93,15 @@ service cloud.firestore {
     }
     // 當日營業資料（每個營業日一份文件）
     match /days/{day} {
-      allow read: if reader();
-      allow create, update: if staff();
+      allow read: if reader() || isHostess() || isRoomTab() || isKitchen() || (active() && me().role in ['room', 'tv', 'kitchen', '小姐']);
+      allow create: if staff() || canRoll();
+      allow update: if staff() || (canRoll() && billFieldsUntouched());
       allow delete: if lvl() >= 3;
     }
-    // 歷史歸檔（每日一份）：幹部以上可看；自動日結任何在班人員可建立；修改（手動匯入）幹部以上
+    // 歷史歸檔（每日一份）：幹部以上可看；換日補跑時已登入店內帳號可建立（不得改帳單欄）；修改（手動匯入）幹部以上
     match /hist/{day} {
-      allow read: if lvl() >= 2;
-      allow create: if staff();
+      allow read: if lvl() >= 2 || canRoll();
+      allow create: if staff() || canRoll();
       allow update: if lvl() >= 2;
       allow delete: if lvl() >= 3;
     }

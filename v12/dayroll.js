@@ -1,3 +1,4 @@
+// v12.21.4 換日：錯過的每一日都補跑歸檔；交易鎖不把複製來的舊 dayRoll 當成已完成；任一登入端可觸發；手動換日有成敗訊息
 // v12.16 換日：今日已開檔則跟隨、不把過期裝置的舊未關帳包廂寫進今日；已買單殘留不列入未完成
 // v12.12 營業日 07:10 自動換日＋昨日未完成事項＋重設包廂
 function rollNow(){return(typeof maybeDayRoll==='function'&&maybeDayRoll._now)?maybeDayRoll._now():(window.Cloud&&typeof window.Cloud.serverNow==='function'?window.Cloud.serverNow():now())}
@@ -82,44 +83,114 @@ ${pend.length?`<h3>待處理</h3><ol class=clist>${pend.map(row).join('')}</ol>`
 ${done.length?`<details><summary>已處理 ${done.length} 項</summary><ol class=clist>${done.map(row).join('')}</ol></details>`:''}
 <p style="color:#aaa;font-size:13px">權限：幹部以上。此清單由自動換日產生，不會改寫昨日已存檔的營業資料。</p></div>`)}
 
+function nextBizDay(d){const dt=new Date(d+'T12:00:00');dt.setDate(dt.getDate()+1);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')}
+function prevBizDay(d){const dt=new Date(d+'T12:00:00');dt.setDate(dt.getDate()-1);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')}
+function rollSteps(from,to){const out=[];if(!from||!to||from>=to)return out;let d=from;let guard=0;while(d<to&&guard++<60){const n=nextBizDay(d);out.push([d,n]);d=n}return out}
+function rollIsDone(cur,from,to){if(!cur||cur.status!=='done')return false;if(to&&cur.to!==to)return false;if(from&&cur.from&&cur.from!==from)return false;return true}
+function missedRollBannerHtml(){
+ if(typeof lvl==='function'&&lvl()<1)return'';
+ const today=(typeof bizDay==='function'?bizDay(rollNow()):'');
+ const open=S.openDay||today;
+ if(!today||!open||open>=today)return'';
+ const n=rollSteps(open,today).length;
+ return`<div id=missedRollBanner class=rollban style="background:#5a2020;border:1px solid #c44;padding:10px 12px;margin:8px 0;border-radius:10px">
+  <b>營業日尚未換日</b>
+  <span>系統仍停在 <b>${esc(open)}</b>，現在應為 <b>${esc(today)}</b>（已錯過 ${n} 日）。點「立即換日」會歸檔錯過的營業日、把未關帳包廂列入待辦，並把看板換到今天。不會改已存帳單金額。</span>
+  ${typeof lvl==='function'&&lvl()>=2?`<button type=button onclick="manualDayRoll()">立即換日</button>`:''}
+ </div>`
+}
+function drawMissedRollBanner(){
+ let el=document.getElementById('missedRollBanner');const html=missedRollBannerHtml();
+ if(!html){if(el)el.remove();return}
+ if(el){el.outerHTML=html;return}
+ el=document.createElement('div');el.id='missedRollBanner';
+ const main=document.querySelector('main')||document.body;
+ main.parentNode.insertBefore(el,main);
+ document.getElementById('missedRollBanner').outerHTML=html
+}
+
 async function maybeDayRoll(opts){
  opts=opts||{};
- if(maybeDayRoll._busy)return;
- const to=bizDay(rollNow()),from=S.openDay||to;
- if(!from||from==to)return;
- if(from>to)return;
+ if(maybeDayRoll._busy)return maybeDayRoll._pending||{ok:false,reason:'busy'};
+ const today=bizDay(rollNow());
+ const open=S.openDay||today;
+ if(!open||!today)return{ok:false,reason:'no-day'};
+ if(open>today)return{ok:false,reason:'open-after-today'};
+ if(open==today){drawMissedRollBanner();drawCarryBanner();return{ok:true,reason:'already',from:open,to:today,steps:0}}
  maybeDayRoll._busy=true;
+ const result={ok:false,reason:'',from:open,to:today,steps:0,archived:[],followed:[]};
+ maybeDayRoll._pending=result;
  try{
+  const steps=rollSteps(open,today);
+  if(!steps.length){result.ok=true;result.reason='already';return result}
   const Cld=window.Cloud;
-  // 若今日營業日檔已存在（已開檔或已換日完成），過期裝置不得把舊的 openDay 再換日並把舊包廂寫進來
-  if(Cld&&typeof Cld.peekDay==='function'){
-   const peek=await Cld.peekDay(to);
-   if(peek&&peek.exists&&(peek.openDay===to||(peek.dayRoll&&peek.dayRoll.status==='done'&&peek.dayRoll.to===to))){
-    applyRolloverLocal(from,to,{follow:true});
-    if(Cld.followDay)Cld.followDay(to);
-    return
-   }
+  for(const [from,to] of steps){
+    const one=await rollOneDay(from,to,opts,Cld);
+    result.steps++;
+    if(one&&one.archived)result.archived.push(from);
+    if(one&&one.followed)result.followed.push(to);
+    if(one&&one.ok===false){result.reason=one.reason||'step-failed';result.ok=false;if(opts.manual)break;else break}
+    result.ok=true;result.reason=one&&one.reason||'ok';
   }
-  if(!Cld||typeof Cld.tryDayRoll!=='function'||(typeof Cld.lv==='function'&&Cld.lv()<1)||(typeof TVMODE!=='undefined'&&TVMODE)){
-   if(Cld&&typeof Cld.followDayRoll==='function'){const ok=await Cld.followDayRoll(from,to);if(ok)applyRolloverLocal(from,to,{follow:true})}
-   return
+  if(result.ok&&S.openDay==today){
+    try{toast('已換日 '+today+(result.archived.length?'，已歸檔 '+result.archived.join('、'):'')+'，未完成待辦 '+(pendingCarry().length)+' 項')}catch(e){}
+  }else if(!result.ok){
+    try{toast('換日未完成'+(result.reason?'（'+result.reason+'）':'')+'，將再試',true)}catch(e){}
   }
-  const r=await Cld.tryDayRoll(from,to);
-  if(!r||!r.ok){if(Cld.followDayRoll){const ok=await Cld.followDayRoll(from,to);if(ok)applyRolloverLocal(from,to,{follow:true})}return}
-  if(!r.won){applyRolloverLocal(from,to,{follow:true});if(Cld.followDay)Cld.followDay(to);return}
-  await performDayRoll(from,to)
- }catch(e){console.warn('maybeDayRoll',e);try{toast('自動換日未完成，將再試',true)}catch(err){}}
- finally{maybeDayRoll._busy=false}
+  render();drawCarryBanner();drawMissedRollBanner();
+  return result;
+ }catch(e){
+  console.warn('maybeDayRoll',e);
+  result.ok=false;result.reason=(e&&(e.message||e.code))||String(e);
+  try{toast('自動換日未完成，將再試',true)}catch(err){}
+  return result;
+ }finally{maybeDayRoll._busy=false;maybeDayRoll._pending=null}
 }
+
+async function rollOneDay(from,to,opts,Cld){
+ Cld=Cld||window.Cloud;
+ if(Cld&&typeof Cld.peekDay==='function'){
+  const peek=await Cld.peekDay(to);
+  const done=peek&&peek.exists&&(rollIsDone(peek.dayRoll,from,to)||(peek.openDay===to&&peek.dayRoll&&peek.dayRoll.status==='done'&&peek.dayRoll.to===to));
+  if(done){
+   applyRolloverLocal(from,to,{follow:true});
+   if(Cld.followDay)Cld.followDay(to);
+   return{ok:true,followed:true,reason:'follow-done'}
+  }
+ }
+ const canWrite=Cld&&typeof Cld.tryDayRoll==='function'&&(typeof Cld.canRoll==='function'?Cld.canRoll():(typeof Cld.isOps==='function'?Cld.isOps():true));
+ if(!canWrite){
+  if(Cld&&typeof Cld.followDayRoll==='function'){
+   const ok=await Cld.followDayRoll(from,to);
+   if(ok){applyRolloverLocal(from,to,{follow:true});if(Cld.followDay)Cld.followDay(to);return{ok:true,followed:true,reason:'follow'}}
+  }
+  return{ok:false,reason:'no-write'}
+ }
+ const r=await Cld.tryDayRoll(from,to);
+ if(!r||!r.ok){
+  if(Cld.followDayRoll){const ok=await Cld.followDayRoll(from,to);if(ok){applyRolloverLocal(from,to,{follow:true});if(Cld.followDay)Cld.followDay(to);return{ok:true,followed:true,reason:'follow-after-lock-fail'}}}
+  return{ok:false,reason:(r&&r.reason)||'lock-failed'}
+ }
+ if(!r.won){
+  // someone else is rolling or already done — wait then follow
+  let ok=false;
+  if(Cld.followDayRoll){
+   for(let i=0;i<8&&!ok;i++){ok=await Cld.followDayRoll(from,to);if(!ok)await new Promise(res=>setTimeout(res,400))}
+  }
+  if(ok){applyRolloverLocal(from,to,{follow:true});if(Cld.followDay)Cld.followDay(to);return{ok:true,followed:true,reason:'follow-other'}}
+  return{ok:false,reason:'waiting-other'}
+ }
+ await performDayRoll(from,to);
+ return{ok:true,archived:true,reason:'archived'}
+}
+
 async function performDayRoll(from,to){
  const items=collectCarryover(from);
  const roomSnap={};Object.entries(S.rooms||{}).forEach(([r,x])=>{if(!x)return;x.carryDay=x.carryDay||from;roomSnap[r]=JSON.parse(JSON.stringify(x))});
- const rec=(typeof closeDayL==='function'?null:null);
- if(typeof closeDayL==='function')closeDayL(from,'自動');
- else if(typeof closeDay==='function'){const h=S.hist&&S.hist[from];if(!h){const rec=buildDay(from);rec.closedAt=rollNow();rec.closedBy='系統（'+(typeof cutTxt==='function'?cutTxt():'07:10')+' 自動）';S.hist=S.hist||{};S.hist[from]=rec;log('日結 '+from+'（系統自動）')}}
+ if(typeof closeDay==='function'){const h=S.hist&&S.hist[from];if(!h){const rec=buildDay(from);rec.closedAt=rollNow();rec.closedBy='系統（'+(typeof cutTxt==='function'?cutTxt():'07:10')+' 自動）';S.hist=S.hist||{};S.hist[from]=rec;log('日結 '+from+'（系統自動）')}}
  S.carryover={day:from,to,at:rollNow(),by:S.cur?S.cur.name:'系統',items,rooms:roomSnap,note:'換日快照；未結束包廂保留在新一日看板並標示昨日未結束。'};
  mergeCarryTodos(items,from);
- if(window.Cloud&&window.Cloud.flushTo)await window.Cloud.flushTo(from);
+ if(window.Cloud&&window.Cloud.flushTo)await window.Cloud.flushTo(from,{dayRoll:null});
  const keep=x=>{if(!x)return false;const t=x.start||x.t;if(!t)return true;return bizDay(t)>=to};
  ['sheetLog','taiLog','revenue','visitLog','orderBonus','redLog','blueLog','finds','decisions'].forEach(k=>{if(Array.isArray(S[k]))S[k]=S[k].filter(e=>keep(e))});
  S.openDay=to;
@@ -128,19 +199,35 @@ async function performDayRoll(from,to){
  if(window.Cloud&&window.Cloud.flushTo)await window.Cloud.flushTo(to);
  else save();
  if(window.Cloud&&window.Cloud.markDayRollDone)await window.Cloud.markDayRollDone(from,to);
- try{toast('已換日 '+to+'，昨日未完成 '+(pendingCarry().length)+' 項')}catch(e){}
- render();if(typeof drawCarryBanner==='function')drawCarryBanner();
+ render();if(typeof drawCarryBanner==='function')drawCarryBanner();if(typeof drawMissedRollBanner==='function')drawMissedRollBanner();
 }
+
 function applyRolloverLocal(from,to,opts){
  opts=opts||{};
- if(S.openDay==to){render();drawCarryBanner();return}
+ if(S.openDay==to){render();drawCarryBanner();drawMissedRollBanner();return}
  if(!opts.follow){
   Object.values(S.rooms||{}).forEach(x=>{if(x&&!x.carryDay)x.carryDay=from});
   mergeCarryTodos(collectCarryover(from),from);
  }
  S.openDay=to;
  if(window.Cloud&&window.Cloud.followDay)window.Cloud.followDay(to);
- render();drawCarryBanner()
+ render();drawCarryBanner();drawMissedRollBanner()
+}
+
+async function manualDayRoll(){
+ if(typeof needRole==='function'&&!needRole(2,'換日'))return;
+ const today=bizDay(rollNow()),open=S.openDay||today;
+ if(open==today){alert('現在已是營業日 '+today+'，不需換日。');drawMissedRollBanner();return}
+ if(open>today){alert('目前紀錄的營業日 '+open+' 比今天 '+today+' 還晚，未自動換日。請先核對系統時間。');return}
+ const steps=rollSteps(open,today);
+ if(!confirm('要補跑換日嗎？\n\n系統仍停在 '+open+'，現在應為 '+today+'（將依序歸檔 '+steps.map(s=>s[0]).join('、')+'）。\n未關帳包廂會列入待辦並留在看板（標示昨日未結束），已存帳單金額不會改。'))return;
+ const r=await maybeDayRoll({manual:true,reason:'manual'});
+ if(r&&r.ok&&(S.openDay==today)){
+  alert('換日完成：'+open+' → '+today+'\n已歸檔：'+(r.archived&&r.archived.length?r.archived.join('、'):'（已存在的歸檔則跟隨）')+'\n未完成待辦 '+(pendingCarry().length)+' 項。');
+ }else{
+  alert('換日失敗'+(r&&r.reason?'：'+r.reason:'')+'。請確認已登入雲端後再試，或把畫面留給幹部處理。\n目前營業日：'+(S.openDay||'未知')+'，應為 '+today);
+ }
+ if(typeof openHistory==='function')openHistory();
 }
 
 function roomNeedsReset(r){return!!((S.rooms||{})[r]||(S.cleaning||{})[r]||(S.dirty||{})[r])}
@@ -191,4 +278,4 @@ function restoreRoomReset(id){
  e.restored=true;e.restoredAt=now();e.restoredBy=S.cur?S.cur.name:'';
  log('還原包廂重設：'+e.room+'（快照 '+id+'）');save();render();toast('已還原 '+e.room);openRoomResetLog()
 }
-function dayTick(){maybeDayRoll()}
+function dayTick(){maybeDayRoll();if(typeof drawMissedRollBanner==="function")drawMissedRollBanner()}
