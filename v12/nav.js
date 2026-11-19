@@ -43,7 +43,7 @@
   ]}
  ];
 
- function lvNow(){try{return typeof lvl==='function'?lvl():0}catch(e){return 0}}
+ function lvNow(){try{if(window.Cloud&&typeof Cloud.lv==='function'){const n=Cloud.lv();if(n)return n}}catch(e){}try{return typeof lvl==='function'?lvl():0}catch(e){return 0}}
  function badgeVal(kind){
   if(kind==='pendingCarry'&&typeof pendingCarry==='function')return pendingCarry().length;
   return 0;
