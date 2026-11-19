@@ -1,6 +1,11 @@
 <!DOCTYPE html><html lang="zh-Hant"><head>
 <meta name="robots" content="noindex,nofollow"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>排檯系統原型</title><style>
+<meta name="theme-color" content="#1a1e26">
+<title>排檯系統原型</title>
+<script>
+(function(){try{var m=localStorage.getItem('paitai-theme')||'system';var light=m==='light'||(m!=='dark'&&window.matchMedia&&matchMedia('(prefers-color-scheme:light)').matches);var r=light?'light':'dark';document.documentElement.setAttribute('data-theme',r);document.documentElement.setAttribute('data-theme-pref',m);document.documentElement.style.colorScheme=r}catch(e){document.documentElement.setAttribute('data-theme','dark')}})();
+</script>
+<style>
 body{font-family:sans-serif;margin:0;background:#1b1d24;color:#eee}header{padding:10px 16px;background:#2a2d38;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
 header.appbar{padding:10px 14px 8px;background:#2a2d38;display:flex;flex-direction:column;gap:8px;align-items:stretch}
@@ -118,7 +123,8 @@ dialog input[type=text]{width:100%;box-sizing:border-box}#sugg{width:100%}#guest
 .storemap,.punchmap{height:220px;width:100%;border-radius:12px;background:#1a1520;margin:8px 0}
 .punchcard{background:#1c1626;border:1px solid #3a3144;border-radius:14px;padding:10px 12px;margin:10px 0}
 .punchgeo{font-size:15px;line-height:1.45;margin-top:6px}
-</style></head><body>
+</style>
+<link rel="stylesheet" href="theme.css?v=12.24"></head><body>
 <header class="appbar">
 <div class="appbar-top">
  <h1 id="store"></h1>
@@ -236,7 +242,7 @@ function assign(r){const free=S.girls.filter(g=>gActive(g)&&g.on&&g.room!=r);if(
 const f=document.getElementById('dform');f.innerHTML=`<h3>藍筆（店家勾選）→ ${r}</h3>`+free.map(g=>`<button value="${g.id}" ${g.priv&&g.priv.room!=r?'disabled style="opacity:.4"':''}>${g.name}${g.priv&&g.priv.room!=r?' 私檯中('+g.priv.room+')':''}（${g.status}${g.room?' '+g.room+' ⚠撞檯':''}）</button> `).join('')+'<p><label>計費 <select id=btSel><option value="">自動（公轉補滿含 人數+1）</option><option>公轉</option><option>加點</option><option>私檯</option></select></label><label><input type=checkbox id=holdOnly> 只保檯（保留，不入房）</label><label><input type=checkbox id=priv> 私檯（'+C().privPrice+' 元 / '+C().privBlockMin+' 分）</label><button class="s" value="">取消</button></p>';
 const d=document.getElementById('dlg');d.onclose=()=>{if(d.returnValue){const gg=G(d.returnValue);const bk=bookedRooms(gg,r);if(bk.length>=C().bookedMax&&!confirm(`⚠ ${gg.name} 已點滿 ${bk.length} 間（${bk.join('、')}），仍要派往 ${r}？`)){log(`⚠ 點滿警示：${gg.name} 派往 ${r} 已取消`);return}if(document.getElementById('holdOnly').checked){hold(gg.id,r);return}if(gg.room&&!confirm(gg.name+' 已在 '+gg.room+'，確定撞檯改派？'))return;const btv=document.getElementById('btSel').value;seat(gg,r,'blue');log(`【藍筆】店家勾選 ${gg.name} → ${r}`);if(document.getElementById('priv').checked){setPriv(gg);setBT(r,gg.id,'私檯')}if(btv&&gg.room==r)setBT(r,gg.id,btv);render()}};d.returnValue='';d.showModal()}
 function clock(id){const g=G(id);g.on=!g.on;if(g.on&&!g.clockAt)g.clockAt=now();if(g.on)g.offAt=null;else{g.offAt=now();clearCalls(g);S.reqs=S.reqs.filter(q=>q.girl!=id);g.holds=[];if(g.visit)g.visit=null;const k=bizDay(now());(S.clockOut=S.clockOut||{})[k]=S.clockOut[k]||{};S.clockOut[k][id]=now()}g.leave=false;todayRec(g);if(g.on){g.status='休息室';g.idleSince=now();log(g.name+' 上班打卡')}else{if(g.room)leave(g,'下班');g.status='休息室';log(g.name+' 下班打卡')}render()}
-function toast(m,warn){const d=document.createElement('div');d.textContent=m;d.style.cssText='padding:10px 18px;margin:4px;border-radius:8px;font-size:18px;background:'+(warn?'#c33':'#2a8');document.getElementById('toasts').append(d);setTimeout(()=>d.remove(),4000);log((warn?'⚠ ':'📡 ')+m)}
+function toast(m,warn){const d=document.createElement('div');d.textContent=m;d.style.cssText='padding:10px 18px;margin:4px;border-radius:8px;font-size:18px;background:'+(warn?'#8f4e4e':'#3d6a5a');document.getElementById('toasts').append(d);setTimeout(()=>d.remove(),4000);log((warn?'⚠ ':'📡 ')+m)}
 const tagToGirl=tag=>{const e=C().tagMap.split(',').map(x=>x.trim().split('=')).find(([k])=>k==tag);return e&&G(e[1])};
 // 唯一入口：日後真實讀卡器（WebSocket 推播）也呼叫此函式
 function handleDoorEvent0(ev){const g=tagToGirl(ev.tagId),r=ev.roomId;if(!g){toast(`未知標籤 ${ev.tagId} 於 ${r}`,true);return}
@@ -291,8 +297,39 @@ function undoFill(r){const x=S.rooms[r],g=G(x.lastAuto);if(g&&g.room==r){leave(g
 function tick0(){const n=now();autoFill();privTick(n);for(const r in S.rooms){const x=S.rooms[r];if(!x.warned&&x.end-n<=C().renewMin*60000){x.warned=true;log(`⚠ ${r} 剩 ${C().renewMin} 分，請詢問續番`)}}
 S.autos=[];
 S.girls.forEach(g=>{if(g.status=='在檯'&&!g.priv&&!g.warned&&g.until<=n){g.warned=true;log(`⚠ ${g.name} 在 ${g.room} 已到時間，請轉檯`)}if(g.status=='休息'&&g.until<=n){g.status='休息室';g.idleSince=n;log(g.name+' 休息結束，回休息室')}});save();render()}
-function render0(){const n=now();document.getElementById('store').textContent=C().store+' 排檯看板';document.getElementById('clock').textContent=t(n);(function(){const bl=document.getElementById('bizDayLabel');if(!bl)return;const open=S.openDay||'';const today=typeof bizDay==='function'?bizDay(n):'';bl.textContent=open?('營業日 '+open.slice(5).replace('-','/')):'';bl.style.color=(open&&today&&open<today)?'#f66':'#9fd'})();document.getElementById('rooms').innerHTML=roomList().map(r=>{const x=S.rooms[r];const gs=S.girls.filter(g=>g.room==r);if(!x)return`<div class=room><h3>${r}</h3>${emptyCard(r)}${typeof resetRoomBtn==='function'?resetRoomBtn(r):''}</div>`;
-const left=x.end-n,soon=left<=C().renewMin*60000;const short=x.bao&&gs.length<x.bao.m;const bt=x.bao?`<div class="g ${short?'alert':''}">保檯 ${x.bao.n}保${x.bao.m}：已送 ${x.sent||0}/${x.bao.n}・在房 ${gs.length}/${x.bao.m}${short?' ⚠不足':''}</div>`:'';return`<div class="room busy ${soon?'soon':''}"><h3>${r} ${x.carryDay?`<span class=carry>昨日未結束</span>`:''} ${soon?'⚠續番':''}</h3><div>${x.guests??'待補'} 人・第 ${x.sessions} 節・${timeInfo(x)}</div><div style='font-size:14px;color:#fd5'>${x.drink||''}・帳 $${(x.id=r,bill(x).total).toLocaleString()}</div><div style='font-size:13px'>私檯累計 $${(x.privTotal||0)+gs.filter(g=>g.priv).reduce((a,g)=>a+privCharge(g.priv),0)}・<a href=# style='color:#fc6' onclick="setRot('${r}');return false">${x.rot=='可轉'?'私檯可轉':'私檯不轉'}</a></div>`+bt+gs.map(g=>`<div class="g ${g.src} ${!g.priv&&g.until<=n?'alert':''}">${g.src=='red'?'<span class=pen style=background:#c33>紅筆</span>':g.src=='blue'?'<span class=pen style=background:#36c>藍筆</span>':''}${g.name} ${locTag(g)} ${g.priv?`<b style='background:#c39;padding:0 4px;border-radius:3px'>私檯</b> ${mmss(C().privBlockMin*60000-(n-g.priv.start)%(C().privBlockMin*60000))} ${C().privLegacy=='是'?'$'+privCharge(g.priv):C().privTai+'台'}${g.priv.visiting?' 訪客中':''}`:mmss(g.until-n)}</div>`).join('')+`${visitHTML(r)}<button onclick="assign('${r}')">派檯</button> <button class=s onclick="openVisit('${r}')">訪客</button> <button class=s onclick="renew('${r}')">續番</button> <button class=s onclick="Cloud.openGuestQr('${r}')">出 QR</button> <button class=s onclick="addOrder('${r}')">加點</button> <button class=s onclick="boardEdit('${r}')">白板</button> <button class=s onclick="roomDetail('${r}')">詳情</button> <button onclick="payFlow('${r}')" style="background:#c80">買單結帳</button>${typeof resetRoomBtn==='function'?resetRoomBtn(r):''}${x.lastAuto?` <button class=s onclick="undoFill('${r}')">撤銷補人</button>`:''}${x.autoOff?` <button class=s onclick="S.rooms['${r}'].autoOff=false;log('${r} 恢復自動補人');render()">恢復自動補人</button>`:''}</div>`}).join('');
+function roomCard(r,n){
+  const x=S.rooms[r],gs=S.girls.filter(g=>g.room==r),reset=typeof resetRoomBtn==='function'?resetRoomBtn(r):'';
+  if(!x)return`<div class="room avail${S.cleaning&&S.cleaning[r]?' clean':''}"><i class=room-strip></i><div class=room-body><div class=room-head><h3 class=room-no>${r}</h3></div>${emptyCard(r)}${reset}</div></div>`;
+  const left=x.end-n,soon=left<=C().renewMin*60000,ov=left<0;
+  const st=ov?'over':soon?'soon':'busy';
+  const hasPriv=gs.some(g=>g.priv);
+  const short=x.bao&&gs.length<x.bao.m;
+  const mins=Math.ceil(Math.abs(left)/60000);
+  const timer=ov?('超時 '+mins+' 分'):(mins+' 分');
+  const bt=x.bao?`<div class="g ${short?'alert':''}">保檯 ${x.bao.n}保${x.bao.m}：已送 ${x.sent||0}/${x.bao.n}・在房 ${gs.length}/${x.bao.m}${short?' ⚠不足':''}</div>`:'';
+  const girls=gs.map(g=>`<div class="g ${g.src} ${!g.priv&&g.until<=n?'alert':''}">${g.src=='red'?'<span class=pen style=background:#c33>紅筆</span>':g.src=='blue'?'<span class=pen style=background:#36c>藍筆</span>':''}${g.name} ${locTag(g)} ${g.priv?`<b class=priv-tag>私檯</b> ${mmss(C().privBlockMin*60000-(n-g.priv.start)%(C().privBlockMin*60000))} ${C().privLegacy=='是'?'$'+privCharge(g.priv):C().privTai+'台'}${g.priv.visiting?' 訪客中':''}`:mmss(g.until-n)}</div>`).join('');
+  return`<div class="room busy ${st}${hasPriv?' priv':''}"><i class=room-strip></i><div class=room-body>
+    <div class=room-head><h3 class=room-no>${r}${x.carryDay?`<span class=carry>昨日未結束</span>`:''}${soon?`<span class=room-flag>續番</span>`:''}</h3><div class="room-timer ${st}">${timer}</div></div>
+    <div class=room-meta>${x.guests??'待補'} 人 · 第 ${x.sessions} 節 · 小姐 ${gs.length} · ${timeInfo(x)}</div>
+    <div class=room-bill>${x.drink||''}${x.drink?' · ':''}帳 $${(x.id=r,bill(x).total).toLocaleString()}</div>
+    <div class=room-sub>私檯累計 $${(x.privTotal||0)+gs.filter(g=>g.priv).reduce((a,g)=>a+privCharge(g.priv),0)} · <a href=# class=lk onclick="setRot('${r}');return false">${x.rot=='可轉'?'私檯可轉':'私檯不轉'}</a></div>
+    ${bt}${girls}${visitHTML(r)}
+    <div class=room-acts>
+      <button type=button class=primary onclick="payFlow('${r}')">買單結帳</button>
+      <button type=button onclick="assign('${r}')">派檯</button>
+      <button type=button class=s onclick="openVisit('${r}')">訪客</button>
+      <button type=button class=s onclick="renew('${r}')">續番</button>
+      <button type=button class=s onclick="Cloud.openGuestQr('${r}')">出 QR</button>
+      <button type=button class=s onclick="addOrder('${r}')">加點</button>
+      <button type=button class=s onclick="boardEdit('${r}')">白板</button>
+      <button type=button class=s onclick="roomDetail('${r}')">詳情</button>
+      ${typeof resetRoomBtn==='function'?resetRoomBtn(r):''}
+      ${x.lastAuto?`<button type=button class=s onclick="undoFill('${r}')">撤銷補人</button>`:''}
+      ${x.autoOff?`<button type=button class=s onclick="S.rooms['${r}'].autoOff=false;log('${r} 恢復自動補人');render()">恢復自動補人</button>`:''}
+    </div>
+  </div></div>`;
+}
+function render0(){const n=now();document.getElementById('store').textContent=C().store+' 排檯看板';document.getElementById('clock').textContent=t(n);(function(){const bl=document.getElementById('bizDayLabel');if(!bl)return;const open=S.openDay||'';const today=typeof bizDay==='function'?bizDay(n):'';bl.textContent=open?('營業日 '+open.slice(5).replace('-','/')):'';bl.classList.toggle('biz-missed',!!(open&&today&&open<today));bl.classList.toggle('biz-ok',!(open&&today&&open<today));bl.style.color=''})();document.getElementById('rooms').innerHTML=roomList().map(r=>roomCard(r,n)).join('');
 const st=g=>g.gone?'離職':g.leave?'請假':g.on?g.status:'未到';const q=document.getElementById('q').value.trim(),fl=document.getElementById('fl').value,live=S.girls.filter(g=>!g.gone);document.getElementById('cnt').textContent=` 上班 ${live.filter(g=>g.on).length}/${live.length}・在檯 ${S.girls.filter(g=>g.room).length}${S.girls.some(g=>g.gone)?'・離職 '+S.girls.filter(g=>g.gone).length:''}`;
 document.getElementById('girls').innerHTML=S.girls.filter(g=>(fl=='離職'?g.gone:!g.gone||q)&&( !q||g.name.includes(q))&&(!fl||st(g)==fl)).map(g=>`<div class=g style='font-size:13px'>${g.name}・今日 ${g.tables||0} 檯${visitStat(g)}<br>${(m=>`<span style='${m.off>=C().offDays?'color:#f66;font-weight:bold':''}'>本月休 ${m.off}/${C().offDays}・全勤${m.full?'保持中':'已失去'}</span>`)(monthStats(g.id))}<br>${st(g)}${!g.on&&g.offAt&&bizDay(g.offAt)==bizDay(now())?' 已下班 '+hm(g.offAt):''}${g.room?' '+g.room:''}${(g.holds||[]).length?' 保:'+g.holds.join(','):''}${g.status=='休息'&&g.on?' '+mmss(g.until-n):''}<br>${g.on?`<select style='font-size:11px' onchange="setGov('${g.id}',this.value)"><option value='' ${!g.gov?'selected':''}>點檯:自動</option><option value=pause ${g.gov=='pause'?'selected':''}>暫停點檯</option><option value=open ${g.gov=='open'?'selected':''}>開放點檯</option></select> `:''}<button class=s style='padding:3px 6px;font-size:12px' onclick="openFind('${g.id}')">外找</button>${staffLv()>=2?` <button class=s style='padding:3px 6px;font-size:12px;min-height:44px' onclick="renameGirl('${g.id}')">改名</button>`:''} <button class=s style='padding:3px 6px;font-size:12px' onclick="toggleNew('${g.id}')">${g.isNew?'取消新':'新小姐'}</button> <button class=s style='padding:3px 6px;font-size:12px' onclick="clock('${g.id}')">${g.on?'下班':'上班'}</button>${g.on?'':` <button class=s style='padding:3px 6px;font-size:12px' onclick="G('${g.id}').leave=!G('${g.id}').leave;todayRec(G('${g.id}'));log(G('${g.id}').name+(G('${g.id}').leave?' 登記請假':' 取消請假'));render()">請假</button>`}</div>`).join('');
 const sr=document.getElementById('sr');if(sr.options.length!=roomList().length)sr.innerHTML=roomList().map(r=>`<option>${r}</option>`).join('');document.getElementById('reqs').innerHTML=S.reqs.map((q,i)=>`<div class=h><span>${t(q.t)} ${q.room} 客人點 ${G(q.girl).name}</span><span><button onclick="reqDo(${i},true)">確認派檯</button> <button class=s onclick="reqDo(${i},false)">婉拒</button></span></div>`).join('')||'無';if(document.getElementById('guest').style.display=='block')renderGuest();document.getElementById('log').innerHTML=S.log.map(l=>`<div>${l}</div>`).join('')}
@@ -307,9 +344,9 @@ const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 const isHoliday=ts=>{const [Y,M,D]=bizDay(ts).split('-').map(Number);return [5,6,0].includes(new Date(Y,M-1,D).getDay())};/* v12.7：週五六日固定 */const WKEND_MIN=10;
 const sessLen=ts=>(C().sessionMin-(isHoliday(ts)?WKEND_MIN:0))*60000;const wkTag=x=>x&&isHoliday(x.start)?`<span class=wk style="background:#a50;color:#fff;border-radius:6px;padding:1px 6px;font-size:12px;margin-left:4px">週末 −${WKEND_MIN}分</span>`:'';
 function timeInfo(x){const n=now(),st=x.sesStart||x.start,left=x.end-n,ov=left<0,soon=left<=C().renewMin*60000;
- return `<span style="font-weight:bold;${ov?'color:#f55':soon?'color:#fc3':''}">${hm(st)}–${hm(x.end)}・${ov?'超時 '+Math.ceil(-left/60000)+' 分':'剩 '+Math.ceil(left/60000)+' 分'}</span>${x.holiday?' <span class=pen style="background:#a50;white-space:nowrap">週末 −'+WKEND_MIN+'分</span>':''}`}
-function emptyCard(r){const c=S.cleaning[r];if(c)return`<div style="color:#fc3">清潔中・${hm(c)} 可用</div><button class=s onclick="delete S.cleaning['${r}'];render()">清潔完成</button>`;
- const q=prepFor(r);return`<div>空房${q?`<br><span style="color:#6cf">預備：${esc(q.name)}</span>`:''}</div><button onclick="checkIn('${r}')">進客</button>`}
+ return `<span class="${ov?'t-over':soon?'t-soon':'t-ok'}">${hm(st)}–${hm(x.end)}・${ov?'超時 '+Math.ceil(-left/60000)+' 分':'剩 '+Math.ceil(left/60000)+' 分'}</span>${x.holiday?' <span class=pen style="background:#a50;white-space:nowrap">週末 −'+WKEND_MIN+'分</span>':''}`}
+function emptyCard(r){const c=S.cleaning[r];if(c)return`<div class="room-sub t-soon">清潔中・${hm(c)} 可用</div><button class=primary type=button onclick="delete S.cleaning['${r}'];render()">清潔完成</button>`;
+ const q=prepFor(r);return`<div class=room-sub>空房${q?`<br><span>預備：${esc(q.name)}</span>`:''}</div><button class=primary type=button onclick="checkIn('${r}')">進客</button>`}
 // 開番（含酒款選擇）
 function checkIn(r){const rules=C().baoRules.split(',').map(x=>x.trim());const f=document.getElementById('dform'),hol=isHoliday(now());
  f.innerHTML=`<h3>${r} 開番（${sessLen(now())/60000} 分${hol?'・週末 −'+WKEND_MIN+' 分':''}）</h3><label>客人人數 <input id=ciN type=number value=2 min=1 style="width:60px"></label><label>開番酒款 <select id=ciD><option value="pkg:啤酒一手">套餐：一手啤酒</option><option value="pkg:高粱一瓶">套餐：一瓶高粱</option>${S.wines.map((w,i)=>`<option value="w:${i}">洋酒：${esc(w.name)}（${w.price} 元${w.price?'':'・未設價'}）</option>`).join('')}</select></label><label>保檯 <select id=ciB><option value="">不保（套餐 ${C().pkgGirls} 位）</option>${rules.map(x=>`<option>${x}</option>`).join('')}</select></label><button value=ok>開番</button> <button class=s value="">取消</button>`;
@@ -368,7 +405,7 @@ function openSettings(){openSettings0();if(typeof Att!=='undefined'){const f=doc
 // ===== v3：報到看板／外找／回檯／回檯買單 =====
 {const d={reportMin:5,returnMin:15,billMin:20,beep:'開',extFee:0,areaReaders:'R-LOUNGE=休息室,R-DINE=餐廳',doorOutLeaves:'否'};for(const k in d)if(C()[k]===undefined)C()[k]=d[k];S.calls=S.calls||[];}
 const areaMap=()=>Object.fromEntries(String(C().areaReaders).split(',').map(x=>x.trim().split('=')).filter(a=>a[1]));
-const CT={'外找':'#088','訪客':'#b4a','報到':'#3d6df2','回檯':'#c60','回檯買單':'#c33'};
+const CT={'外找':'#3d6a6a','訪客':'#6a5a7a','報到':'#4a628c','回檯':'#8a6318','回檯買單':'#8f4e4e'};
 let audioCtx=null;function beep(){if(C().beep!='開')return;try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=880;g.gain.value=.15;o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+.25)}catch(e){}}
 function addCall(type,g,r,extra){S.calls=S.calls||[];if(S.calls.some(c=>c.type==type&&c.girl==g.id&&c.room==r))return;S.calls.push(Object.assign({id:now()+g.id+type,type,girl:g.id,room:r,t:now()},extra||{}));
  const txt=type=='報到'?`${g.id} → ${r} 報到`:type=='回檯'?`${g.id} 請回檯 → ${r}（${g.loc||'外出'}）`:`${g.id} 回檯買單 → ${r}`;toast(txt,type!='報到');beep()}
@@ -1149,4 +1186,4 @@ ${sug.ranked.length?`<ol class=slrank>${sug.ranked.map((r,i)=>`<li style="${sug.
 function sheetLearnRebuild(){const days=new Set((S.sheetLog||[]).filter(e=>e&&e.imp&&e.day).map(e=>e.day));Object.values(S.rooms||{}).forEach(x=>{if(x&&x.imp&&x.start&&typeof bizDay==='function')days.add(bizDay(x.start))});if(!days.size)days.add(S.openDay||bizDay(now()));[...days].forEach(d=>sheetLearnIngest(d));const lab=[...days].sort().join('、');log('自動排台學習：已納入 '+lab);save();toast('已重建學習資料（'+lab+'）');openSheetLearn()}
 
 document.getElementById('op').value=S.op||'';render();setInterval(tick,1000);
-</script><script src="grid.js?v=12.23"></script><script src="transfer.js?v=12.23"></script><script src="dayroll.js?v=12.23"></script><script src="nav.js?v=12.23"></script><script src="att.js?v=12.23"></script><script src="import-sheet.js?v=12.23"></script><script src="i18n-data.js?v=12.23"></script><script src="i18n.js?v=12.23"></script><script type=module src="cloud.js?v=12.23"></script></body></html>
+</script><script src="grid.js?v=12.24"></script><script src="transfer.js?v=12.24"></script><script src="dayroll.js?v=12.24"></script><script src="nav.js?v=12.24"></script><script src="att.js?v=12.24"></script><script src="import-sheet.js?v=12.24"></script><script src="i18n-data.js?v=12.24"></script><script src="i18n.js?v=12.24"></script><script src="theme.js?v=12.24"></script><script type=module src="cloud.js?v=12.24"></script></body></html>

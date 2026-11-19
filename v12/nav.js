@@ -1,3 +1,4 @@
+// v12.24 齒輪可切外觀；人員帳號管理改幹部以上
 // v12.22 主選單：五組功能，設定放齒輪；權限仍由原功能檢查
 (function(){
  const GROUPS=[
@@ -68,12 +69,21 @@
     {label:'店家設定',fn:'openSettings',min:0},
     {label:'登入／切換人員',fn:'openLogin',min:0},
     {label:'我的帳號',fn:'navAccount',min:0},
-    {label:'人員帳號管理',fn:'navStaff',min:3},
+    {label:'人員帳號管理',fn:'navStaff',min:2},
     {label:'登入教學',fn:'openHelp',min:0},
     {label:'登入紀錄',fn:'navLoginLogs',min:4}
   ];
   if(L>=4) items.push({label:'重設示範資料',fn:'navResetDemo',min:4,danger:true});
   showPanel('gear','設定',items);
+  const p=document.getElementById('navPanel');
+  if(p&&window.PaitaiTheme){
+    const cur=PaitaiTheme.mode();
+    const row=document.createElement('div');
+    row.className='theme-row';
+    const btns=[['system','跟隨系統'],['dark','深色'],['light','淺色']].map(([k,l])=>`<button type=button class="s theme-btn${cur===k?' on':''}" data-theme-choice="${k}" onclick="PaitaiTheme.setMode('${k}')">${l}</button>`).join('');
+    row.innerHTML=`<div class="theme-label">外觀<span class=vi>Giao diện</span></div><div class="theme-choices">${btns}</div>`;
+    p.appendChild(row);
+  }
  };
  window.navAccount=function(){if(window.Cloud&&typeof window.Cloud.openAccount==='function')window.Cloud.openAccount();else if(typeof openLogin==='function')openLogin()};
  window.navStaff=function(){if(window.Cloud&&typeof window.Cloud.openStaff==='function')window.Cloud.openStaff();else if(typeof openUsers==='function')openUsers()};

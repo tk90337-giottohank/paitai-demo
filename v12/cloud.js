@@ -1,3 +1,4 @@
+// v12.24 登入畫面跟主題色
 // v12.23 Google 登入＋幹部改權限＋kt 與 Google 合併
 // v12.22 介面五組選單；換日重設離看板
 // v12.21.4 換日補跑＋交易鎖修正（不把複製的舊 dayRoll 當成已完成）
@@ -94,7 +95,7 @@ function flush(){st.timer=null;if(!st.user||st.inited!==true||!isOps()){status()
  status()}
 function audit(m){if(!st.user||TVMODE||!isOps()||st.inited!==true)return;addDoc(collection(db,'audit'),{uid:st.user.uid,name:st.prof.name,role:RL(st.prof.role),t:Date.now(),msg:String(m).slice(0,500)}).catch(()=>{})}
 // ---- 登入畫面 ----
-const ov=document.createElement('div');ov.id='fbLogin';ov.style.cssText='position:fixed;inset:0;z-index:9999;background:#14161c;color:#eee;display:none;overflow:auto;padding:24px;font-size:17px';document.body.appendChild(ov);
+const ov=document.createElement('div');ov.id='fbLogin';ov.className='fb-login';ov.style.cssText='position:fixed;inset:0;z-index:9999;display:none;overflow:auto;padding:24px;font-size:17px';document.body.appendChild(ov);
 function isiOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
 function useRedirect(){return isiOS()||window.matchMedia('(display-mode: standalone)').matches}
 function loginUI(msg){ov.style.display='block';const hint=msg||googleHint();ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>🔐 排檯系統登入</h2>${hint?`<p style="color:#f88">${hint}</p>`:''}
@@ -103,7 +104,7 @@ function loginUI(msg){ov.style.display='block';const hint=msg||googleHint();ov.i
  <label>員工編號<br><input id=fbId autocomplete=username autocapitalize=none style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <label>密碼<br><input id=fbPw type=password autocomplete=current-password style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <button id=fbGo style="width:100%;font-size:20px;padding:12px">登入</button>
- <p style="font-size:14px"><a href="#" id=fbBoot style="color:#9cf">首次啟用：建立最高權限帳號</a>・<a href="#" id=fbHelp style="color:#9cf">登入教學</a>・<a href="girl/" style="color:#9cf">小姐報班頁</a>${EMU?'・<b style="color:#e90">模擬器</b>':''}</p></div>`;
+ <p style="font-size:14px"><a href="#" id=fbBoot class="login-link">首次啟用：建立最高權限帳號</a>・<a href="#" id=fbHelp class="login-link">登入教學</a>・<a href="girl/" class="login-link">小姐報班頁</a>${EMU?'・<b style="color:#e90">模擬器</b>':''}</p></div>`;
  const go=async()=>{const id=fbId.value,pw=fbPw.value;if(!id||!pw)return;st.manual=true;fbGo.disabled=true;fbGo.textContent='登入中…';try{await signInWithEmailAndPassword(auth,mail(id),pw)}catch(e){loginUI(e.code=='auth/network-request-failed'?'網路連不上，請稍後再試':'員工編號或密碼錯誤')}};
  fbGo.onclick=go;fbPw.onkeydown=e=>{if(e.key=='Enter')go()};fbHelp.onclick=e=>{e.preventDefault();helpOverlay()};fbBoot.onclick=e=>{e.preventDefault();bootUI()};
  fbG.onclick=()=>socialLogin('google')}
@@ -150,7 +151,7 @@ function pendingUI(){
 }
 function bootUI(msg){ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>首次啟用：建立最高權限帳號</h2><p style="font-size:14px">只能做一次。之後所有帳號都在系統內建立。</p><label>帳號類型<br><select id=bRole style="width:100%;font-size:20px;padding:8px"><option value="特殊" selected>冠廷（最高權限）</option><option value="老闆">老闆</option></select></label><br><br>${msg?`<p style="color:#f88">${msg}</p>`:''}
  <label>員工編號（英數）<br><input id=bId autocapitalize=none value="guanting" style="width:100%;font-size:20px;padding:8px"></label><br><br><label>名字<br><input id=bNm value="冠廷" style="width:100%;font-size:20px;padding:8px"></label><br><br>
- <label>密碼（至少 6 碼）<br><input id=bPw type=password autocomplete=new-password style="width:100%;font-size:20px;padding:8px"></label><br><br><button id=bGo style="width:100%;font-size:20px;padding:12px">建立並登入</button> <p><a href="#" id=bBack style="color:#9cf">← 返回登入</a></p></div>`;
+ <label>密碼（至少 6 碼）<br><input id=bPw type=password autocomplete=new-password style="width:100%;font-size:20px;padding:8px"></label><br><br><button id=bGo style="width:100%;font-size:20px;padding:12px">建立並登入</button> <p><a href="#" id=bBack class="login-link">← 返回登入</a></p></div>`;
  bBack.onclick=e=>{e.preventDefault();loginUI()};
  bGo.onclick=async()=>{st.manual=true;const id=bId.value.trim(),pw=bPw.value;if(!/^[A-Za-z0-9._-]+$/.test(id))return bootUI('員工編號只能用英文、數字');if(pw.length<6)return bootUI('密碼至少 6 碼');bGo.disabled=true;
   let cred;try{cred=await createUserWithEmailAndPassword(auth,mail(id),pw)}catch(e){return bootUI(e.code=='auth/email-already-in-use'?'這個編號已存在，請直接登入':'建立失敗：'+e.code)}
@@ -827,5 +828,5 @@ async function getSheetImport(id){
   return d.exists()?Object.assign({id:d.id},d.data()):null;
 }
 
-window.Cloud={ver:"v12.23",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+window.Cloud={ver:"v12.24",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();
