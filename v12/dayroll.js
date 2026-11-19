@@ -1,3 +1,4 @@
+// v12.22 換日重設：歸檔未關帳包廂到待辦與重設紀錄後，看板清空（不刪歷史、不改帳單）；錯過換日橫幅在完成後消失
 // v12.21.4 換日：錯過的每一日都補跑歸檔；交易鎖不把複製來的舊 dayRoll 當成已完成；任一登入端可觸發；手動換日有成敗訊息
 // v12.16 換日：今日已開檔則跟隨、不把過期裝置的舊未關帳包廂寫進今日；已買單殘留不列入未完成
 // v12.12 營業日 07:10 自動換日＋昨日未完成事項＋重設包廂
@@ -52,7 +53,7 @@ function goCarryById(id){goCarry(((S.carryTodos||{}).items||[]).find(x=>x.id==id
 function goCarry(it){
  if(!it)return;
  const L=it.link||'';
- if(L.startsWith('payFlow:')){const r=L.slice(8);if(S.rooms[r])return payFlow(r);return alert(r+' 已不在目前包廂列，請到歷史紀錄或待辦說明處理')}
+ if(L.startsWith('payFlow:')){const r=L.slice(8);if(S.rooms[r])return payFlow(r);if(!confirm(r+' 已在換日時重設、已離開今日看板。要還原快照後補買單嗎？\n已存帳單不會改，買單會記入原營業日。'))return;if(typeof restoreRolledRoom==='function'&&restoreRolledRoom(r))return payFlow(r);return alert('找不到 '+r+' 的重設快照，請到「包廂重設紀錄」。')}
  if(L.startsWith('openPayroll:')){spDay=L.slice(12);return openPayroll()}
  if(L.startsWith('boardEdit:')){const r=L.slice(10);return typeof boardEdit==='function'?boardEdit(r):null}
  if(L.startsWith('clean:')){const r=L.slice(6);if((S.dirty||{})[r]&&window.Xfer)return Xfer.cleaned(r);if(S.cleaning&&S.cleaning[r]){delete S.cleaning[r];log(r+' 清潔完成');save();render()}return}
@@ -62,9 +63,8 @@ function goCarry(it){
  if(L=='guestReq'||L=='calls'||L=='queue'){if(typeof pageClose==='function')pageClose();return}
 }
 function carryBannerHtml(){
- if(typeof lvl==='function'&&lvl()<2)return'';
- const n=pendingCarry().length;if(!n)return'';
- return`<div id=dayRollBanner class=rollban><b>昨日未完成事項 ${n} 項</b><span>請幹部確認未關帳包廂、清潔、廚房與需手填欄位。不會自動派檯。</span><button type=button onclick="openCarryover()">查看待辦</button></div>`
+ // 換日完成後不再用大橫幅佔看板；待辦改從「排檯」選單進入。錯過換日才用紅色 missedRollBanner。
+ return''
 }
 function drawCarryBanner(){let el=document.getElementById('dayRollBanner');const html=carryBannerHtml();
  if(!html){if(el)el.remove();return}
@@ -77,7 +77,7 @@ function openCarryover(){if(!needRole(2,'昨日未完成事項'))return;
   <p class=cacts><button type=button class=s onclick="goCarryById('${esc(it.id)}')">前往處理</button>
   <label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type=checkbox ${it.done?'checked':''} onchange="markCarryDone('${esc(it.id)}',this.checked)"> 已處理</label></p></div></li>`;
  pageOpen(`<div class=spwrap><h2>昨日未完成事項</h2>
-<p>系統在每日 ${typeof cutTxt==='function'?cutTxt():'07:10'} 自動換日時記錄。<b>昨日未關帳的包廂仍會顯示在看板上（標示「昨日未結束」），買單會記入原營業日</b>；其餘空房已是新的一天。勾選「已處理」僅作待辦註記，不會刪除歷史台數或已完成買單。</p>
+<p>系統在每日 ${typeof cutTxt==='function'?cutTxt():'07:10'} 自動換日時，會把未關帳包廂列入待辦並做「重設包廂」（快照保留、看板清空）。<b>已存帳單不會改</b>；若要補買單，可從待辦還原快照，買單記入原營業日。勾選「已處理」只是註記，不會刪除歷史台數或已完成買單。</p>
 <p>未處理 <b>${pend.length}</b> 項${all.length?`　已處理 ${done.length} 項`:''}</p>
 ${pend.length?`<h3>待處理</h3><ol class=clist>${pend.map(row).join('')}</ol>`:'<p>目前沒有未處理項目。</p>'}
 ${done.length?`<details><summary>已處理 ${done.length} 項</summary><ol class=clist>${done.map(row).join('')}</ol></details>`:''}
@@ -133,7 +133,7 @@ async function maybeDayRoll(opts){
     result.ok=true;result.reason=one&&one.reason||'ok';
   }
   if(result.ok&&S.openDay==today){
-    try{toast('已換日 '+today+(result.archived.length?'，已歸檔 '+result.archived.join('、'):'')+'，未完成待辦 '+(pendingCarry().length)+' 項')}catch(e){}
+    try{toast('已換日 '+today+(result.archived.length?'，已歸檔 '+result.archived.join('、'):'')+'，未關帳包廂已重設列入待辦 '+(pendingCarry().length)+' 項，看板已清空')}catch(e){}
   }else if(!result.ok){
     try{toast('換日未完成'+(result.reason?'（'+result.reason+'）':'')+'，將再試',true)}catch(e){}
   }
@@ -184,18 +184,53 @@ async function rollOneDay(from,to,opts,Cld){
  return{ok:true,archived:true,reason:'archived'}
 }
 
+function resetRoomsForRollover(from){
+ const t=rollNow();
+ S.roomResetLog=S.roomResetLog||[];
+ const rooms=S.rooms||{};
+ Object.keys(rooms).forEach(r=>{
+  const x=rooms[r];if(!x)return;
+  const gs=(S.girls||[]).filter(g=>g.room==r);
+  const snap={room:JSON.parse(JSON.stringify(x)),girls:gs.map(g=>JSON.parse(JSON.stringify({id:g.id,status:g.status,room:g.room,src:g.src,start:g.start,until:g.until,priv:g.priv||null,tables:g.tables}))),dirty:(S.dirty||{})[r]?JSON.parse(JSON.stringify(S.dirty[r])):null,cleaning:(S.cleaning||{})[r]||null};
+  S.roomResetLog.unshift({id:'rr-'+t+'-'+r,t,day:from,room:r,by:'系統（換日重設）',byRole:'系統',reason:'換日重設',carryDay:x.carryDay||from,paperSeq:x.paperSeq||null,snap,restored:false});
+  gs.forEach(g=>{g.room=null;g.status='休息室';g.src='';g.until=0;g.priv=null});
+  if(S.reqs)S.reqs=S.reqs.filter(q=>q.room!=r);
+  delete S.rooms[r];
+  if(S.cleaning)delete S.cleaning[r];
+  if(S.dirty)delete S.dirty[r];
+ });
+}
+function restoreRolledRoom(r){
+ if((S.rooms||{})[r])return true;
+ const logs=(S.roomResetLog||[]).filter(e=>e&&e.room==r&&e.snap&&e.snap.room);
+ const e=logs.find(x=>!x.restored)||logs[0];
+ const fromCarry=((S.carryover||{}).rooms||{})[r];
+ const room=e&&e.snap&&e.snap.room?JSON.parse(JSON.stringify(e.snap.room)):(fromCarry?JSON.parse(JSON.stringify(fromCarry)):null);
+ if(!room)return false;
+ S.rooms=S.rooms||{};
+ S.rooms[r]=room;S.rooms[r].id=r;
+ if(e&&e.snap&&e.snap.girls){(e.snap.girls||[]).forEach(s=>{const g=typeof G==='function'?G(s.id):null;if(!g)return;if(g.room&&g.room!=r)return;Object.assign(g,{room:r,status:s.status||'在檯',src:s.src||'',start:s.start,until:s.until,priv:s.priv||null})})}
+ if(e&&e.snap&&e.snap.dirty){(S.dirty=S.dirty||{})[r]=e.snap.dirty}
+ if(e&&e.snap&&e.snap.cleaning){(S.cleaning=S.cleaning||{})[r]=e.snap.cleaning}
+ if(e&&!e.restored){e.restored=true;e.restoredAt=rollNow();e.restoredBy=S.cur?S.cur.name:'';}
+ if(typeof log==='function')log('還原換日重設：'+r+'（準備補買單，記入原營業日）');
+ if(typeof save==='function')save();
+ if(typeof render==='function')render();
+ return true
+}
 async function performDayRoll(from,to){
  const items=collectCarryover(from);
  const roomSnap={};Object.entries(S.rooms||{}).forEach(([r,x])=>{if(!x)return;x.carryDay=x.carryDay||from;roomSnap[r]=JSON.parse(JSON.stringify(x))});
  if(typeof closeDay==='function'){const h=S.hist&&S.hist[from];if(!h){const rec=buildDay(from);rec.closedAt=rollNow();rec.closedBy='系統（'+(typeof cutTxt==='function'?cutTxt():'07:10')+' 自動）';S.hist=S.hist||{};S.hist[from]=rec;log('日結 '+from+'（系統自動）')}}
- S.carryover={day:from,to,at:rollNow(),by:S.cur?S.cur.name:'系統',items,rooms:roomSnap,note:'換日快照；未結束包廂保留在新一日看板並標示昨日未結束。'};
+ S.carryover={day:from,to,at:rollNow(),by:S.cur?S.cur.name:'系統',items,rooms:roomSnap,note:'換日快照；未關帳包廂已重設離看板並列入待辦，快照可還原補買單。已存帳單不會改。'};
  mergeCarryTodos(items,from);
  if(window.Cloud&&window.Cloud.flushTo)await window.Cloud.flushTo(from,{dayRoll:null});
+ resetRoomsForRollover(from);
  const keep=x=>{if(!x)return false;const t=x.start||x.t;if(!t)return true;return bizDay(t)>=to};
  ['sheetLog','taiLog','revenue','visitLog','orderBonus','redLog','blueLog','finds','decisions'].forEach(k=>{if(Array.isArray(S[k]))S[k]=S[k].filter(e=>keep(e))});
  S.openDay=to;
  if(typeof pruneBilledGhostRooms==='function')pruneBilledGhostRooms();
- log('自動換日：'+from+' → '+to+'（未完成事項 '+(items.length)+' 項；未關帳包廂仍顯示至買單）');
+ log('自動換日：'+from+' → '+to+'（未完成事項 '+(items.length)+' 項；未關帳包廂已重設列入待辦，看板已清空）');
  if(window.Cloud&&window.Cloud.flushTo)await window.Cloud.flushTo(to);
  else save();
  if(window.Cloud&&window.Cloud.markDayRollDone)await window.Cloud.markDayRollDone(from,to);
@@ -220,10 +255,10 @@ async function manualDayRoll(){
  if(open==today){alert('現在已是營業日 '+today+'，不需換日。');drawMissedRollBanner();return}
  if(open>today){alert('目前紀錄的營業日 '+open+' 比今天 '+today+' 還晚，未自動換日。請先核對系統時間。');return}
  const steps=rollSteps(open,today);
- if(!confirm('要補跑換日嗎？\n\n系統仍停在 '+open+'，現在應為 '+today+'（將依序歸檔 '+steps.map(s=>s[0]).join('、')+'）。\n未關帳包廂會列入待辦並留在看板（標示昨日未結束），已存帳單金額不會改。'))return;
+ if(!confirm('要補跑換日嗎？\n\n系統仍停在 '+open+'，現在應為 '+today+'（將依序歸檔 '+steps.map(s=>s[0]).join('、')+'）。\n未關帳包廂會列入待辦並重設離開看板（快照可還原補買單），已存帳單金額不會改。'))return;
  const r=await maybeDayRoll({manual:true,reason:'manual'});
  if(r&&r.ok&&(S.openDay==today)){
-  alert('換日完成：'+open+' → '+today+'\n已歸檔：'+(r.archived&&r.archived.length?r.archived.join('、'):'（已存在的歸檔則跟隨）')+'\n未完成待辦 '+(pendingCarry().length)+' 項。');
+  alert('換日完成：'+open+' → '+today+'\n已歸檔：'+(r.archived&&r.archived.length?r.archived.join('、'):'（已存在的歸檔則跟隨）')+'\n未關帳包廂已重設列入待辦 '+(pendingCarry().length)+' 項，今日看板已清空。');
  }else{
   alert('換日失敗'+(r&&r.reason?'：'+r.reason:'')+'。請確認已登入雲端後再試，或把畫面留給幹部處理。\n目前營業日：'+(S.openDay||'未知')+'，應為 '+today);
  }

@@ -1,3 +1,4 @@
+// v12.22 換日補跑時新日看板清空（未關帳房只留在歸檔／待辦）
 // v12.21.4 報班頁開啟時也補跑錯過的換日（交易鎖，只跑一次）
 // v12.21.3 報班頁絕不跳轉；房間平板等非小姐／非幹部帳號留在登入畫面並可切換
 // v12.19 報班頁改中＋越並列（不再切換語言）
@@ -437,6 +438,7 @@ async function girlCatchUpRoll(){
       carry.updatedAt=Date.now();carry.from=from;
       const payload=Object.assign({},raw,{
         openDay:JSON.stringify(to),
+        rooms:JSON.stringify({}),
         carryTodos:JSON.stringify(carry),
         dayRoll:JSON.stringify({status:'done',from,to,at:Date.now(),by:(G.prof&&(G.prof.name||G.prof.role))||'報班頁',uid:auth.currentUser.uid})
       });
