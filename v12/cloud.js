@@ -1,3 +1,4 @@
+// v12.23 Google 登入＋幹部改權限＋kt 與 Google 合併
 // v12.22 介面五組選單；換日重設離看板
 // v12.21.4 換日補跑＋交易鎖修正（不把複製的舊 dayRoll 當成已完成）
 // v12.21.2 可點規則：滿 bookedMax 間／他房私檯／暫停才灰；1–2 間仍可點
@@ -14,6 +15,18 @@ const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:pe
 if(EMU){connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});connectFirestoreEmulator(db,'127.0.0.1',8080)}
 const DOMAIN='paitai-system.local',mail=id=>String(id).trim().toLowerCase()+'@'+DOMAIN;
 const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'特殊':5,'tv':0,'kitchen':0,'room':0,'pending':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r=='room'?'房間平板':r=='pending'?'待核准':r;const ROLE_ALL=['小姐','少爺','幹部','經理','老闆','特殊','tv','kitchen','room','pending'];
+const KT_UID='PJGFBvQAUxSQQTdWgMLBsGwx7VN2';
+const KT_GOOGLE_EMAILS=['tk90337@gmail.com'];
+function googleEmailsOf(u){const out=[];if(!u)return out;if(u.email)out.push(String(u.email).toLowerCase());(u.providerData||[]).forEach(p=>{if(p&&p.email)out.push(String(p.email).toLowerCase())});return out}
+function isKtGoogle(u){return googleEmailsOf(u).some(e=>KT_GOOGLE_EMAILS.includes(e))}
+function isGuarded(u){return !!(u&&(u.role=='特殊'||String(u.staffId||'').toLowerCase()=='kt'||u.uid==KT_UID))}
+function canEditUser(u){if(!u||!st.user||u.uid==st.user.uid)return false;if(isGuarded(u)&&lv()<5)return false;return (RANK[u.role]||0)<lv()}
+function assignableRoles(){return ROLE_ALL.filter(r=>(RANK[r]||0)<lv()&&r!='pending')}
+function taipeiNow(){return new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})}
+function isInAppBrowser(){const ua=navigator.userAgent||'';return /Line\//i.test(ua)||/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)||/Instagram/i.test(ua)||/MicroMessenger/i.test(ua)||(/Android/i.test(ua)&&/\;\s*wv\)/i.test(ua))||(/Android/i.test(ua)&&/Version\/\d/i.test(ua)&&/Safari/i.test(ua)&&!/Chrome\//i.test(ua)&&!/Firefox/i.test(ua))}
+function googleHint(){return isInAppBrowser()?'Google 無法在 LINE 或其他 App 內建瀏覽器完成登入。請用系統的 Chrome 或 Safari 開啟本頁，再按「使用 Google 登入」。':''}
+async function writePermLog(o){const rec={by:st.user&&st.user.uid,byName:(st.prof&&st.prof.name)||'',byRole:st.prof&&st.prof.role,targetUid:o.targetUid||'',targetName:o.targetName||'',targetStaffId:o.targetStaffId||'',fromRole:o.fromRole||'',toRole:o.toRole||'',action:o.action||'setRole',at:Date.now(),atTaipei:taipeiNow()};try{await addDoc(collection(db,'permLog'),rec)}catch(e){}if(typeof log==='function')log((rec.byName||'')+' 將 '+(rec.targetName||rec.targetStaffId)+' 權限 '+RL(rec.fromRole)+' → '+RL(rec.toRole)+'（'+rec.atTaipei+' 台北）')}
+
 const LOCAL=new Set(['cur','op','users','usersExample','impSnap','wsSeq','rosterNames','renameLog']);
 const SETTINGS=['cfg','wines','catalog','cb','attVer','cutVer','cleanVer','imp1026','beerVer','sheetLearn'];
 const isDayKey=k=>!LOCAL.has(k)&&!SETTINGS.includes(k)&&!['hist','wineStore','wsLog','ledger','dayRoll'].includes(k);
@@ -84,7 +97,7 @@ function audit(m){if(!st.user||TVMODE||!isOps()||st.inited!==true)return;addDoc(
 const ov=document.createElement('div');ov.id='fbLogin';ov.style.cssText='position:fixed;inset:0;z-index:9999;background:#14161c;color:#eee;display:none;overflow:auto;padding:24px;font-size:17px';document.body.appendChild(ov);
 function isiOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
 function useRedirect(){return isiOS()||window.matchMedia('(display-mode: standalone)').matches}
-function loginUI(msg){ov.style.display='block';ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>🔐 排檯系統登入</h2>${msg?`<p style="color:#f88">${msg}</p>`:''}
+function loginUI(msg){ov.style.display='block';const hint=msg||googleHint();ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>🔐 排檯系統登入</h2>${hint?`<p style="color:#f88">${hint}</p>`:''}
  <button id=fbG type=button style="width:100%;font-size:18px;padding:12px;margin:0 0 16px;background:#fff;color:#222;border-radius:10px;border:0;min-height:48px">使用 Google 登入</button>
  <p style="text-align:center;color:#888;font-size:13px;margin:0 0 12px">或用員工編號與密碼</p>
  <label>員工編號<br><input id=fbId autocomplete=username autocapitalize=none style="width:100%;font-size:20px;padding:8px"></label><br><br>
@@ -97,17 +110,28 @@ function loginUI(msg){ov.style.display='block';ov.innerHTML=`<div style="max-wid
 async function socialLogin(kind){
   st.manual=true;
   if(kind==='apple')return loginUI('目前僅提供 Google 與編號密碼登入。');
+  const hint=googleHint();
+  if(hint)return loginUI(hint);
+  const p=new GoogleAuthProvider();
   try{
-    const p=new GoogleAuthProvider();
-    if(useRedirect())await signInWithRedirect(auth,p);else await signInWithPopup(auth,p);
+    if(useRedirect())await signInWithRedirect(auth,p);
+    else {
+      try{await signInWithPopup(auth,p)}
+      catch(e){
+        const c=e.code||'';
+        if(c=='auth/popup-blocked'||c=='auth/operation-not-supported-in-this-environment'||c=='auth/web-storage-unsupported'){await signInWithRedirect(auth,p);return}
+        throw e;
+      }
+    }
   }catch(e){
     const c=e.code||'';
     if(c=='auth/popup-closed-by-user'||c=='auth/cancelled-popup-request')return;
-    if(c=='auth/operation-not-allowed')loginUI('Google 登入尚未在 Firebase 開啟，請稍後再試或先用編號密碼。');
+    if(c=='auth/operation-not-allowed')loginUI('Google 登入尚未在 Firebase 開啟。請冠廷到 Firebase 主控台 Authentication → Sign-in method → Google → 啟用 → 儲存。或先用編號密碼。');
     else loginUI('社群登入失敗：'+(c||e.message||''));
   }
 }
 async function createPending(u){
+  if(isKtGoogle(u)&&u.uid!==KT_UID)throw new Error('kt-google-must-link');
   const name=(u.displayName||(u.email||'').split('@')[0]||'新朋友').slice(0,40);
   const rec={staffId:('g-'+u.uid.slice(0,10)).toLowerCase(),name,role:'pending',rank:0,disabled:false,createdAt:Date.now(),provider:(u.providerData||[]).map(x=>x.providerId).join(','),email:u.email||''};
   await setDoc(doc(db,'users',u.uid),rec);return rec;
@@ -116,7 +140,7 @@ function pendingUI(){
   const p=st.prof||{};
   ov.style.display='block';
   ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>等候核准</h2>
-    <p>你的 Google 帳號已進來，但還沒有權限。請等冠廷、老闆或經理核准，並綁定身分（小姐編號或少爺編號）。</p>
+    <p>你的 Google 帳號已進來，但還沒有權限。請等幹部以上核准，並綁定身分（小姐編號或少爺編號）。尚無使用權，直到被指定職級。</p>
     <p>目前顯示名稱：<b>${esc(p.name||'')}</b></p>
     <label>修改顯示名稱<br><input id=pdNm value="${esc(p.name||'')}" style="width:100%;font-size:18px;padding:8px;min-height:44px"></label>
     <p><button id=pdSv type=button style="font-size:18px;padding:10px 16px;min-height:44px">儲存名字</button>
@@ -135,7 +159,8 @@ function bootUI(msg){ov.innerHTML=`<div style="max-width:380px;margin:6vh auto">
 getRedirectResult(auth).catch(()=>{});
 onAuthStateChanged(auth,async u=>{stopSync();st.user=u;st.prof=null;st.inited=null;
  if(!u){S.cur=null;status();loginUI();return}
- let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null;if(!p)p=await createPending(u)}catch(e){p=null}
+ if(isKtGoogle(u)&&u.uid!==KT_UID){await signOut(auth);loginUI('這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入，再於「人員帳號管理」或個人設定按「綁定 Google」。');return}
+ let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null;if(!p)p=await createPending(u)}catch(e){p=null;if(String(e&&e.message||'').includes('kt-google-must-link')){await signOut(auth);loginUI('這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入，再按「綁定 Google」。');return}}
  if(!p||p.disabled){await signOut(auth);loginUI(p&&p.disabled?'此帳號已停用，請找老闆':'此帳號沒有權限資料，請找老闆');return}
  if(p.role=='room'){location.replace('guest.html'+location.search);return}
  if(p.role=='小姐'){location.replace(girlPageUrl());return}
@@ -149,7 +174,7 @@ function openAccount(){const f=document.getElementById('dform'),p=st.prof||{};
  <p><label>顯示名稱（可自行修改，不能改權限）<br><input id=myNm value="${esc(p.name||'')}" style="width:100%;max-width:280px;font-size:16px;padding:8px;min-height:44px"></label>
  <button type=button onclick="Cloud.setMyName()">儲存名字</button></p>
  <p><button type=button class=s onclick="Cloud.linkSocial('google')">綁定 Google</button></p>
- <button type=button onclick="Cloud.changePw()">改密碼</button> ${lv()>=3?'<button type=button onclick="Cloud.openStaff()">人員帳號管理</button> ':''}${lv()>=4?'<button type=button class=s onclick="Cloud.migrate()">上傳本機資料到雲端（一次性）</button> ':''}<button type=button class=s onclick="openHelp()">登入教學</button>
+ <button type=button onclick="Cloud.changePw()">改密碼</button> ${lv()>=2?'<button type=button onclick="Cloud.openStaff()">人員帳號管理</button> ':''}${lv()>=4?'<button type=button class=s onclick="Cloud.migrate()">上傳本機資料到雲端（一次性）</button> ':''}<button type=button class=s onclick="openHelp()">登入教學</button>
  <p><button value=out>登出／切換人員</button> <button class=s value="">關閉</button></p>`;
  const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue=='out'){log(`登出：${p.name}`);signOut(auth)}};if(d.open)d.close();d.showModal()}
 async function changePw(){const pw=prompt('新密碼（至少 6 碼）');if(!pw)return;if(pw.length<6)return alert('至少 6 碼');try{await updatePassword(auth.currentUser,pw);await savePw(auth.currentUser.uid,pw).catch(()=>{});alert('已更新密碼')}catch(e){alert(e.code=='auth/requires-recent-login'?'為了安全，請先登出再登入一次後再改密碼':'失敗：'+e.code)}}
@@ -165,13 +190,20 @@ async function resetPw(uid){const u=USERS.find(x=>x.uid==uid);if(!canPw(u))retur
  const sec=initializeApp(firebaseConfig,'rs'+Date.now()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
  try{const c=await signInWithEmailAndPassword(sa,mail(u.staffId),old);await updatePassword(c.user,np);await signOut(sa);await savePw(uid,np);PW[uid]=np;log(`重設密碼：${u.staffId}`);alert('已重設密碼');redrawTbl()}
  catch(e){alert(e.code=='auth/invalid-credential'||e.code=='auth/wrong-password'?'記錄的密碼已不正確（可能本人在別處改過），無法重設。請停用後重建。':'重設失敗：'+(e.code||e.message))}finally{deleteApp(sec).catch(()=>{})}}
-function openStaff(){if(lv()<3)return alert('需經理以上');document.getElementById('dlg').close();
- if(!usersUnsub)usersUnsub=onSnapshot(query(collection(db,'users'),where('rank','<=',lv())),qs=>{USERS=[];qs.forEach(d=>USERS.push({uid:d.id,...d.data()}));USERS.sort((a,b)=>(RANK[b.role]||0)-(RANK[a.role]||0)||a.staffId.localeCompare(b.staffId));redrawTbl()},fail);drawStaff()}
-function staffTbl(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv());return`<table class=sch id=stTbl><tr><th>編號</th><th>名字</th><th>角色</th><th>狀態</th>${lv()>=4?'<th>密碼</th>':''}<th></th></tr>${USERS.map(u=>{const mine=u.uid==st.user.uid,can=!mine&&(RANK[u.role]||0)<=lv();
+let permUnsub=null,PERMLOGS=[];
+function openStaff(){if(lv()<2)return alert('需幹部以上');document.getElementById('dlg').close();
+ const uq=lv()>=5?query(collection(db,'users')):query(collection(db,'users'),where('rank','<',lv()));
+ if(!usersUnsub)usersUnsub=onSnapshot(uq,qs=>{USERS=[];qs.forEach(d=>USERS.push({uid:d.id,...d.data()}));USERS.sort((a,b)=>(RANK[b.role]||0)-(RANK[a.role]||0)||String(a.staffId||'').localeCompare(String(b.staffId||'')));redrawTbl();const box=document.getElementById('permLogBox');if(box)box.outerHTML=permLogHtml()},fail);
+ if(!permUnsub)permUnsub=onSnapshot(query(collection(db,'permLog'),orderBy('at','desc'),limit(30)),qs=>{PERMLOGS=[];qs.forEach(d=>PERMLOGS.push({id:d.id,...d.data()}));const box=document.getElementById('permLogBox');if(box)box.outerHTML=permLogHtml()},()=>{});
+ drawStaff()}
+function staffTbl(){const roles=assignableRoles();return`<table class=sch id=stTbl><tr><th>編號</th><th>名字</th><th>角色</th><th>狀態</th>${lv()>=4?'<th>密碼</th>':''}<th></th></tr>${USERS.map(u=>{const mine=u.uid==st.user.uid,can=canEditUser(u);
   return`<tr class="${u.test?'testacct':''}"><td>${esc(u.staffId)}${u.room?`<br><small>包廂 ${esc(u.room)}</small>`:''}${u.girlId?`<br><small>小姐 ${esc(u.girlId)}</small>`:''}${u.email?`<br><small>${esc(u.email)}</small>`:''}${u.test?`<br><small style="color:#fc3">測試帳號</small>`:''}</td><td>${esc(u.name)}${u.test?`<br><small style="color:#fc3">測試用・可稍後停用</small>`:''}</td><td>${can?`<select onchange="Cloud.setRole('${u.uid}',this.value)">${roles.map(r=>`<option value="${r}" ${r==u.role?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>`:esc(RL(u.role))+(mine?'（自己）':'')}</td><td>${u.disabled?'<b style="color:#e44">停用</b>':'啟用'}</td>${lv()>=4?`<td>${canPw(u)?(PWshow[u.uid]?(PW[u.uid]?`<code>${esc(PW[u.uid])}</code>`:'<span style="color:#aaa">未記錄</span>'):'••••')+` <button type=button class=s onclick="Cloud.togglePw('${u.uid}')">${PWshow[u.uid]?'隱藏':'👁 顯示'}</button> <button type=button class=s onclick="Cloud.copyPw('${u.uid}')">複製</button> <button type=button class=s onclick="Cloud.resetPw('${u.uid}')">重設密碼</button>`:'—'}</td>`:''}<td>${can?`<button type=button class=s onclick="Cloud.setDisabled('${u.uid}',${!u.disabled})">${u.disabled?'啟用':'停用'}</button>`:''}</td></tr>`}).join('')}</table>`}
-function drawStaff(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv()&&r!='pending');
+function permLogHtml(){return`<div id=permLogBox style="margin-top:16px"><h3>權限變更紀錄</h3>
+  ${PERMLOGS.length?`<table class=sch><tr><th>誰</th><th>對象</th><th>從 → 到</th><th>時間（台北）</th></tr>${PERMLOGS.map(x=>`<tr><td>${esc(x.byName||x.by||'')}</td><td>${esc(x.targetName||x.targetStaffId||x.targetUid||'')}</td><td>${esc(RL(x.fromRole||''))} → ${esc(x.action=='setDisabled'?(x.toRole||''):RL(x.toRole||''))}</td><td>${esc(x.atTaipei||'')}</td></tr>`).join('')}</table>`:'<p style="font-size:13px;color:#aaa">尚無紀錄</p>'}</div>`}
+function drawStaff(){const roles=assignableRoles();
  const pend=USERS.filter(u=>u.role=='pending'&&!u.disabled);
  pageOpen(`<h2>人員帳號管理</h2>
+ <p style="font-size:13px;color:#ccc">幹部以上可改職級低於自己的人。只能指派低於自己的職級。除冠廷外，誰都不能改冠廷的帳號。每次變更會先確認，並留下紀錄（誰、從→到、台北時間）。</p>
  ${pend.length?`<div style="background:#3a2a10;padding:12px;border-radius:12px;margin-bottom:12px"><h3>待核准的 Google 登入（${pend.length}）</h3>
   ${pend.map(u=>`<p style="margin:8px 0;padding:8px;background:#221">${esc(u.name)} <small>${esc(u.email||u.staffId||'')}</small><br>
     <input id="apId_${u.uid}" placeholder="員工編號或小姐編號（如 08 或 S01）" style="min-height:40px">
@@ -180,6 +212,7 @@ function drawStaff(){const roles=ROLE_ALL.filter(r=>(RANK[r]||0)<=lv()&&r!='pend
     <button type=button class=s onclick="Cloud.setDisabled('${u.uid}',true)">拒絕／停用</button></p>`).join('')}</div>`:''}
  ${lv()>=4?`<details open><summary>新增帳號（老闆以上）</summary><label>員工編號（英數）<input id=nId autocapitalize=none></label> <label>名字<input id=nNm></label> <label>角色 <select id=nRole>${roles.map(r=>`<option value="${r}" ${r=='少爺'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select></label> <label>小姐編號（角色選「小姐」時必填，如 08）<input id=nGirl placeholder="08"></label> <label>初始密碼（≥6）<input id=nPw></label> <button type=button onclick="Cloud.createStaff()">建立</button><p><button type=button onclick="Cloud.createRoomTabs()">🔑 一鍵建立每個包廂的房間平板帳號</button></p><p style="font-size:12px;color:#aaa">小姐請走獨立報班頁 <a href="girl/" target="_blank" rel="noopener">/v12/girl/</a>（不能進主系統）。TV 看板請建立角色「tv」的帳號。</p></details>`:''}
  <div class=tw>${staffTbl()}</div>
+ ${permLogHtml()}
  <p style="font-size:12px;color:#aaa">密碼：老闆可看老闆以下的人；冠廷可看全部。有記錄密碼的帳號可按「重設密碼」；顯示「未記錄」的舊帳號忘記密碼時，請先停用再建立新編號。</p>`)}
 async function createStaff(){const id=nId.value.trim(),nm=nNm.value.trim()||id,role=nRole.value,pw=nPw.value;let room='',girlId='';if(role=='room'){room=(prompt('這台房間平板綁定哪個包廂？（例 208）')||'').trim();if(!room)return}if(role=='小姐'){girlId=(document.getElementById('nGirl')&&nGirl.value.trim())||id;if(!girlId)return alert('請填小姐編號（如 08）')}if(role=='pending')return alert('請改選實際角色');if(!/^[A-Za-z0-9._-]+$/.test(id))return alert('員工編號只能用英文、數字');if(pw.length<6)return alert('密碼至少 6 碼');
  const sec=initializeApp(firebaseConfig,'sec'+Date.now()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
@@ -193,8 +226,25 @@ async function createRoomTabs(){if(lv()<4)return alert('只有老闆以上可以
  if(!todo.length)return alert('每個包廂都已經有房間平板帳號');if(!confirm(`建立 ${todo.length} 個房間平板帳號？\n${todo.map(r=>'room-'+r.toLowerCase()+' → '+r).join('\n')}\n（密碼隨機產生，可在本頁「查看密碼」）`))return;
  const done=[],bad=[];for(const r of todo){const id='room-'+r.toLowerCase();try{await mkUser(id,r+' 平板','room',rndPw(),r);done.push(id+'→'+r)}catch(e){bad.push(id+'：'+(e.code=='auth/email-already-in-use'?'編號已被使用':(e.code||e.message)))}}
  alert(`已建立 ${done.length} 個：\n${done.join('\n')}${bad.length?'\n\n失敗：\n'+bad.join('\n'):''}`);openStaff()}
-async function setRole(uid,role){const u=USERS.find(x=>x.uid==uid);await ok(updateDoc(doc(db,'users',uid),{role,rank:RANK[role]||0}));log(`變更角色 ${u&&u.staffId} → ${RL(role)}`)}
-async function setDisabled(uid,v){const u=USERS.find(x=>x.uid==uid);if(!confirm(`${v?'停用':'啟用'} ${u&&u.name}？`))return;await ok(updateDoc(doc(db,'users',uid),{disabled:v}));log(`${v?'停用':'啟用'}帳號 ${u&&u.staffId}`)}
+async function setRole(uid,role){
+  const u=USERS.find(x=>x.uid==uid);
+  if(lv()<2){alert('需幹部以上');return redrawTbl()}
+  if(!u||!canEditUser(u)){alert('只能修改職級低於自己的人，且除冠廷外不能改冠廷的帳號');return redrawTbl()}
+  if((RANK[role]||0)>=lv()||role=='pending'){alert('只能指派低於自己的職級');return redrawTbl()}
+  if(u.role==role)return;
+  if(!confirm('確定將「'+(u.name||u.staffId)+'」的權限從「'+RL(u.role)+'」改為「'+RL(role)+'」？'))return redrawTbl();
+  const from=u.role;
+  await ok(updateDoc(doc(db,'users',uid),{role,rank:RANK[role]||0}));
+  await writePermLog({targetUid:uid,targetName:u.name,targetStaffId:u.staffId,fromRole:from,toRole:role,action:'setRole'});
+}
+async function setDisabled(uid,v){
+  const u=USERS.find(x=>x.uid==uid);
+  if(lv()<2)return alert('需幹部以上');
+  if(!u||!canEditUser(u))return alert('只能修改職級低於自己的人，且除冠廷外不能改冠廷的帳號');
+  if(!confirm((v?'停用':'啟用')+'「'+(u.name||u.staffId)+'」（目前權限：'+RL(u.role)+'）？'))return;
+  await ok(updateDoc(doc(db,'users',uid),{disabled:v}));
+  await writePermLog({targetUid:uid,targetName:u.name,targetStaffId:u.staffId,fromRole:u.role,toRole:v?'停用':'啟用',action:'setDisabled'});
+}
 // ---- 一次性上傳本機資料 ----
 function banner(){if(document.getElementById('fbBan'))return;const b=document.createElement('div');b.id='fbBan';b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:9000;background:#e90;color:#000;padding:10px;font-size:16px;text-align:center';b.innerHTML='雲端還沒有資料。<button onclick="Cloud.migrate()">把這台裝置的資料上傳到雲端</button>';document.body.appendChild(b)}
 async function migrate(){if(lv()<4)return alert('只有老闆可以上傳');if(!confirm('把「這台裝置」的資料上傳到雲端？\n（名冊、設定、訊息卡、當日營業、歷史、寄酒）\n雲端已有的同名資料會被覆蓋。'))return;
@@ -587,32 +637,51 @@ async function setMyName(){
 async function linkSocial(kind){
   if(!auth.currentUser)return;
   if(kind==='apple')return alert('目前僅提供綁定 Google。');
+  const hint=googleHint();
+  if(hint)return alert(hint);
+  const keepName=(auth.currentUser.uid===KT_UID)||(st.prof&&(st.prof.role=='特殊'||String(st.prof.staffId||'').toLowerCase()=='kt'));
   try{
     const p=new GoogleAuthProvider();
-    if(useRedirect())await linkWithRedirect(auth.currentUser,p);else await linkWithPopup(auth.currentUser,p);
-    alert('已綁定 Google');
+    if(useRedirect())await linkWithRedirect(auth.currentUser,p);
+    else {
+      try{await linkWithPopup(auth.currentUser,p)}
+      catch(e){
+        const c=e.code||'';
+        if(c=='auth/popup-blocked'||c=='auth/operation-not-supported-in-this-environment'||c=='auth/web-storage-unsupported'){await linkWithRedirect(auth.currentUser,p);return}
+        throw e;
+      }
+    }
+    const cu=auth.currentUser;
+    if(keepName)await updateProfile(cu,{displayName:'冠廷'}).catch(()=>{});
+    const emails=googleEmailsOf(cu).filter(e=>e&&!e.endsWith('@paitai-system.local'));
+    const patch={provider:(cu.providerData||[]).map(x=>x.providerId).join(',')};
+    if(emails[0])patch.email=emails[0];
+    try{await updateDoc(doc(db,'users',cu.uid),patch)}catch(_){}
+    if(keepName&&st.prof)st.prof={...st.prof,...patch,name:'冠廷'};
+    alert('已綁定 Google'+(emails[0]?'（'+emails[0]+'）':''));
   }catch(e){
     const c=e.code||'';
-    if(c=='auth/credential-already-in-use')alert('這個帳號已經綁給其他使用者');
-    else if(c=='auth/operation-not-allowed')alert('Google 登入尚未開啟');
-    else if(c=='auth/popup-closed-by-user')return;
+    if(c=='auth/credential-already-in-use')alert('這個 Google 帳號已經綁給其他使用者');
+    else if(c=='auth/provider-already-linked')alert('已經綁定 Google');
+    else if(c=='auth/operation-not-allowed')alert('Google 登入尚未開啟。請冠廷到 Firebase 主控台 Authentication → Sign-in method → Google → 啟用 → 儲存。');
+    else if(c=='auth/popup-closed-by-user'||c=='auth/cancelled-popup-request')return;
     else alert('綁定失敗：'+(c||e.message));
   }
 }
 async function approveUser(uid){
-  if(lv()<3)return alert('需經理以上');
+  if(lv()<2)return alert('需幹部以上');
   const u=USERS.find(x=>x.uid==uid); if(!u)return;
   const role=(document.getElementById('apRole_'+uid)||{}).value;
   const id=((document.getElementById('apId_'+uid)||{}).value||'').trim();
   if(!role||role=='pending')return alert('請選擇角色');
   if(!id)return alert('請填員工編號或小姐編號');
-  if((RANK[role]||0)>lv())return alert('不能核准比自己高的角色');
+  if((RANK[role]||0)>=lv())return alert('只能指派低於自己的職級');
+  if(isGuarded(u)&&lv()<5)return alert('除冠廷外不能改冠廷的帳號');
+  if(!confirm('確定核准「'+(u.name||'')+'」為「'+RL(role)+'」（編號 '+id+'）？'))return;
   const upd={role,rank:RANK[role]||0,staffId:id.toLowerCase(),approvedBy:st.user.uid,approvedAt:Date.now()};
-  if(role=='小姐')upd.girlId=id.replace(/^0+/,'')===''?id:id;
-  // keep leading zeros: use as typed
   if(role=='小姐')upd.girlId=id;
   await ok(updateDoc(doc(db,'users',uid),upd));
-  if(typeof log==='function')log('核准社群帳號 '+ (u.name||'')+' → '+RL(role)+' '+id);
+  await writePermLog({targetUid:uid,targetName:u.name,targetStaffId:id,fromRole:u.role||'pending',toRole:role,action:'approve'});
   alert('已核准：'+RL(role)+(role=='小姐'?'（報班頁 /v12/girl/）':''));
 }
 
@@ -758,5 +827,5 @@ async function getSheetImport(id){
   return d.exists()?Object.assign({id:d.id},d.data()):null;
 }
 
-window.Cloud={ver:"v12.22",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+window.Cloud={ver:"v12.23",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();

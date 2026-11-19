@@ -1,3 +1,4 @@
+// v12.23 Google 登入（popup＋redirect、內建瀏覽器提示）
 // v12.22 換日補跑時新日看板清空（未關帳房只留在歸檔／待辦）
 // v12.21.4 報班頁開啟時也補跑錯過的換日（交易鎖，只跑一次）
 // v12.21.3 報班頁絕不跳轉；房間平板等非小姐／非幹部帳號留在登入畫面並可切換
@@ -19,10 +20,17 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const $=id=>document.getElementById(id);
 const isiOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const useRedirect=()=>isiOS||window.matchMedia('(display-mode: standalone)').matches;
+const KT_UID='PJGFBvQAUxSQQTdWgMLBsGwx7VN2';
+const KT_GOOGLE_EMAILS=['tk90337@gmail.com'];
+function googleEmailsOf(u){const out=[];if(!u)return out;if(u.email)out.push(String(u.email).toLowerCase());(u.providerData||[]).forEach(p=>{if(p&&p.email)out.push(String(p.email).toLowerCase())});return out}
+function isKtGoogle(u){return googleEmailsOf(u).some(e=>KT_GOOGLE_EMAILS.includes(e))}
+function isInAppBrowser(){const ua=navigator.userAgent||'';return /Line\//i.test(ua)||/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)||/Instagram/i.test(ua)||/MicroMessenger/i.test(ua)||(/Android/i.test(ua)&&/;\s*wv\)/i.test(ua))||(/Android/i.test(ua)&&/Version\/\d/i.test(ua)&&/Safari/i.test(ua)&&!/Chrome\//i.test(ua)&&!/Firefox/i.test(ua))}
+function googleHint(){return isInAppBrowser()?(T('inapp')):''}
 
 const I18N={
  zh:{brand:'小姐報班',login:'登入報班',id:'員工編號或小姐編號',pw:'密碼',go:'登入',google:'使用 Google 登入',apple:'使用 Apple 登入',or:'或用編號與密碼',
-  wait:'帳號已建立，等候主管核准後即可報班。',editName:'修改顯示名稱',namePh:'顯示名稱',saveName:'儲存名稱',saved:'已更新名字',
+  wait:'帳號已建立，等候幹部以上核准後即可報班。尚無使用權，直到被指定職級。'
+  ,inapp:'Google 無法在 LINE 或其他 App 內建瀏覽器完成登入。請用系統的 Chrome 或 Safari 開啟本頁，再按「使用 Google 登入」。',editName:'修改顯示名稱',namePh:'顯示名稱',saveName:'儲存名稱',saved:'已更新名字',
   out:'登出',hello:'你好，',today:'今日營業日',clock:'現在',on:'我要報班',off:'取消報班',
   onOk:'已報班。系統會自動把你加入今天的排檯、隨機點檯與自動排台。',
   offOk:'已取消報班。',
@@ -144,7 +152,7 @@ function loginUI(msg, wrongProf){
   $('ov').innerHTML=`<div class=box><h2>${T('login')}<span class=vi>Đăng nhập điểm danh</span></h2>
     ${w?`<div class=warn id=wrongRole data-no-i18n><b>${esc(w.zh)}</b><span class=vi>${esc(w.vi)}</span></div>
       <button class="btn s" id=gSwitch type=button data-no-i18n>登出／切換帳號<span class=vi>Đăng xuất / Đổi tài khoản</span></button>`:''}
-    ${msg?`<p class=err>${esc(msg)}</p>`:''}
+    ${msg?`<p class=err>${esc(msg)}</p>`:(googleHint()?`<p class=err>${esc(googleHint())}</p>`:'')}
     <button class="btn g" id=gGo type=button>${T('google')}</button>
     <p style="text-align:center;color:#887;font-size:13px;margin:10px 0">${T('or')}</p>
     <input id=sId placeholder="${T('id')}" autocapitalize=none autocomplete=username>
@@ -159,19 +167,29 @@ function loginUI(msg, wrongProf){
 
 async function social(kind){
   if(kind==='apple')return loginUI('目前僅提供 Google 與編號密碼登入。');
+  const hint=googleHint();
+  if(hint)return loginUI(hint);
+  const p=new GoogleAuthProvider();
   try{
-    const p=new GoogleAuthProvider();
     if(useRedirect())await signInWithRedirect(auth,p);
-    else await signInWithPopup(auth,p);
+    else {
+      try{await signInWithPopup(auth,p)}
+      catch(e){
+        const c=e.code||'';
+        if(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment'||c==='auth/web-storage-unsupported'){await signInWithRedirect(auth,p);return}
+        throw e;
+      }
+    }
   }catch(e){
     const c=e.code||'';
     if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request')return;
-    if(c==='auth/operation-not-allowed')loginUI(T('fail')+'Google 登入尚未開啟');
+    if(c==='auth/operation-not-allowed')loginUI(T('fail')+'Google 登入尚未在 Firebase 開啟。請冠廷到 Firebase 主控台 Authentication → Sign-in method → Google → 啟用 → 儲存。');
     else loginUI(T('fail')+(c||e.message||''));
   }
 }
 
 async function ensurePending(u){
+  if(isKtGoogle(u)&&u.uid!==KT_UID)throw new Error('kt-google-must-link');
   const s=await getDoc(doc(db,'users',u.uid));
   if(s.exists())return s.data();
   const name=(u.displayName||(u.email||'').split('@')[0]||'新朋友').slice(0,40);
@@ -187,8 +205,9 @@ onAuthStateChanged(auth,async u=>{
   if(G._switch)return;
   stop();G.user=u;G.prof=null;G.checkin=null;G.hist=[];G.staffMode=false;
   if(!u){loginUI();draw();return}
+  if(isKtGoogle(u)&&u.uid!==KT_UID){await signOut(auth);loginUI('這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入主系統，再按「綁定 Google」。');return}
   let p=null;
-  try{p=await ensurePending(u)}catch(e){await signOut(auth);loginUI(T('fail')+(e.code||e.message||''));return}
+  try{p=await ensurePending(u)}catch(e){await signOut(auth);loginUI(String(e&&e.message||'').includes('kt-google-must-link')?'這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入主系統，再按「綁定 Google」。':(T('fail')+(e.code||e.message||'')));return}
   if(!p||p.disabled){await signOut(auth);loginUI(p&&p.disabled?T('disabled'):T('needLogin'));return}
   // 絕不離開報班頁（即使本機已登入房間平板或帶著 ?t= 客人 QR 參數）
   if(!canUseGirlPage(p)){loginUI('',p);draw();return}

@@ -1,5 +1,5 @@
 rules_version = '2';
-// 排檯系統 paitai-system — Firestore 安全規則（v12.21）
+// 排檯系統 paitai-system — Firestore 安全規則（v12.23）
 // 角色：小姐/少爺=1 < 幹部=2 < 經理=3 < 老闆=4 < 特殊（冠廷）=5；tv=唯讀看板（0）；pending=待核准（0）
 // 小姐只能走獨立報班頁，不能讀寫營業日主檔；只讀自己的報班／台數，只寫自己的報班紀錄
     // users 文件需帶 rank 欄位且必須等於 rank(role)（供查詢過濾）
@@ -29,6 +29,8 @@ service cloud.firestore {
         && (!('staffPay' in resource.data) || request.resource.data.staffPay == resource.data.staffPay);
     }
     function rankOk(d) { return d.rank == rank(d.role); }
+    function isGuarantor(d) { return d.role == '特殊' || d.get('staffId', '') == 'kt'; }
+    function actorIsGuanting() { return me().role == '特殊'; }
 
     // ---- v12.14 客人點檯 QR（未登入、持 token 只能動該房）----
     function guestTok(t) {
@@ -61,34 +63,44 @@ service cloud.firestore {
     }
     // 人員帳號與角色
     match /users/{uid} {
-      allow read: if (signedIn() && request.auth.uid == uid) || (lvl() >= 3 && resource.data.rank <= lvl());
+      allow read: if (signedIn() && request.auth.uid == uid)
+        || lvl() >= 5
+        || (lvl() >= 2 && resource.data.rank < lvl() && !isGuarantor(resource.data));
       // 第一位帳號（首次啟用）：特殊（冠廷）或老闆
       allow create: if signedIn() && request.auth.uid == uid
         && !exists(/databases/$(database)/documents/config/boot)
         && getAfter(/databases/$(database)/documents/config/boot).data.uid == uid
         && request.resource.data.role in ['特殊', '老闆'] && rankOk(request.resource.data) && request.resource.data.get('disabled', false) == false;
-      // Google／Apple 新登入：先建立 pending，等冠廷／老闆／經理核准並綁定身分
+      // Google 新登入：先建立 pending，等幹部以上核准並綁定身分
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.role == 'pending' && request.resource.data.rank == 0
         && request.resource.data.get('disabled', false) == false
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40;
-      // 老闆以上建立其他人員；不能建立比自己高的角色（只有特殊能建立特殊）
+      // 老闆以上建立其他人員；只能建立低於自己的職級（不能另開「特殊」）
       allow create: if lvl() >= 4 && request.auth.uid != uid && validRole(request.resource.data.role)
         && request.resource.data.role != 'pending'
-        && rank(request.resource.data.role) <= lvl() && rankOk(request.resource.data);
-      // 本人可改顯示名稱（不能改角色、編號、權限）
+        && rank(request.resource.data.role) < lvl() && rankOk(request.resource.data);
+      // 本人可改顯示名稱，或綁定 Google 時寫入 email／provider（不能改角色、編號、權限）
       allow update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'email', 'provider'])
         && request.resource.data.name is string
-        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40;
-      // 經理以上改角色或停用；pending 核准時可補員工編號／小姐編號
-      allow update: if lvl() >= 3 && request.auth.uid != uid
-        && rank(resource.data.role) <= lvl()
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['email'])
+          || (request.resource.data.email is string && request.resource.data.email.size() <= 80))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['provider'])
+          || (request.resource.data.provider is string && request.resource.data.provider.size() <= 80));
+      // 幹部以上改角色或停用；只能改／指派低於自己的職級；除冠廷外不能改冠廷（特殊或 staffId kt）
+      allow update: if lvl() >= 2 && request.auth.uid != uid
         && validRole(request.resource.data.role) && request.resource.data.role != 'pending'
-        && rank(request.resource.data.role) <= lvl()
+        && rank(request.resource.data.role) < lvl()
+        && rankOk(request.resource.data)
         && (request.resource.data.staffId == resource.data.staffId || resource.data.role == 'pending')
-        && rankOk(request.resource.data);
+        && (
+          (actorIsGuanting() && (isGuarantor(resource.data) || rank(resource.data.role) < lvl()))
+          || (!actorIsGuanting() && !isGuarantor(resource.data) && !isGuarantor(request.resource.data)
+            && rank(resource.data.role) < lvl())
+        );
       allow delete: if false;
     }
     // 當日營業資料（每個營業日一份文件）
@@ -313,6 +325,15 @@ service cloud.firestore {
     match /audit/{id} {
       allow read: if lvl() >= 3;
       allow create: if staff() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+    // v12.23 權限變更紀錄（誰、從→到、台北時間）
+    match /permLog/{id} {
+      allow read: if lvl() >= 2;
+      allow create: if lvl() >= 2
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.atTaipei is string
+        && request.resource.data.targetUid is string;
       allow update, delete: if false;
     }
   }
