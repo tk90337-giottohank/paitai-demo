@@ -1,4 +1,4 @@
-// v12.26 報班頁獨立登入（具名 Firebase app girl）；v12.25 登出可達、店長職級；v12.24 報班頁跟主題色
+// v12.27 修正 iPhone Google 登入（具名 app redirect／persistence）；v12.26 報班頁獨立登入（具名 Firebase app girl）；v12.25 登出可達、店長職級；v12.24 報班頁跟主題色
 // v12.23 Google 登入（popup＋redirect、內建瀏覽器提示）
 // v12.22 換日補跑時新日看板清空（未關帳房只留在歸檔／待辦）
 // v12.21.4 報班頁開啟時也補跑錯過的換日（交易鎖，只跑一次）
@@ -7,8 +7,8 @@
 // v12.15 小姐報班（Google＋編號密碼；已取消 Apple）
 import {firebaseConfig} from '../firebase-config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {bootNamedApp,clearLegacyDefaultSession} from '../auth-scope.js?v=12.26';
-import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence,
+import {bootNamedApp,clearLegacyDefaultSession,authReady} from '../auth-scope.js?v=12.27';
+import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,
   GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,updateProfile} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {initializeFirestore,persistentLocalCache,connectFirestoreEmulator,doc,getDoc,setDoc,updateDoc,collection,onSnapshot,query,where,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
@@ -16,12 +16,16 @@ const EMU=/[?&]emu=1/.test(location.search);
 const {app,auth}=bootNamedApp('girl');
 const db=initializeFirestore(app,{localCache:persistentLocalCache()});
 if(EMU){try{connectFirestoreEmulator(db,'127.0.0.1',8080)}catch(e){}}
-clearLegacyDefaultSession(['room']);
+const authGate=authReady(auth);
+let authGateDone=false;
+authGate.finally(()=>{authGateDone=true;clearLegacyDefaultSession(['room'])});
 const mail=id=>String(id).trim().toLowerCase()+'@paitai-system.local';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
 const isiOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-const useRedirect=()=>isiOS||window.matchMedia('(display-mode: standalone)').matches;
+const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches;
+const useRedirect=()=>isStandalone(); // iOS 一般瀏覽器改走 popup；僅主畫面 App 才 redirect
+let loginHold='';
 const KT_UID='PJGFBvQAUxSQQTdWgMLBsGwx7VN2';
 const KT_GOOGLE_EMAILS=['tk90337@gmail.com'];
 function googleEmailsOf(u){const out=[];if(!u)return out;if(u.email)out.push(String(u.email).toLowerCase());(u.providerData||[]).forEach(p=>{if(p&&p.email)out.push(String(p.email).toLowerCase())});return out}
@@ -147,15 +151,17 @@ function langsBar(){
 }
 
 function loginUI(msg, wrongProf){
+  if(msg)loginHold=msg;
   $('ov').style.display='flex';
   $('who').textContent='';
   $('brand').textContent=T('brand');
   const w=wrongProf?wrongRoleCopy(wrongProf):null;
+  const shown=msg||(!wrongProf&&loginHold)||googleHint()||'';
   $('ov').innerHTML=`<div class=box><h2>${T('login')}<span class=vi>Đăng nhập điểm danh</span></h2>
     ${w?`<div class=warn id=wrongRole data-no-i18n><b>${esc(w.zh)}</b><span class=vi>${esc(w.vi)}</span></div>
       ${wrongProf&&wrongProf.role==='room'?`<p><a href="../guest.html">開啟包廂客人頁<span class=vi>Mở trang khách phòng</span></a></p>`:`<p><a href="../index.html">開啟排檯主程式<span class=vi>Mở hệ thống xếp bàn chính</span></a></p>`}
       <button class="btn s" id=gSwitch type=button data-no-i18n>登出／切換帳號<span class=vi>Đăng xuất / Đổi tài khoản</span></button>`:''}
-    ${msg?`<p class=err>${esc(msg)}</p>`:(googleHint()?`<p class=err>${esc(googleHint())}</p>`:'')}
+    ${shown?`<p class=err>${esc(shown)}</p>`:''}
     <button class="btn g" id=gGo type=button>${T('google')}</button>
     <p style="text-align:center;color:#887;font-size:13px;margin:10px 0">${T('or')}</p>
     <input id=sId placeholder="${T('id')}" autocapitalize=none autocomplete=username>
@@ -174,15 +180,16 @@ async function social(kind){
   if(hint)return loginUI(hint);
   const p=new GoogleAuthProvider();
   try{
-    if(useRedirect())await signInWithRedirect(auth,p);
-    else {
-      try{await signInWithPopup(auth,p)}
+    if(!useRedirect()){
+      try{await signInWithPopup(auth,p);return}
       catch(e){
         const c=e.code||'';
-        if(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment'||c==='auth/web-storage-unsupported'){await signInWithRedirect(auth,p);return}
-        throw e;
+        if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request')return;
+        if(!(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment'||c==='auth/web-storage-unsupported'))throw e;
       }
     }
+    loginUI('正在前往 Google，完成後會自動回到本頁…');
+    await signInWithRedirect(auth,p);
   }catch(e){
     const c=e.code||'';
     if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request')return;
@@ -207,10 +214,20 @@ function stop(){G.unsub.forEach(f=>f());G.unsub=[]}
 onAuthStateChanged(auth,async u=>{
   if(G._switch)return;
   stop();G.user=u;G.prof=null;G.checkin=null;G.hist=[];G.staffMode=false;
-  if(!u){loginUI();draw();return}
-  if(isKtGoogle(u)&&u.uid!==KT_UID){await signOut(auth);loginUI('這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入主系統，再按「綁定 Google」。');return}
+  if(!u){
+    if(!authGateDone){
+      loginUI('正在確認登入狀態…');
+      await authGate;
+      if(G._switch)return;
+      if(auth.currentUser)return;
+      if(loginHold==='正在確認登入狀態…'||loginHold==='正在前往 Google，完成後會自動回到本頁…')loginHold='';
+    }
+    loginUI();draw();return
+  }
+  loginHold='';
+  if(isKtGoogle(u)&&u.uid!==KT_UID){loginHold='這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入主系統，再按「綁定 Google」。';await signOut(auth);loginUI(loginHold);return}
   let p=null;
-  try{p=await ensurePending(u)}catch(e){await signOut(auth);loginUI(String(e&&e.message||'').includes('kt-google-must-link')?'這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入主系統，再按「綁定 Google」。':(T('fail')+(e.code||e.message||'')));return}
+  try{p=await ensurePending(u)}catch(e){loginHold=String(e&&e.message||'').includes('kt-google-must-link')?'這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入主系統，再按「綁定 Google」。':(T('fail')+(e.code||e.message||''));await signOut(auth);loginUI(loginHold);return}
   if(!p){await signOut(auth);loginUI(T('needLogin'));return}
   if(p.disabled){G.prof=p;drawDisabled();return}
   // 絕不離開報班頁（即使本機已登入房間平板或帶著 ?t= 客人 QR 參數）
@@ -404,7 +421,6 @@ function drawStaff(){
   $('bOut').onclick=()=>{if(confirm('確定登出？'))signOut(auth)};
 }
 
-getRedirectResult(auth).catch(e=>{if(e&&e.code&&e.code!=='auth/popup-closed-by-user')console.warn(e)});
 langsBar();$('brand').textContent=T('brand');
 setInterval(()=>{if(G.prof&&(G.prof.role==='小姐'||isStaff(G.prof))){const d=bizDay(Date.now());if(d!==G.day){G.day=d;if(G.staffMode){stop();subs()}else subMine();draw()}}},30000);
 setInterval(()=>{if(G.prof)girlCatchUpRoll()},30000);

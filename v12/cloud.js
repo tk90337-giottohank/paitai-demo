@@ -1,3 +1,4 @@
+// v12.27 修正 iPhone Google 登入：具名 app 的 redirect 結果不再被 [DEFAULT]／setPersistence 清掉；popup 優先
 // v12.26 主程式／報班／包廂三個登入分開（具名 Firebase app）；v12.25 匯入備份／校對、包廂鎖頭登出、店長職級；v12.24 登入畫面跟主題色
 // v12.23 Google 登入＋幹部改權限＋kt 與 Google 合併
 // v12.22 介面五組選單；換日重設離看板
@@ -8,14 +9,16 @@
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {bootNamedApp,clearLegacyDefaultSession} from './auth-scope.js?v=12.26';
-import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,updateProfile,browserLocalPersistence,setPersistence,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,linkWithPopup,linkWithRedirect} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import {bootNamedApp,clearLegacyDefaultSession,authReady} from './auth-scope.js?v=12.27';
+import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,updateProfile,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,linkWithPopup,linkWithRedirect} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
 const {app,auth}=bootNamedApp('staff');
 const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
 if(EMU){try{connectFirestoreEmulator(db,'127.0.0.1',8080)}catch(e){}}
-clearLegacyDefaultSession(['room']);
+const authGate=authReady(auth);
+let authGateDone=false;
+authGate.finally(()=>{authGateDone=true;clearLegacyDefaultSession(['room'])});
 const DOMAIN='paitai-system.local',mail=id=>String(id).trim().toLowerCase()+'@'+DOMAIN;
 const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'店長':4,'老闆':5,'特殊':6,'tv':0,'kitchen':0,'room':0,'pending':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r=='room'?'房間平板':r=='pending'?'待核准':r;const ROLE_ALL=['小姐','少爺','幹部','經理','店長','老闆','特殊','tv','kitchen','room','pending'];
 const KT_UID='PJGFBvQAUxSQQTdWgMLBsGwx7VN2';
@@ -101,8 +104,10 @@ function audit(m){if(!st.user||TVMODE||!isOps()||st.inited!==true)return;addDoc(
 // ---- 登入畫面 ----
 const ov=document.createElement('div');ov.id='fbLogin';ov.className='fb-login';ov.style.cssText='position:fixed;inset:0;z-index:9999;display:none;overflow:auto;padding:24px;font-size:17px';document.body.appendChild(ov);
 function isiOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
-function useRedirect(){return isiOS()||window.matchMedia('(display-mode: standalone)').matches}
-function loginUI(msg){ov.style.display='block';const hint=msg||googleHint();ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>🔐 排檯系統登入</h2>${hint?`<p style="color:#f88">${hint}</p>`:''}
+function isStandalone(){return window.matchMedia('(display-mode: standalone)').matches}
+function useRedirect(){return isStandalone()} // iOS 一般瀏覽器改走 popup（使用者點擊）；僅主畫面 App 才用 redirect
+let loginHold='';
+function loginUI(msg){if(msg)loginHold=msg;ov.style.display='block';const hint=msg||loginHold||googleHint();ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>🔐 排檯系統登入</h2>${hint?`<p style="color:#f88">${hint}</p>`:''}
  <button id=fbG type=button style="width:100%;font-size:18px;padding:12px;margin:0 0 16px;background:#fff;color:#222;border-radius:10px;border:0;min-height:48px">使用 Google 登入</button>
  <p style="text-align:center;color:#888;font-size:13px;margin:0 0 12px">或用員工編號與密碼</p>
  <label>員工編號<br><input id=fbId autocomplete=username autocapitalize=none style="width:100%;font-size:20px;padding:8px"></label><br><br>
@@ -119,15 +124,17 @@ async function socialLogin(kind){
   if(hint)return loginUI(hint);
   const p=new GoogleAuthProvider();
   try{
-    if(useRedirect())await signInWithRedirect(auth,p);
-    else {
-      try{await signInWithPopup(auth,p)}
+    // GitHub Pages 與 authDomain 不同站，iOS redirect 容易在回來時對不到具名 app。先用 popup（點擊觸發）。
+    if(!useRedirect()){
+      try{await signInWithPopup(auth,p);return}
       catch(e){
         const c=e.code||'';
-        if(c=='auth/popup-blocked'||c=='auth/operation-not-supported-in-this-environment'||c=='auth/web-storage-unsupported'){await signInWithRedirect(auth,p);return}
-        throw e;
+        if(c=='auth/popup-closed-by-user'||c=='auth/cancelled-popup-request')return;
+        if(!(c=='auth/popup-blocked'||c=='auth/operation-not-supported-in-this-environment'||c=='auth/web-storage-unsupported'))throw e;
       }
     }
+    loginUI('正在前往 Google，完成後會自動回到本頁…');
+    await signInWithRedirect(auth,p);
   }catch(e){
     const c=e.code||'';
     if(c=='auth/popup-closed-by-user'||c=='auth/cancelled-popup-request')return;
@@ -182,19 +189,26 @@ function bootUI(msg){ov.innerHTML=`<div style="max-width:380px;margin:6vh auto">
   let cred;try{cred=await createUserWithEmailAndPassword(auth,mail(id),pw)}catch(e){return bootUI(e.code=='auth/email-already-in-use'?'這個編號已存在，請直接登入':'建立失敗：'+e.code)}
   try{const b=writeBatch(db);const br=bRole.value=='老闆'?'老闆':'特殊';b.set(doc(db,'users',cred.user.uid),{staffId:id.toLowerCase(),name:bNm.value.trim()||RL(br),role:br,rank:RANK[br],disabled:false,createdAt:Date.now()});b.set(doc(db,'config','boot'),{uid:cred.user.uid,at:Date.now()});await b.commit();await savePw(cred.user.uid,pw).catch(()=>{})}
   catch(e){try{await cred.user.delete()}catch(_){}await signOut(auth).catch(()=>{});return bootUI('系統已經啟用過，不能再建立。請用老闆給你的帳號登入。')}}}
-getRedirectResult(auth).catch(()=>{});
 onAuthStateChanged(auth,async u=>{stopSync();st.user=u;st.prof=null;st.inited=null;
- if(!u){S.cur=null;status();loginUI();return}
- if(isKtGoogle(u)&&u.uid!==KT_UID){await signOut(auth);loginUI('這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入，再於「人員帳號管理」或個人設定按「綁定 Google」。');return}
- let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null;if(!p)p=await createPending(u)}catch(e){p=null;if(String(e&&e.message||'').includes('kt-google-must-link')){await signOut(auth);loginUI('這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入，再按「綁定 Google」。');return}}
- if(!p){await signOut(auth);loginUI('此帳號沒有權限資料，請找老闆');return}
+ if(!u){
+  if(!authGateDone){
+    if(ov.style.display!=='block')loginUI('正在確認登入狀態…');
+    await authGate;
+    if(auth.currentUser)return;
+    if(loginHold==='正在確認登入狀態…'||loginHold==='正在前往 Google，完成後會自動回到本頁…')loginHold='';
+  }
+  S.cur=null;status();loginUI();return
+ }
+ loginHold='';
+ if(isKtGoogle(u)&&u.uid!==KT_UID){loginHold='這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入，再於「人員帳號管理」或個人設定按「綁定 Google」。';await signOut(auth);loginUI(loginHold);return}
+ let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null;if(!p)p=await createPending(u)}catch(e){p=null;if(String(e&&e.message||'').includes('kt-google-must-link')){loginHold='這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入，再按「綁定 Google」。';await signOut(auth);loginUI(loginHold);return}}
+ if(!p){loginHold='此帳號沒有權限資料，請找老闆';await signOut(auth);loginUI(loginHold);return}
  if(p.disabled){st.prof=p;disabledUI();status();return}
  if(p.role=='room'){st.prof=p;wrongPageUI('room');status();return}
  if(p.role=='小姐'){location.replace(girlPageUrl());return}
  st.prof=p;S.cur={name:p.name,role:p.role,uid:u.uid,staffId:p.staffId,girlId:p.girlId};S.op=p.name;const op=document.getElementById('op');if(op)op.value=p.name;
  if(p.role=='pending'){pendingUI();status();return}
  ov.style.display='none';startSync();if(location.hash=='#kitchen')openKitchen();rerender();log(`登入：${p.name}${p.role=='特殊'?'':'（'+RL(p.role)+'）'}`);const ty=st.manual?'登入':'自動登入';st.manual=false;loginLog(ty)});
-setPersistence(auth,browserLocalPersistence).catch(()=>{});
 // ---- 帳號選單 / 人員管理 ----
 function openAccount(){const f=document.getElementById('dform'),p=st.prof||{};
  f.innerHTML=`<h3>👤 ${esc(p.name||'')}${p.role=='特殊'?'':'（'+esc(RL(p.role||''))+'）'}</h3><p style="font-size:13px">員工編號：${esc(p.staffId||'')}${p.email?'<br>'+esc(p.email):''}</p>
@@ -935,5 +949,5 @@ async function updateImportReview(id,patch){
   await updateDoc(doc(db,'importArchive',id),upd);
 }
 
-window.Cloud={ver:"v12.26",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+window.Cloud={ver:"v12.27",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();
