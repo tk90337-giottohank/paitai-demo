@@ -1,14 +1,15 @@
+// v12.25 鎖頭面板：包廂密碼登出＋員工解鎖（含 Google）；職級含店長
 // v12.21.2 可點規則：滿 bookedMax／他房私檯／暫停才灰；隨機只抽亮燈
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence,EmailAuthProvider,reauthenticateWithCredential,GoogleAuthProvider,signInWithPopup} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {initializeFirestore,persistentLocalCache,connectFirestoreEmulator,doc,getDoc,setDoc,updateDoc,collection,onSnapshot,addDoc,query,where} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=initializeFirestore(app,{localCache:persistentLocalCache()});
 if(EMU){connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});connectFirestoreEmulator(db,'127.0.0.1',8080)}
 setPersistence(auth,browserLocalPersistence).catch(()=>{});
 const mail=id=>String(id).trim().toLowerCase()+'@paitai-system.local';
-const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'特殊':5};
+const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'店長':4,'老闆':5,'特殊':6};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
 const TOKEN=new URLSearchParams(location.search).get('t')||'';
@@ -19,8 +20,9 @@ function idle(){clearTimeout(idleT);idleT=setTimeout(()=>{if(G.view!='home'){G.v
 function flash(t){const m=$('msg');m.innerHTML=t;m.style.display='block';setTimeout(()=>m.style.display='none',2200)}
 const day=()=>G.day||new Date(Date.now()-7.17*36e5).toLocaleDateString('sv-SE');
 // ---- 設定（綁定包廂）：用房間平板帳號登入 ----
-function setupUI(err){const o=$('ov');o.style.display='flex';o.innerHTML=`<div class=box><h2>包廂平板設定</h2><p style="color:#aab">請幹部用「房間平板」帳號登入（老闆在人員帳號管理建立，角色選「房間平板」並綁定包廂）。</p>${err?`<p style="color:#f66">${esc(err)}</p>`:''}
- <input id=sId placeholder="平板帳號（例 room208）" autocapitalize=none><input id=sPw type=password placeholder="密碼"><button id=sGo style="background:#2fb47a;color:#fff">登入並綁定</button></div>`;
+function staffAppLink(){return `<p class="staff-link"><a href="index.html">員工請到排檯主程式登入<span class="vi">Nhân viên đăng nhập hệ thống chính</span></a></p>`}
+function setupUI(err){const o=$('ov');o.style.display='flex';o.innerHTML=`<div class=box><h2>包廂平板設定<span class="vi">Cài đặt máy tính bảng phòng</span></h2><p style="color:#aab">請幹部用「房間平板」帳號登入（老闆在人員帳號管理建立，角色選「房間平板」並綁定包廂）。<span class="vi">Cán bộ đăng nhập tài khoản máy tính bảng phòng.</span></p>${err?`<p style="color:#f66">${esc(err)}</p>`:''}
+ <input id=sId placeholder="平板帳號（例 room208）" autocapitalize=none autocomplete=username><input id=sPw type=password placeholder="密碼" autocomplete=current-password><button id=sGo style="background:#2fb47a;color:#fff;min-height:44px">登入並綁定<span class="vi">Đăng nhập và gắn phòng</span></button>${staffAppLink()}</div>`;
  $('sGo').onclick=async()=>{try{$('sGo').disabled=true;await signInWithEmailAndPassword(auth,mail($('sId').value),$('sPw').value)}catch(e){setupUI('登入失敗：'+(e.code||''))}}}
 if(TOKEN){G.prof=G.prof||{name:'客人',role:'guest'};draw();startTokenMode()}
 else onAuthStateChanged(auth,async u=>{G.unsub.forEach(f=>f());G.unsub=[];G.user=u;if(!u)return setupUI();
@@ -148,14 +150,130 @@ window.GU={go:v=>{G.view=v;G.sel.clear();G.q={};if(v!='randomResult')G.randResul
   $('qrX').onclick=()=>{box.style.display='none'};
  }
 };
-// ---- 員工解鎖（需幹部以上登入）----
-$('lock').onclick=()=>{const o=$('ov');o.style.display='flex';o.innerHTML=`<div class=box><h2>員工解鎖</h2><p style="color:#aab">需幹部以上帳號</p><input id=uId placeholder="員工編號" autocapitalize=none><input id=uPw type=password placeholder="密碼"><p id=uErr style="color:#f66"></p><button id=uGo style="background:#3a8fe0;color:#fff">解鎖</button> <button id=uX style="background:#443;color:#fff">取消</button></div>`;
- $('uX').onclick=()=>{o.style.display='none'};$('uGo').onclick=async()=>{const sec=initializeApp(firebaseConfig,'u'+Date.now()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
-  try{const c=await signInWithEmailAndPassword(sa,mail($('uId').value),$('uPw').value);const{getFirestore,connectFirestoreEmulator:cfe,doc:d2,getDoc:g2}=await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js');const f2=getFirestore(sec);if(EMU)cfe(f2,'127.0.0.1',8080);
-   const p=(await g2(d2(f2,'users',c.user.uid))).data()||{};await signOut(sa);if(p.disabled||(RANK[p.role]||0)<2){$('uErr').textContent='需要幹部以上';return}
-   o.innerHTML=`<div class=box><h2>已解鎖（${esc(p.name)}）</h2><button id=aRe style="background:#3a8fe0;color:#fff">重新整理</button> <button id=aOut style="background:#c33;color:#fff">解除綁定（登出平板）</button> <button id=aX style="background:#443;color:#fff">返回客人畫面</button></div>`;
-   $('aRe').onclick=()=>location.reload();$('aX').onclick=()=>{o.style.display='none'};$('aOut').onclick=async()=>{await signOut(auth);setupUI()}}
-  catch(e){$('uErr').textContent='帳號或密碼錯誤'}finally{deleteApp(sec).catch(()=>{})}}};
+// ---- 鎖頭：本包廂登出（需包廂密碼，走 Auth 再驗證）＋員工解鎖（幹部以上，編號密碼或 Google）----
+async function verifyRoomPassword(pw){
+  const u=auth.currentUser;
+  if(!u||!u.email){const e=new Error('no-session');e.code='no-session';throw e}
+  try{
+    await reauthenticateWithCredential(u,EmailAuthProvider.credential(u.email,pw));
+    return;
+  }catch(e){
+    const c=(e&&e.code)||'';
+    if(c==='auth/wrong-password'||c==='auth/invalid-credential'||c==='auth/invalid-login-credentials'||c==='auth/user-mismatch'||c==='auth/too-many-requests'||c==='no-session')throw e;
+    const sec=initializeApp(firebaseConfig,'chk'+Date.now()),sa=getAuth(sec);
+    if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
+    try{
+      const cred=await signInWithEmailAndPassword(sa,u.email,pw);
+      if(!cred.user||cred.user.uid!==u.uid){const err=new Error('mismatch');err.code='auth/user-mismatch';throw err}
+      await signOut(sa).catch(()=>{});
+    }finally{await deleteApp(sec).catch(()=>{})}
+  }
+}
+async function lookupStaffUser(sec,uid){
+  const{getFirestore,connectFirestoreEmulator:cfe,doc:d2,getDoc:g2}=await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js');
+  const f2=getFirestore(sec);if(EMU)cfe(f2,'127.0.0.1',8080);
+  const snap=await g2(d2(f2,'users',uid));
+  return snap.exists()?snap.data():{};
+}
+function showUnlocked(p){
+  const o=$('ov');
+  o.style.display='flex';
+  const who=esc((p.name||'')+(p.role==='特殊'?'':'（'+(p.role==='特殊'?'冠廷':p.role)+'）'));
+  const label=p.role==='特殊'?'冠廷':(p.name||'');
+  o.innerHTML=`<div class=box><h2>已解鎖（${esc(p.role==='特殊'?'冠廷':(p.name||''))}）<span class="vi">Đã mở khóa</span></h2>
+    <button id=aRe style="background:#3a8fe0;color:#fff;min-height:44px">重新整理<span class="vi">Tải lại</span></button>
+    <button id=aOut style="background:#c33;color:#fff;min-height:44px">解除綁定（登出平板）<span class="vi">Gỡ gắn (đăng xuất máy tính bảng)</span></button>
+    <button id=aX style="background:#443;color:#fff;min-height:44px">返回客人畫面<span class="vi">Về trang khách</span></button></div>`;
+  $('aRe').onclick=()=>location.reload();
+  $('aX').onclick=()=>{o.style.display='none'};
+  $('aOut').onclick=async()=>{await signOut(auth);setupUI()};
+}
+function openLockPanel(){
+  const o=$('ov');
+  const canRoomOut=!G.tokenMode&&!!(auth.currentUser&&auth.currentUser.email);
+  o.style.display='flex';
+  o.innerHTML=`<div class=box id=lockBox>
+    <h2>員工選項<span class="vi">Tùy chọn nhân viên</span></h2>
+    ${canRoomOut?`<div class=lock-sec>
+      <h3>登出<span class="vi">Đăng xuất</span></h3>
+      <p class=lock-hint>請輸入本包廂平板密碼後才會登出。密碼錯誤會留在客人畫面。<span class="vi">Nhập mật khẩu máy tính bảng phòng này để đăng xuất. Sai mật khẩu thì vẫn ở trang khách.</span></p>
+      <input id=rPw type=password placeholder="包廂密碼" autocomplete="current-password">
+      <p id=rErr class=lock-err></p>
+      <button id=rGo type=button class=lock-danger>確認登出<span class="vi">Xác nhận đăng xuất</span></button>
+    </div>`:''}
+    <div class=lock-sec>
+      <h3>員工解鎖<span class="vi">Mở khóa nhân viên</span></h3>
+      <p class=lock-hint>需幹部以上。可用員工編號與密碼，或 Google 登入。<span class="vi">Cần cán bộ trở lên. Dùng mã nhân viên và mật khẩu, hoặc đăng nhập Google.</span></p>
+      <input id=uId placeholder="員工編號" autocapitalize=none autocomplete=username>
+      <input id=uPw type=password placeholder="密碼" autocomplete=current-password>
+      <p id=uErr class=lock-err></p>
+      <button id=uGo type=button class=lock-pri>解鎖<span class="vi">Mở khóa</span></button>
+      <button id=uG type=button class=lock-g>使用 Google 解鎖<span class="vi">Mở khóa bằng Google</span></button>
+    </div>
+    <button id=uX type=button class=lock-x>取消<span class="vi">Hủy</span></button>
+  </div>`;
+  $('uX').onclick=()=>{o.style.display='none'};
+  if(canRoomOut){
+    const goOut=async()=>{
+      const pw=($('rPw').value||'');
+      const err=$('rErr');
+      if(!pw){err.textContent='請輸入本包廂平板密碼';return}
+      const btn=$('rGo');btn.disabled=true;
+      try{
+        await verifyRoomPassword(pw);
+        $('rPw').value='';
+        await signOut(auth);
+        setupUI();
+      }catch(e){
+        const c=(e&&e.code)||'';
+        $('rPw').value='';
+        err.textContent=(c==='auth/too-many-requests')?'嘗試次數過多，請稍後再試':'包廂密碼錯誤，仍保持登入';
+      }finally{btn.disabled=false}
+    };
+    $('rGo').onclick=goOut;
+    $('rPw').onkeydown=e=>{if(e.key==='Enter')goOut()};
+  }
+  const afterStaff=async(p,errId)=>{
+    if(p.disabled||(RANK[p.role]||0)<2){$(errId).textContent='需要幹部以上';return}
+    showUnlocked(p);
+  };
+  $('uGo').onclick=async()=>{
+    const id=($('uId').value||'').trim(),pw=$('uPw').value||'';
+    if(!id||!pw){$('uErr').textContent='請填員工編號與密碼';return}
+    const sec=initializeApp(firebaseConfig,'u'+Date.now()),sa=getAuth(sec);
+    if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
+    $('uGo').disabled=true;
+    try{
+      const c=await signInWithEmailAndPassword(sa,mail(id),pw);
+      const p=await lookupStaffUser(sec,c.user.uid);
+      await signOut(sa).catch(()=>{});
+      await afterStaff(p,'uErr');
+    }catch(e){$('uErr').textContent='帳號或密碼錯誤'}
+    finally{$('uGo').disabled=false;deleteApp(sec).catch(()=>{})}
+  };
+  $('uG').onclick=async()=>{
+    const ua=navigator.userAgent||'';
+    const inApp=/Line\//i.test(ua)||/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)||/Instagram/i.test(ua);
+    if(inApp){$('uErr').textContent='Google 無法在 LINE 或其他 App 內建瀏覽器完成。請用系統的 Chrome 或 Safari，或改用員工編號密碼。';return}
+    const sec=initializeApp(firebaseConfig,'ug'+Date.now()),sa=getAuth(sec);
+    if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
+    $('uG').disabled=true;
+    try{
+      const c=await signInWithPopup(sa,new GoogleAuthProvider());
+      const p=await lookupStaffUser(sec,c.user.uid);
+      await signOut(sa).catch(()=>{});
+      await afterStaff(p,'uErr');
+    }catch(e){
+      const c=(e&&e.code)||'';
+      if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request')return;
+      if(c==='auth/operation-not-allowed')$('uErr').textContent='Google 登入尚未開啟，請改用員工編號密碼。';
+      else if(c==='auth/popup-blocked')$('uErr').textContent='瀏覽器擋住彈窗。請允許彈窗，或改用員工編號密碼。';
+      else $('uErr').textContent='Google 解鎖失敗，請改用員工編號密碼。';
+    }finally{$('uG').disabled=false;deleteApp(sec).catch(()=>{})}
+  };
+}
+$('lock').onclick=()=>openLockPanel();
+
 history.pushState(null,'',location.href);addEventListener('popstate',()=>history.pushState(null,'',location.href));
 idle();
 function reasonLabel(g){const m={已滿:'已滿 / Đã đủ / Full',私檯:'私檯 / Riêng / Private',暫停:'暫停 / Tạm dừng / Paused'};return(m[g.reason]||g.reason||'不可點')+(g.room?' · '+g.room:'')}

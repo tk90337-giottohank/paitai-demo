@@ -1,4 +1,4 @@
-// v12.24 報班頁跟主題色
+// v12.25 登出可達、店長職級；v12.24 報班頁跟主題色
 // v12.23 Google 登入（popup＋redirect、內建瀏覽器提示）
 // v12.22 換日補跑時新日看板清空（未關帳房只留在歸檔／待辦）
 // v12.21.4 報班頁開啟時也補跑錯過的換日（交易鎖，只跑一次）
@@ -135,7 +135,7 @@ const bizDay=ts=>dkey((ts??Date.now())-cutM()*60000);
 const hm=ts=>new Date(ts).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'});
 
 function girlIdOf(p){return String((p&&(p.girlId||(/^\d{1,3}$/.test(String(p.staffId||''))?p.staffId:'')))||'').trim()}
-function isStaff(p){const r=p&&p.role;return r==='少爺'||r==='幹部'||r==='經理'||r==='老闆'||r==='特殊'}
+function isStaff(p){const r=p&&p.role;return r==='少爺'||r==='幹部'||r==='經理'||r==='店長'||r==='老闆'||r==='特殊'}
 function canUseGirlPage(p){return !!(p&&(p.role==='小姐'||p.role==='pending'||isStaff(p)))}
 function wrongRoleCopy(p){const r=(p&&p.role)||'';const room=String((p&&p.room)||String((p&&p.staffId)||'').replace(/^room-?/i,'')||'');if(r==='room')return{zh:'此裝置目前以「'+(room||'?')+' 包廂平板」登入。小姐報班請先登出，再改用小姐帳號。',vi:'Thiết bị này đang đăng nhập tài khoản máy tính bảng phòng '+(room||'?')+'. Để điểm danh, hãy đăng xuất rồi dùng tài khoản tiếp viên.'};const who=esc((p&&(p.name||p.staffId))||r||'');return{zh:'此裝置目前登入的不是小姐或幹部帳號（'+who+'）。小姐報班請先登出，再改用小姐帳號。',vi:'Thiết bị này đang đăng nhập tài khoản không phải tiếp viên hoặc cán bộ. Hãy đăng xuất rồi dùng tài khoản tiếp viên.'}}
 
@@ -163,7 +163,7 @@ function loginUI(msg, wrongProf){
   const go=async()=>{try{$('sGo').disabled=true;if(auth.currentUser){G._switch=true;try{await signOut(auth)}finally{G._switch=false}}await signInWithEmailAndPassword(auth,mail($('sId').value),$('sPw').value)}catch(e){G._switch=false;loginUI(e.code=='auth/network-request-failed'?T('net'):T('bad'),wrongProf)}};
   $('sGo').onclick=go;$('sPw').onkeydown=e=>{if(e.key==='Enter')go()};
   $('gGo').onclick=async()=>{try{if(auth.currentUser){G._switch=true;try{await signOut(auth)}finally{G._switch=false}}}catch(_){G._switch=false}social('google')};
-  const sw=$('gSwitch');if(sw)sw.onclick=()=>signOut(auth);
+  const sw=$('gSwitch');if(sw)sw.onclick=()=>{if(confirm('確定登出？'))signOut(auth)};
 }
 
 async function social(kind){
@@ -209,7 +209,8 @@ onAuthStateChanged(auth,async u=>{
   if(isKtGoogle(u)&&u.uid!==KT_UID){await signOut(auth);loginUI('這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入主系統，再按「綁定 Google」。');return}
   let p=null;
   try{p=await ensurePending(u)}catch(e){await signOut(auth);loginUI(String(e&&e.message||'').includes('kt-google-must-link')?'這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入主系統，再按「綁定 Google」。':(T('fail')+(e.code||e.message||'')));return}
-  if(!p||p.disabled){await signOut(auth);loginUI(p&&p.disabled?T('disabled'):T('needLogin'));return}
+  if(!p){await signOut(auth);loginUI(T('needLogin'));return}
+  if(p.disabled){G.prof=p;drawDisabled();return}
   // 絕不離開報班頁（即使本機已登入房間平板或帶著 ?t= 客人 QR 參數）
   if(!canUseGirlPage(p)){loginUI('',p);draw();return}
   G.prof=p;G.staffMode=isStaff(p);
@@ -289,6 +290,17 @@ async function punch(on,forId){
   draw();
 }
 
+function drawDisabled(){
+  langsBar();
+  $('brand').textContent=T('brand');
+  $('who').textContent=(G.prof&&G.prof.name)||'';
+  $('ov').style.display='flex';
+  $('main').innerHTML='';
+  $('ov').innerHTML=`<div class=box><h2>${T('disabled')}</h2>
+    <p class=hint>請找幹部或老闆處理。你仍可登出後改用其他帳號。<span class=vi>Hãy nhờ cán bộ hoặc chủ quán. Bạn vẫn có thể đăng xuất rồi dùng tài khoản khác.</span></p>
+    <button class="btn s" id=nOut type=button>${T('out')}</button></div>`;
+  $('nOut').onclick=()=>{if(confirm('確定登出？'))signOut(auth)};
+}
 function draw(){
   langsBar();
   $('brand').textContent=T('brand');
@@ -302,7 +314,7 @@ function draw(){
       <button class=btn id=nSv type=button>${T('saveName')}</button>
       <button class="btn s" id=nOut type=button>${T('out')}</button></div>`;
     $('nSv').onclick=async()=>{const name=$('nNm').value.trim().slice(0,40);if(!name)return;try{await updateDoc(doc(db,'users',G.user.uid),{name});G.prof={...G.prof,name};G.msg=T('saved');draw()}catch(e){alert(T('fail')+(e.code||''))}};
-    $('nOut').onclick=()=>signOut(auth);
+    $('nOut').onclick=()=>{if(confirm('確定登出？'))signOut(auth)};
     return;
   }
   $('ov').style.display='none';
@@ -340,7 +352,7 @@ function draw(){
     </div>`;
   $('bGo').onclick=()=>punch(!on);
   $('bName').onclick=setName;
-  $('bOut').onclick=()=>signOut(auth);
+  $('bOut').onclick=()=>{if(confirm('確定登出？'))signOut(auth)};
 }
 
 function drawStaff(){
@@ -387,7 +399,7 @@ function drawStaff(){
   if(tOn)tOn.onclick=()=>punch(true,G.prof.girlId||'T57');
   if(tOff)tOff.onclick=()=>punch(false,G.prof.girlId||'T57');
   $('bName').onclick=setName;
-  $('bOut').onclick=()=>signOut(auth);
+  $('bOut').onclick=()=>{if(confirm('確定登出？'))signOut(auth)};
 }
 
 getRedirectResult(auth).catch(e=>{if(e&&e.code&&e.code!=='auth/popup-closed-by-user')console.warn(e)});

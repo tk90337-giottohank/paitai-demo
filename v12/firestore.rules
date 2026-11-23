@@ -1,6 +1,6 @@
 rules_version = '2';
-// 排檯系統 paitai-system — Firestore 安全規則（v12.23）
-// 角色：小姐/少爺=1 < 幹部=2 < 經理=3 < 老闆=4 < 特殊（冠廷）=5；tv=唯讀看板（0）；pending=待核准（0）
+// 排檯系統 paitai-system — Firestore 安全規則（v12.25）
+// 角色：小姐/少爺=1 < 幹部=2 < 經理=3 < 店長=4 < 老闆=5 < 特殊（冠廷）=6；tv=唯讀看板（0）；pending=待核准（0）
 // 小姐只能走獨立報班頁，不能讀寫營業日主檔；只讀自己的報班／台數，只寫自己的報班紀錄
     // users 文件需帶 rank 欄位且必須等於 rank(role)（供查詢過濾）
 service cloud.firestore {
@@ -9,19 +9,19 @@ service cloud.firestore {
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function hasProfile() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
     function active() { return hasProfile() && me().get('disabled', false) != true; }
-    function rank(r) { return r == '特殊' ? 5 : r == '老闆' ? 4 : r == '經理' ? 3 : r == '幹部' ? 2 : (r == '少爺' || r == '小姐') ? 1 : 0; }
+    function rank(r) { return r == '特殊' ? 6 : r == '老闆' ? 5 : r == '店長' ? 4 : r == '經理' ? 3 : r == '幹部' ? 2 : (r == '少爺' || r == '小姐') ? 1 : 0; }
     function lvl() { return active() ? rank(me().role) : 0; }
     function isTV() { return active() && me().role == 'tv'; }
     function isHostess() { return active() && me().role == '小姐'; }
     function myGirl() { return me().get('girlId', me().get('staffId', '')); }
     function staff() { return lvl() >= 1 && me().role != '小姐' && me().role != 'pending'; }
     function reader() { return staff() || isTV(); }
-    function validRole(r) { return r in ['小姐', '少爺', '幹部', '經理', '老闆', '特殊', 'tv', 'kitchen', 'room', 'pending']; }
+    function validRole(r) { return r in ['小姐', '少爺', '幹部', '經理', '店長', '老闆', '特殊', 'tv', 'kitchen', 'room', 'pending']; }
     function isRoomTab() { return active() && me().role == 'room' && me().get('room', '') != ''; }
     function myRoom() { return me().room; }
     function isKitchen() { return active() && me().role == 'kitchen'; }
     function canRoll() {
-      return active() && me().role in ['特殊', '老闆', '經理', '幹部', '少爺', '小姐', 'room', 'tv', 'kitchen'];
+      return active() && me().role in ['特殊', '老闆', '店長', '經理', '幹部', '少爺', '小姐', 'room', 'tv', 'kitchen'];
     }
     function billFieldsUntouched() {
       return (!('revenue' in resource.data) || request.resource.data.revenue == resource.data.revenue)
@@ -64,7 +64,7 @@ service cloud.firestore {
     // 人員帳號與角色
     match /users/{uid} {
       allow read: if (signedIn() && request.auth.uid == uid)
-        || lvl() >= 5
+        || actorIsGuanting()
         || (lvl() >= 2 && resource.data.rank < lvl() && !isGuarantor(resource.data));
       // 第一位帳號（首次啟用）：特殊（冠廷）或老闆
       allow create: if signedIn() && request.auth.uid == uid
@@ -78,7 +78,7 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40;
       // 老闆以上建立其他人員；只能建立低於自己的職級（不能另開「特殊」）
-      allow create: if lvl() >= 4 && request.auth.uid != uid && validRole(request.resource.data.role)
+      allow create: if lvl() >= 5 && request.auth.uid != uid && validRole(request.resource.data.role)
         && request.resource.data.role != 'pending'
         && rank(request.resource.data.role) < lvl() && rankOk(request.resource.data);
       // 本人可改顯示名稱，或綁定 Google 時寫入 email／provider（不能改角色、編號、權限）
@@ -133,12 +133,12 @@ service cloud.firestore {
       allow create: if lvl() >= 2 && request.resource.data.uid == request.auth.uid;
       allow update, delete: if lvl() >= 3;
     }
-    // 員工密碼副本：冠廷（5）可看全部；老闆（4）只能看老闆以下；其他人不能讀。本人改密碼時可寫自己的。
+    // 員工密碼副本：冠廷（6）可看全部；店長／老闆只能看職級低於自己的人；其他人不能讀。本人改密碼時可寫自己的。
     match /secrets/{uid} {
       function targetRank() { return get(/databases/$(database)/documents/users/$(uid)).data.rank; }
-      allow read: if lvl() >= 5 || (lvl() == 4 && targetRank() < 4);
+      allow read: if actorIsGuanting() || (lvl() >= 4 && targetRank() < lvl());
       allow create, update: if (hasProfile() && request.auth.uid == uid)
-        || lvl() >= 5 || (lvl() == 4 && targetRank() < 4);
+        || actorIsGuanting() || (lvl() >= 4 && targetRank() < lvl());
       allow delete: if false;
     }
     // 餐點菜單（v12.21）：公開唯讀（客人 QR 點菜／點酒只需品名與價格）；經理以上可改
@@ -181,14 +181,14 @@ service cloud.firestore {
           && request.resource.data.statusBy == request.auth.uid);
       allow delete: if lvl() >= 3;
     }
-    // 登入紀錄（v12.3）：本人建立自己的紀錄；冠廷（5）看全部、可刪；老闆（4）只看老闆以下
+    // 登入紀錄（v12.3）：本人建立自己的紀錄；冠廷看全部、可刪；老闆／店長只看職級低於自己的紀錄
     match /loginLogs/{id} {
       allow create: if hasProfile() && request.resource.data.uid == request.auth.uid
         && request.resource.data.rank == rank(me().role)
         && request.resource.data.atMs is number;
-      allow read: if lvl() >= 5 || (lvl() == 4 && resource.data.rank < 4);
+      allow read: if actorIsGuanting() || (lvl() >= 4 && resource.data.rank < lvl());
       allow update: if false;
-      allow delete: if lvl() >= 5;
+      allow delete: if actorIsGuanting();
     }
     // 包廂平板（v12.6）：可點小姐清單（只有編號、名字、照片）
     match /public/avail {

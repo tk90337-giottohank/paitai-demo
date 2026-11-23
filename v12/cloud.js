@@ -1,4 +1,4 @@
-// v12.25 匯入備份／校對；v12.24 登入畫面跟主題色
+// v12.25 匯入備份／校對、包廂鎖頭登出、店長職級；v12.24 登入畫面跟主題色
 // v12.23 Google 登入＋幹部改權限＋kt 與 Google 合併
 // v12.22 介面五組選單；換日重設離看板
 // v12.21.4 換日補跑＋交易鎖修正（不把複製的舊 dayRoll 當成已完成）
@@ -15,13 +15,15 @@ const app=initializeApp(firebaseConfig),auth=getAuth(app);
 const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
 if(EMU){connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});connectFirestoreEmulator(db,'127.0.0.1',8080)}
 const DOMAIN='paitai-system.local',mail=id=>String(id).trim().toLowerCase()+'@'+DOMAIN;
-const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'老闆':4,'特殊':5,'tv':0,'kitchen':0,'room':0,'pending':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r=='room'?'房間平板':r=='pending'?'待核准':r;const ROLE_ALL=['小姐','少爺','幹部','經理','老闆','特殊','tv','kitchen','room','pending'];
+const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'店長':4,'老闆':5,'特殊':6,'tv':0,'kitchen':0,'room':0,'pending':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r=='room'?'房間平板':r=='pending'?'待核准':r;const ROLE_ALL=['小姐','少爺','幹部','經理','店長','老闆','特殊','tv','kitchen','room','pending'];
 const KT_UID='PJGFBvQAUxSQQTdWgMLBsGwx7VN2';
 const KT_GOOGLE_EMAILS=['tk90337@gmail.com'];
 function googleEmailsOf(u){const out=[];if(!u)return out;if(u.email)out.push(String(u.email).toLowerCase());(u.providerData||[]).forEach(p=>{if(p&&p.email)out.push(String(p.email).toLowerCase())});return out}
 function isKtGoogle(u){return googleEmailsOf(u).some(e=>KT_GOOGLE_EMAILS.includes(e))}
 function isGuarded(u){return !!(u&&(u.role=='特殊'||String(u.staffId||'').toLowerCase()=='kt'||u.uid==KT_UID))}
-function canEditUser(u){if(!u||!st.user||u.uid==st.user.uid)return false;if(isGuarded(u)&&lv()<5)return false;return (RANK[u.role]||0)<lv()}
+function isGuanting(){return !!(st.prof&&st.prof.role=='特殊')||lv()>=(RANK['特殊']||6)}
+function isOwnerPlus(){return lv()>=(RANK['老闆']||5)}
+function canEditUser(u){if(!u||!st.user||u.uid==st.user.uid)return false;if(isGuarded(u)&&!isGuanting())return false;return (RANK[u.role]||0)<lv()}
 function assignableRoles(){return ROLE_ALL.filter(r=>(RANK[r]||0)<lv()&&r!='pending')}
 function taipeiNow(){return new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})}
 function isInAppBrowser(){const ua=navigator.userAgent||'';return /Line\//i.test(ua)||/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)||/Instagram/i.test(ua)||/MicroMessenger/i.test(ua)||(/Android/i.test(ua)&&/\;\s*wv\)/i.test(ua))||(/Android/i.test(ua)&&/Version\/\d/i.test(ua)&&/Safari/i.test(ua)&&!/Chrome\//i.test(ua)&&!/Firefox/i.test(ua))}
@@ -35,7 +37,7 @@ const J=v=>JSON.stringify(v===undefined?null:v);
 const st={user:null,prof:null,inited:null,dayId:null,unsub:[],dayUnsub:null,last:{set:{},day:{},hist:{},wine:{},led:{},wlog:new Set()},timer:null,pending:0,err:'',online:navigator.onLine};
 const lv=()=>st.prof&&!st.prof.disabled?RANK[st.prof.role]||0:0;
 const isOps=()=>lv()>=1&&st.prof&&st.prof.role!='小姐'&&st.prof.role!='pending';
-const ROLL_ROLES=['特殊','老闆','經理','幹部','少爺','小姐','room','tv','kitchen'];
+const ROLL_ROLES=['特殊','老闆','店長','經理','幹部','少爺','小姐','room','tv','kitchen'];
 const canRoll=()=>!!(st.user&&st.inited===true&&st.prof&&!st.prof.disabled&&ROLL_ROLES.includes(st.prof.role));
 const girlPageUrl=()=>{const p=location.pathname.replace(/index\.html$/,'').replace(/\/?$/,'/');return p+'girl/'+location.search+location.hash};
 // ---- 狀態指示 ----
@@ -57,7 +59,7 @@ function fail(e){console.warn(e);st.err=e.code=='permission-denied'?'權限不�
 function startSync(){stopSync();foodSub();
  if(isKit()){openKitchen();status();return}
  st.unsub.push(onSnapshot(doc(db,'config','settings'),snap=>{if(snap.metadata.hasPendingWrites)return;st.inited=snap.exists();
-  if(snap.exists()&&applyFields(snap.data(),st.last.set,SETTINGS))rerender();status();if(!st.inited&&lv()>=4)banner();if(st.inited){syncServerTime();if(typeof maybeDayRoll==='function')setTimeout(()=>maybeDayRoll({reason:'sync'}),600)}},fail));
+  if(snap.exists()&&applyFields(snap.data(),st.last.set,SETTINGS))rerender();status();if(!st.inited&&isOwnerPlus())banner();if(st.inited){syncServerTime();if(typeof maybeDayRoll==='function')setTimeout(()=>maybeDayRoll({reason:'sync'}),600)}},fail));
  st.unsub.push(onSnapshot(doc(db,'config','roster'),snap=>{if(snap.metadata.hasPendingWrites)return;if(!snap.exists())return;const d=snap.data()||{};
   try{S.rosterNames=typeof d.names==='string'?JSON.parse(d.names):(d.names||S.rosterNames||{})}catch(e){}
   try{S.renameLog=typeof d.log==='string'?JSON.parse(d.log):(d.log||S.renameLog||[])}catch(e){}
@@ -147,8 +149,18 @@ function pendingUI(){
     <p><button id=pdSv type=button style="font-size:18px;padding:10px 16px;min-height:44px">儲存名字</button>
        <button id=pdOut type=button class=s style="font-size:18px;padding:10px 16px;min-height:44px">登出</button></p></div>`;
   pdSv.onclick=async()=>{const n=pdNm.value.trim().slice(0,40);if(!n)return;try{await updateDoc(doc(db,'users',st.user.uid),{name:n});st.prof={...st.prof,name:n};if(S.cur)S.cur.name=n;if(auth.currentUser)updateProfile(auth.currentUser,{displayName:n}).catch(()=>{});alert('已更新名字')}catch(e){alert('無法改名：'+(e.code||e.message))}};
-  pdOut.onclick=()=>signOut(auth);
+  pdOut.onclick=()=>{if(confirm('確定登出？'))signOut(auth)};
 }
+function disabledUI(){
+  const p=st.prof||{};
+  ov.style.display='block';
+  ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>帳號已停用</h2>
+    <p>此帳號已停用，請找老闆或冠廷。你仍可登出後改用其他帳號。</p>
+    <p>目前顯示名稱：<b>${esc(p.name||'')}</b></p>
+    <p><button id=dsOut type=button class=s style="font-size:18px;padding:10px 16px;min-height:44px">登出</button></p></div>`;
+  dsOut.onclick=()=>{if(confirm('確定登出？'))signOut(auth)};
+}
+
 function bootUI(msg){ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>首次啟用：建立最高權限帳號</h2><p style="font-size:14px">只能做一次。之後所有帳號都在系統內建立。</p><label>帳號類型<br><select id=bRole style="width:100%;font-size:20px;padding:8px"><option value="特殊" selected>冠廷（最高權限）</option><option value="老闆">老闆</option></select></label><br><br>${msg?`<p style="color:#f88">${msg}</p>`:''}
  <label>員工編號（英數）<br><input id=bId autocapitalize=none value="guanting" style="width:100%;font-size:20px;padding:8px"></label><br><br><label>名字<br><input id=bNm value="冠廷" style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <label>密碼（至少 6 碼）<br><input id=bPw type=password autocomplete=new-password style="width:100%;font-size:20px;padding:8px"></label><br><br><button id=bGo style="width:100%;font-size:20px;padding:12px">建立並登入</button> <p><a href="#" id=bBack class="login-link">← 返回登入</a></p></div>`;
@@ -162,7 +174,8 @@ onAuthStateChanged(auth,async u=>{stopSync();st.user=u;st.prof=null;st.inited=nu
  if(!u){S.cur=null;status();loginUI();return}
  if(isKtGoogle(u)&&u.uid!==KT_UID){await signOut(auth);loginUI('這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入，再於「人員帳號管理」或個人設定按「綁定 Google」。');return}
  let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null;if(!p)p=await createPending(u)}catch(e){p=null;if(String(e&&e.message||'').includes('kt-google-must-link')){await signOut(auth);loginUI('這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入，再按「綁定 Google」。');return}}
- if(!p||p.disabled){await signOut(auth);loginUI(p&&p.disabled?'此帳號已停用，請找老闆':'此帳號沒有權限資料，請找老闆');return}
+ if(!p){await signOut(auth);loginUI('此帳號沒有權限資料，請找老闆');return}
+ if(p.disabled){st.prof=p;disabledUI();status();return}
  if(p.role=='room'){location.replace('guest.html'+location.search);return}
  if(p.role=='小姐'){location.replace(girlPageUrl());return}
  st.prof=p;S.cur={name:p.name,role:p.role,uid:u.uid,staffId:p.staffId,girlId:p.girlId};S.op=p.name;const op=document.getElementById('op');if(op)op.value=p.name;
@@ -175,12 +188,12 @@ function openAccount(){const f=document.getElementById('dform'),p=st.prof||{};
  <p><label>顯示名稱（可自行修改，不能改權限）<br><input id=myNm value="${esc(p.name||'')}" style="width:100%;max-width:280px;font-size:16px;padding:8px;min-height:44px"></label>
  <button type=button onclick="Cloud.setMyName()">儲存名字</button></p>
  <p><button type=button class=s onclick="Cloud.linkSocial('google')">綁定 Google</button></p>
- <button type=button onclick="Cloud.changePw()">改密碼</button> ${lv()>=2?'<button type=button onclick="Cloud.openStaff()">人員帳號管理</button> ':''}${lv()>=4?'<button type=button class=s onclick="Cloud.migrate()">上傳本機資料到雲端（一次性）</button> ':''}<button type=button class=s onclick="openHelp()">登入教學</button>
+ <button type=button onclick="Cloud.changePw()">改密碼</button> ${lv()>=2?'<button type=button onclick="Cloud.openStaff()">人員帳號管理</button> ':''}${isOwnerPlus()?'<button type=button class=s onclick="Cloud.migrate()">上傳本機資料到雲端（一次性）</button> ':''}<button type=button class=s onclick="openHelp()">登入教學</button>
  <p><button value=out>登出／切換人員</button> <button class=s value="">關閉</button></p>`;
- const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue=='out'){log(`登出：${p.name}`);signOut(auth)}};if(d.open)d.close();d.showModal()}
+ const d=document.getElementById('dlg');d.returnValue='';d.onclose=()=>{if(d.returnValue=='out'){if(!confirm('確定登出？'))return;log(`登出：${p.name}`);signOut(auth)}};if(d.open)d.close();d.showModal()}
 async function changePw(){const pw=prompt('新密碼（至少 6 碼）');if(!pw)return;if(pw.length<6)return alert('至少 6 碼');try{await updatePassword(auth.currentUser,pw);await savePw(auth.currentUser.uid,pw).catch(()=>{});alert('已更新密碼')}catch(e){alert(e.code=='auth/requires-recent-login'?'為了安全，請先登出再登入一次後再改密碼':'失敗：'+e.code)}}
 let usersUnsub=null,USERS=[];const PW={},PWshow={};
-const canPw=u=>u&&(lv()>=5||(lv()==4&&(RANK[u.role]||0)<4));
+const canPw=u=>u&&(isGuanting()||(lv()>=4&&(RANK[u.role]||0)<lv()&&!isGuarded(u)));
 const savePw=(uid,pw)=>setDoc(doc(db,'secrets',uid),{pw,updatedAt:Date.now(),updatedBy:st.user?st.user.uid:uid});
 async function loadPw(uid){if(PW[uid]!==undefined)return PW[uid];try{const d=await getDoc(doc(db,'secrets',uid));PW[uid]=d.exists()?d.data().pw:null}catch(e){PW[uid]=null}return PW[uid]}
 async function togglePw(uid){PWshow[uid]=!PWshow[uid];if(PWshow[uid])await loadPw(uid);redrawTbl()}
@@ -193,7 +206,7 @@ async function resetPw(uid){const u=USERS.find(x=>x.uid==uid);if(!canPw(u))retur
  catch(e){alert(e.code=='auth/invalid-credential'||e.code=='auth/wrong-password'?'記錄的密碼已不正確（可能本人在別處改過），無法重設。請停用後重建。':'重設失敗：'+(e.code||e.message))}finally{deleteApp(sec).catch(()=>{})}}
 let permUnsub=null,PERMLOGS=[];
 function openStaff(){if(lv()<2)return alert('需幹部以上');document.getElementById('dlg').close();
- const uq=lv()>=5?query(collection(db,'users')):query(collection(db,'users'),where('rank','<',lv()));
+ const uq=isGuanting()?query(collection(db,'users')):query(collection(db,'users'),where('rank','<',lv()));
  if(!usersUnsub)usersUnsub=onSnapshot(uq,qs=>{USERS=[];qs.forEach(d=>USERS.push({uid:d.id,...d.data()}));USERS.sort((a,b)=>(RANK[b.role]||0)-(RANK[a.role]||0)||String(a.staffId||'').localeCompare(String(b.staffId||'')));redrawTbl();const box=document.getElementById('permLogBox');if(box)box.outerHTML=permLogHtml()},fail);
  if(!permUnsub)permUnsub=onSnapshot(query(collection(db,'permLog'),orderBy('at','desc'),limit(30)),qs=>{PERMLOGS=[];qs.forEach(d=>PERMLOGS.push({id:d.id,...d.data()}));const box=document.getElementById('permLogBox');if(box)box.outerHTML=permLogHtml()},()=>{});
  drawStaff()}
@@ -211,11 +224,11 @@ function drawStaff(){const roles=assignableRoles();
     <select id="apRole_${u.uid}">${roles.map(r=>`<option value="${r}" ${r=='小姐'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>
     <button type=button onclick="Cloud.approveUser('${u.uid}')">核准並綁定</button>
     <button type=button class=s onclick="Cloud.setDisabled('${u.uid}',true)">拒絕／停用</button></p>`).join('')}</div>`:''}
- ${lv()>=4?`<details open><summary>新增帳號（老闆以上）</summary><label>員工編號（英數）<input id=nId autocapitalize=none></label> <label>名字<input id=nNm></label> <label>角色 <select id=nRole>${roles.map(r=>`<option value="${r}" ${r=='少爺'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select></label> <label>小姐編號（角色選「小姐」時必填，如 08）<input id=nGirl placeholder="08"></label> <label>初始密碼（≥6）<input id=nPw></label> <button type=button onclick="Cloud.createStaff()">建立</button><p><button type=button onclick="Cloud.createRoomTabs()">🔑 一鍵建立每個包廂的房間平板帳號</button></p><p style="font-size:12px;color:#aaa">小姐請走獨立報班頁 <a href="girl/" target="_blank" rel="noopener">/v12/girl/</a>（不能進主系統）。TV 看板請建立角色「tv」的帳號。</p></details>`:''}
+ ${isOwnerPlus()?`<details open><summary>新增帳號（老闆以上）</summary><label>員工編號（英數）<input id=nId autocapitalize=none></label> <label>名字<input id=nNm></label> <label>角色 <select id=nRole>${roles.map(r=>`<option value="${r}" ${r=='少爺'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select></label> <label>小姐編號（角色選「小姐」時必填，如 08）<input id=nGirl placeholder="08"></label> <label>初始密碼（≥6）<input id=nPw></label> <button type=button onclick="Cloud.createStaff()">建立</button><p><button type=button onclick="Cloud.createRoomTabs()">🔑 一鍵建立每個包廂的房間平板帳號</button></p><p style="font-size:12px;color:#aaa">小姐請走獨立報班頁 <a href="girl/" target="_blank" rel="noopener">/v12/girl/</a>（不能進主系統）。TV 看板請建立角色「tv」的帳號。</p></details>`:''}
  <div class=tw>${staffTbl()}</div>
  ${permLogHtml()}
- <p style="font-size:12px;color:#aaa">密碼：老闆可看老闆以下的人；冠廷可看全部。有記錄密碼的帳號可按「重設密碼」；顯示「未記錄」的舊帳號忘記密碼時，請先停用再建立新編號。</p>`)}
-async function createStaff(){const id=nId.value.trim(),nm=nNm.value.trim()||id,role=nRole.value,pw=nPw.value;let room='',girlId='';if(role=='room'){room=(prompt('這台房間平板綁定哪個包廂？（例 208）')||'').trim();if(!room)return}if(role=='小姐'){girlId=(document.getElementById('nGirl')&&nGirl.value.trim())||id;if(!girlId)return alert('請填小姐編號（如 08）')}if(role=='pending')return alert('請改選實際角色');if(!/^[A-Za-z0-9._-]+$/.test(id))return alert('員工編號只能用英文、數字');if(pw.length<6)return alert('密碼至少 6 碼');
+ <p style="font-size:12px;color:#aaa">密碼：店長可看經理以下；老闆可看店長以下；冠廷可看全部。有記錄密碼的帳號可按「重設密碼」；顯示「未記錄」的舊帳號忘記密碼時，請先停用再建立新編號。</p>`)}
+async function createStaff(){if(!isOwnerPlus())return alert('只有老闆以上可以建立帳號');const id=nId.value.trim(),nm=nNm.value.trim()||id,role=nRole.value,pw=nPw.value;if((RANK[role]||0)>=lv())return alert('只能建立低於自己職級的帳號');let room='',girlId='';if(role=='room'){room=(prompt('這台房間平板綁定哪個包廂？（例 208）')||'').trim();if(!room)return}if(role=='小姐'){girlId=(document.getElementById('nGirl')&&nGirl.value.trim())||id;if(!girlId)return alert('請填小姐編號（如 08）')}if(role=='pending')return alert('請改選實際角色');if(!/^[A-Za-z0-9._-]+$/.test(id))return alert('員工編號只能用英文、數字');if(pw.length<6)return alert('密碼至少 6 碼');
  const sec=initializeApp(firebaseConfig,'sec'+Date.now()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
  try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid,...(room?{room}:{}),...(girlId?{girlId}:{})});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}${girlId?'・小姐'+girlId:''}）`);alert(`已建立：${id}（${RL(role)}${girlId?'・小姐編號 '+girlId:''}）`+(role=='小姐'?'\n請使用報班頁：'+girlPageUrl():''))}
  catch(e){alert(e.code=='auth/email-already-in-use'?'此編號已被使用':'建立失敗：'+(e.code||e.message))}finally{deleteApp(sec).catch(()=>{})}}
@@ -223,7 +236,7 @@ async function createStaff(){const id=nId.value.trim(),nm=nNm.value.trim()||id,r
 async function mkUser(id,nm,role,pw,room){const sec=initializeApp(firebaseConfig,'sec'+Date.now()+Math.random()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
  try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid,...(room?{room}:{})});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}${room?'・'+room:''}）`);return c.user.uid}finally{deleteApp(sec).catch(()=>{})}}
 function rndPw(){const A='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789',b=new Uint32Array(16);crypto.getRandomValues(b);return [...b].map(x=>A[x%A.length]).join('')}
-async function createRoomTabs(){if(lv()<4)return alert('只有老闆以上可以建立');const have=new Set(USERS.filter(u=>u.role=='room'&&u.room).map(u=>u.room));const todo=(typeof officialRooms==='function'?officialRooms():roomList()).filter(r=>!have.has(r));
+async function createRoomTabs(){if(!isOwnerPlus())return alert('只有老闆以上可以建立');const have=new Set(USERS.filter(u=>u.role=='room'&&u.room).map(u=>u.room));const todo=(typeof officialRooms==='function'?officialRooms():roomList()).filter(r=>!have.has(r));
  if(!todo.length)return alert('每個包廂都已經有房間平板帳號');if(!confirm(`建立 ${todo.length} 個房間平板帳號？\n${todo.map(r=>'room-'+r.toLowerCase()+' → '+r).join('\n')}\n（密碼隨機產生，可在本頁「查看密碼」）`))return;
  const done=[],bad=[];for(const r of todo){const id='room-'+r.toLowerCase();try{await mkUser(id,r+' 平板','room',rndPw(),r);done.push(id+'→'+r)}catch(e){bad.push(id+'：'+(e.code=='auth/email-already-in-use'?'編號已被使用':(e.code||e.message)))}}
  alert(`已建立 ${done.length} 個：\n${done.join('\n')}${bad.length?'\n\n失敗：\n'+bad.join('\n'):''}`);openStaff()}
@@ -248,7 +261,7 @@ async function setDisabled(uid,v){
 }
 // ---- 一次性上傳本機資料 ----
 function banner(){if(document.getElementById('fbBan'))return;const b=document.createElement('div');b.id='fbBan';b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:9000;background:#e90;color:#000;padding:10px;font-size:16px;text-align:center';b.innerHTML='雲端還沒有資料。<button onclick="Cloud.migrate()">把這台裝置的資料上傳到雲端</button>';document.body.appendChild(b)}
-async function migrate(){if(lv()<4)return alert('只有老闆可以上傳');if(!confirm('把「這台裝置」的資料上傳到雲端？\n（名冊、設定、訊息卡、當日營業、歷史、寄酒）\n雲端已有的同名資料會被覆蓋。'))return;
+async function migrate(){if(!isOwnerPlus())return alert('只有老闆以上可以上傳');if(!confirm('把「這台裝置」的資料上傳到雲端？\n（名冊、設定、訊息卡、當日營業、歷史、寄酒）\n雲端已有的同名資料會被覆蓋。'))return;
  const ops=[];const dd={};for(const k of Object.keys(S))if(isDayKey(k))dd[k]=J(S[k]);const ss={};for(const k of SETTINGS)ss[k]=J(S[k]);
  const id=S.openDay||bizDay(now());ops.push(['set','days/'+id,dd]);for(const [d,v] of Object.entries(S.hist||{}))ops.push(['set','hist/'+d,{json:J(v),by:st.user.uid,at:Date.now()}]);
  for(const w of S.wineStore||[])ops.push(['set','wine/'+w.id,{json:J(w)}]);for(const e of S.ledger||[])ops.push(['set','ledger/'+e.id,{json:J(e),uid:st.user.uid,at:Date.now()}]);for(const e of S.wsLog||[]){const k=`${e.t}-${e.id}-${(e.act||'').length}`;ops.push(['set','wineLog/'+k,{uid:st.user.uid,t:e.t,json:J(e)}])}
@@ -261,7 +274,7 @@ const HELP=`<h2>📖 登入教學</h2>
 <p>第一次登入後，點右上角 👤 →「改密碼」換成自己的密碼（至少 6 碼，可以用 6 位數字當 PIN）。</p>
 <h3>2. 共用的手機或電腦（換人）</h3><p>點 👤 →「登出／切換人員」，再用自己的編號登入。每個操作都會記錄是誰做的，所以請不要用別人的帳號。</p>
 <h3>3. 冠廷／老闆：建立和停用帳號</h3><p>第一次使用：冠廷在登入畫面點「首次啟用：建立最高權限帳號」（只能做一次），帳號類型選「冠廷（最高權限）」，編號建議 <b>guanting</b>，密碼自己設定。之後點 👤 →「人員帳號管理」→ 填 員工編號、名字、角色、初始密碼 →「建立」。離職或手機遺失：按「停用」，那個帳號馬上不能看也不能改。忘記密碼：停用舊帳號，再建一個新編號。</p>
-<p>權限：小姐／少爺（排檯操作）＜ 幹部（手動匯入、寄酒、歷史紀錄、帳本新增）＜ 經理（設定、看金額、改角色）＜ 老闆（建立帳號）＜ 冠廷（最高，可管理老闆帳號）。老闆看不到也改不了冠廷的帳號；只有冠廷能建立同等權限的帳號；任何人都不能改自己的權限。</p>
+<p>權限：小姐／少爺（排檯操作）＜ 幹部（手動匯入、寄酒、歷史紀錄、帳本新增）＜ 經理（設定、看金額、改角色）＜ 店長（經理的權限，並可管理經理及以下）＜ 老闆（建立帳號，可管理店長及以下）＜ 冠廷（最高，可管理老闆帳號）。老闆看不到也改不了冠廷的帳號；只有冠廷能建立同等權限的帳號；任何人都不能改自己的權限。</p>
 <h3>4. TV 看板帳號</h3><p>老闆建立一個角色選「tv」的帳號（例如 <b>tv1</b>）。在電視的瀏覽器打開「排檯網址 + <b>#tv</b>」，用 tv 帳號登入一次就好。TV 帳號只能看，不能改任何資料，畫面會即時更新。</p>
 <h3>5. iPhone 加入主畫面</h3><p>用 <b>Safari</b> 打開排檯網址 → 點下方「分享」⬆️ →「加入主畫面」→「新增」。之後從主畫面的圖示打開，就像 App 一樣。登入一次後會記住。</p>
 <h3>6. 右上角的同步燈號</h3><p>✓ 已同步＝所有裝置都看到一樣的資料；⟳ 同步中＝正在上傳；📴 離線＝網路斷了，資料先存在這台，恢復網路後會自動上傳；⚠＝權限不足或錯誤。</p>`;
@@ -384,19 +397,19 @@ async function loginLog(type){try{const u=st.user,p=st.prof;if(!u||!p)return;con
 const LL={rows:[],who:'',d1:'',d2:''};
 const tpe=ms=>new Date(ms).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 const tpeDay=ms=>new Date(ms).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
-async function openLoginLogs(){if(lv()<4)return alert('只有老闆以上可以看登入紀錄');
+async function openLoginLogs(){if(!isOwnerPlus())return alert('只有老闆以上可以看登入紀錄');
  pageOpen('<h2>🔐 登入紀錄</h2><div id=llPg>載入中…</div>');
- try{const q=lv()>=5?query(collection(db,'loginLogs'),orderBy('atMs','desc'),limit(1000)):query(collection(db,'loginLogs'),where('rank','<',4),limit(3000));
+ try{const q=isGuanting()?query(collection(db,'loginLogs'),orderBy('atMs','desc'),limit(1000)):query(collection(db,'loginLogs'),where('rank','<',lv()),limit(3000));
   const qs=await getDocs(q);LL.rows=[];qs.forEach(d=>LL.rows.push({id:d.id,...d.data()}));LL.rows.sort((a,b)=>b.atMs-a.atMs);llDraw()}
  catch(e){const el=document.getElementById('llPg');if(el)el.innerHTML='讀取失敗：'+(e.code=='permission-denied'?'權限不足（規則可能尚未發布）':e.code||e.message)}}
 function llDraw(){const el=document.getElementById('llPg');if(!el)return;const ppl=[...new Map(LL.rows.map(r=>[r.uid,r.name+'（'+r.staffId+'）'])).entries()];
  const R=LL.rows.filter(r=>(!LL.who||r.uid==LL.who)&&(!LL.d1||tpeDay(r.atMs)>=LL.d1)&&(!LL.d2||tpeDay(r.atMs)<=LL.d2));
  el.innerHTML=`<p>人員 <select onchange="Cloud.llF('who',this.value)"><option value="">全部</option>${ppl.map(([u,n])=>`<option value="${u}" ${u==LL.who?'selected':''}>${esc(n)}</option>`).join('')}</select>
  日期 <input type=date value="${LL.d1}" onchange="Cloud.llF('d1',this.value)"> ～ <input type=date value="${LL.d2}" onchange="Cloud.llF('d2',this.value)"> <span style="color:#aaa">共 ${R.length} 筆（台北時間）</span></p>
- <div class=tw><table><tr><th>時間</th><th>人員</th><th>角色</th><th>方式</th><th>裝置</th><th>IP</th><th>地點</th>${lv()>=5?'<th></th>':''}</tr>${R.map(r=>`<tr><td>${tpe(r.atMs)}</td><td>${esc(r.name)}<br><small>${esc(r.staffId)}</small></td><td>${esc(RL(r.role))}</td><td>${esc(r.type)}</td><td title="${esc(r.userAgent||'')}">${esc(r.device||'')}</td><td>${esc(r.ip||'未知')}</td><td>${esc([r.city,r.country].filter(Boolean).join('，'))||'—'}</td>${lv()>=5?`<td><button type=button class=s onclick="Cloud.llDel('${r.id}')">刪除</button></td>`:''}</tr>`).join('')}</table></div>
+ <div class=tw><table><tr><th>時間</th><th>人員</th><th>角色</th><th>方式</th><th>裝置</th><th>IP</th><th>地點</th>${isGuanting()?'<th></th>':''}</tr>${R.map(r=>`<tr><td>${tpe(r.atMs)}</td><td>${esc(r.name)}<br><small>${esc(r.staffId)}</small></td><td>${esc(RL(r.role))}</td><td>${esc(r.type)}</td><td title="${esc(r.userAgent||'')}">${esc(r.device||'')}</td><td>${esc(r.ip||'未知')}</td><td>${esc([r.city,r.country].filter(Boolean).join('，'))||'—'}</td>${isGuanting()?`<td><button type=button class=s onclick="Cloud.llDel('${r.id}')">刪除</button></td>`:''}</tr>`).join('')}</table></div>
  <p style="font-size:12px;color:#aaa">冠廷可看全部；老闆只看得到老闆以下的人。IP／地點由免費服務查詢，僅供參考（手機網路的地點常不準）。</p>`}
 function llF(k,v){LL[k]=v;llDraw()}
-async function llDel(id){if(lv()<5||!confirm('刪除這筆登入紀錄？'))return;try{await deleteDoc(doc(db,'loginLogs',id));LL.rows=LL.rows.filter(r=>r.id!=id);llDraw()}catch(e){alert('刪除失敗：'+e.code)}}
+async function llDel(id){if(!isGuanting()||!confirm('刪除這筆登入紀錄？'))return;try{await deleteDoc(doc(db,'loginLogs',id));LL.rows=LL.rows.filter(r=>r.id!=id);llDraw()}catch(e){alert('刪除失敗：'+e.code)}}
 window.openLoginLogs=openLoginLogs;
 
 window.openHelp=()=>pageOpen(HELP);
@@ -677,7 +690,7 @@ async function approveUser(uid){
   if(!role||role=='pending')return alert('請選擇角色');
   if(!id)return alert('請填員工編號或小姐編號');
   if((RANK[role]||0)>=lv())return alert('只能指派低於自己的職級');
-  if(isGuarded(u)&&lv()<5)return alert('除冠廷外不能改冠廷的帳號');
+  if(isGuarded(u)&&!isGuanting())return alert('除冠廷外不能改冠廷的帳號');
   if(!confirm('確定核准「'+(u.name||'')+'」為「'+RL(role)+'」（編號 '+id+'）？'))return;
   const upd={role,rank:RANK[role]||0,staffId:id.toLowerCase(),approvedBy:st.user.uid,approvedAt:Date.now()};
   if(role=='小姐')upd.girlId=id;
