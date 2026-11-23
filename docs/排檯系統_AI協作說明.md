@@ -9,7 +9,7 @@
   - 小姐報班頁：https://tk90337-giottohank.github.io/paitai-demo/v12/girl/
   - 客人點檯頁：https://tk90337-giottohank.github.io/paitai-demo/v12/guest.html
 - 資料庫：Firebase 專案 `paitai-system`（Spark 免費方案，Firestore 在 asia-east1，沒有 Cloud Functions，所有邏輯都在前端＋Firestore 規則）
-- 目前版本：v12.28（傳統排檯表照片自動辨識＋雲端備份；登入維持 v12.27.1 彈窗優先）
+- 目前版本：v12.30（幹部薪資：底薪＋當月總番數×職位抽成；分店名冊、傳統排檯表自動辨識仍在；登入維持 v12.27.1 彈窗優先）
 
 ## 二、技術架構
 純前端 HTML／JavaScript（無框架、無打包），Firebase Auth＋Firestore 即時同步。主要檔案：
@@ -20,6 +20,7 @@
 - `dayroll.js`：換日（07:10）、補跑、包廂重設、昨日待辦
 - `import-sheet.js`：傳統排檯表拍照匯入（Gemini 辨識）
 - `att.js`：少爺／公主打卡定位、排班、薪資
+- `cadre-pay.js`：幹部薪資（底薪＋當月總番數×職位抽成）
 - `guest.html`、`guest.js`：客人點檯頁（QR 掃碼，免登入）
 - `girl/`：小姐報班頁
 - `i18n.js`、`i18n-data.js`：中越雙語
@@ -119,3 +120,14 @@
 已清除：days（今日改寫成空看板並保留小姐／少爺名冊）、hist、guestTokens、punches、public 等營業資料。當時不存在、故無文件可刪的集合：sheetImports、importArchive、orders、girlCheckin、girlHist、leaves、wine、wineLog、ledger、loginFails、guestReq。
 
 已保留：users、config（settings／roster／boot）、permLog、loginFails（空）、loginLogs、secrets、menu、audit（操作紀錄，不確定是否算營業資料故保留）。Google Drive「排檯表匯入備份」未刪。線上版本 v12.28.1（cleanVer=3；空資料也可開排檯／報表／匯入）。
+
+### 2026-11-24 幹部薪資（v12.30）
+
+授權：冠廷「寫入幹部薪資算法」。規則：幹部底薪 3 萬；每一番抽成 100（店長）、90（主要幹部）、80（現場經理）、70（儲備幹部）；月薪＝底薪＋當月總番數×職位每番抽成。例：店長、500 番＝30000＋50000＝80000。
+
+- 模組：`v12/cadre-pay.js`（選單：報表／少爺公主・酒水 →「幹部薪資」）。經理以上可看，店長以上可改底薪、抽成與幹部職位。
+- 人員帳號管理新增「幹部職位」欄（存 `config/settings.cadrePay.posts`，並盡量寫入 `users.cadrePost`）。底薪、抽成與變更紀錄存在 `config/settings.cadrePay`（不隨舊版客戶端整份覆寫而消失）。
+- 總番數預設＝目前分店該月排檯表列數（與當月報表「番數」相同：`hist.rows`／當日 `sheetRows`／尚未日結的 `days` 文件；每一列算 1 番）。未標分店的番歸在預設分店「新店」。可依手寫紀錄為每人每月手動覆寫總番數。
+- 畫面顯示底薪、總番數、抽成單價、抽成金額、合計，可選月份，只列目前分店。中越雙語。畫面不顯示「特殊」，冠廷只顯示「冠廷」。
+- 登入行為維持 v12.27.1 彈窗優先。
+

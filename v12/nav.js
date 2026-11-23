@@ -29,6 +29,7 @@
     {label:'本週排班',fn:'openWeekSched',min:0},
     {label:'打卡（定位）',fn:'openPunch',min:0},
     {label:'少爺薪資',fn:'openPayroll',min:2},
+    {label:'幹部薪資',fn:'openCadrePay',min:3},
     {label:'寄酒',fn:'openWine',min:0},
     {label:'寄放／預支',fn:'openLedger',min:0}
   ]},
@@ -40,6 +41,7 @@
     {label:'歷史紀錄／日結／換日',fn:'openHistory',min:0},
     {label:'匯入校對',fn:'openImportArchive',min:2},
     {label:'當月報表',fn:'openMonthReport',min:0},
+    {label:'幹部薪資',fn:'openCadrePay',min:3},
     {label:'今日營收',fn:'openRevenue',min:0},
     {label:'小姐台數',fn:'openGirlPay',min:0},
     {label:'訂番獎金',fn:'navBonus',min:0},

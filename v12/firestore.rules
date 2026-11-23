@@ -106,6 +106,17 @@ service cloud.firestore {
           || (!actorIsGuanting() && !isGuarantor(resource.data) && !isGuarantor(request.resource.data)
             && rank(resource.data.role) < lvl())
         );
+
+      // v12.30 店長以上可設定幹部職位（含自己）；其他人仍受既有職級限制
+      allow update: if lvl() >= 4
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cadrePost'])
+        && request.resource.data.cadrePost is string
+        && request.resource.data.cadrePost in ['', '店長', '主要幹部', '現場經理', '儲備幹部']
+        && (
+          request.auth.uid == uid
+          || actorIsGuanting()
+          || (!isGuarantor(resource.data) && rank(resource.data.role) < lvl())
+        );
       allow delete: if false;
     }
     // 當日營業資料（每個營業日一份文件）

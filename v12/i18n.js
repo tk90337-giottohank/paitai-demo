@@ -263,6 +263,6 @@ if(typeof document!=='undefined'){
   setTimeout(hook,0);setTimeout(hook,800);setTimeout(hook,2000);
 }
 
-global.I18N={t,tTpl,schedule,fixCallBoard,pair,boxText,stripEmoji,viFor,ver:'12.21'};
+global.I18N={t,tTpl,schedule,fixCallBoard,pair,boxText,stripEmoji,viFor,ver:'12.30'};
 global.t=t;
 })(typeof window!=='undefined'?window:globalThis);

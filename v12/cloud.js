@@ -1,3 +1,4 @@
+// v12.30 幹部薪資（底薪＋當月總番數×職位每番抽成）
 // v12.29 小姐名冊改以 2026-11-24 名牌為在職名單；報班頁隱藏已標離職者
 // v12.28 傳統排檯表照片瀏覽器自動辨識（Firebase AI Logic）＋匯入雲端備份（Firestore sheetImports）
 // v12.27 修正 iPhone Google 登入：具名 app 的 redirect 結果不再被 [DEFAULT]／setPersistence 清掉；popup 優先
@@ -11,8 +12,8 @@
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {bootNamedApp,clearLegacyDefaultSession,authReady} from './auth-scope.js?v=12.29';
-import {recognizeSheetPhotos} from './recognize-sheet.js?v=12.29';
+import {bootNamedApp,clearLegacyDefaultSession,authReady} from './auth-scope.js?v=12.30';
+import {recognizeSheetPhotos} from './recognize-sheet.js?v=12.30';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,updateProfile,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,linkWithPopup,linkWithRedirect} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
@@ -39,7 +40,7 @@ function googleHint(){return isInAppBrowser()?'Google 無法在 LINE 或其他 A
 async function writePermLog(o){const rec={by:st.user&&st.user.uid,byName:(st.prof&&st.prof.name)||'',byRole:st.prof&&st.prof.role,targetUid:o.targetUid||'',targetName:o.targetName||'',targetStaffId:o.targetStaffId||'',fromRole:o.fromRole||'',toRole:o.toRole||'',action:o.action||'setRole',at:Date.now(),atTaipei:taipeiNow()};try{await addDoc(collection(db,'permLog'),rec)}catch(e){}if(typeof log==='function')log((rec.byName||'')+' 將 '+(rec.targetName||rec.targetStaffId)+' 權限 '+RL(rec.fromRole)+' → '+RL(rec.toRole)+'（'+rec.atTaipei+' 台北）')}
 
 const LOCAL=new Set(['cur','op','users','usersExample','impSnap','wsSeq','rosterNames','renameLog','rosterMap','branches','branchId']);
-const SETTINGS=['cfg','wines','catalog','cb','attVer','cutVer','cleanVer','imp1026','beerVer','sheetLearn'];
+const SETTINGS=['cfg','wines','catalog','cb','attVer','cutVer','cleanVer','imp1026','beerVer','sheetLearn','cadrePay'];
 const isDayKey=k=>!LOCAL.has(k)&&!SETTINGS.includes(k)&&!['hist','wineStore','wsLog','ledger','dayRoll'].includes(k);
 const J=v=>JSON.stringify(v===undefined?null:v);
 const st={user:null,prof:null,inited:null,dayId:null,unsub:[],dayUnsub:null,last:{set:{},day:{},hist:{},wine:{},led:{},wlog:new Set()},timer:null,pending:0,err:'',online:navigator.onLine};
@@ -107,7 +108,7 @@ function flush(){st.timer=null;if(!st.user||st.inited!==true||!isOps()){status()
 function audit(m){if(!st.user||TVMODE||!isOps()||st.inited!==true)return;addDoc(collection(db,'audit'),{uid:st.user.uid,name:st.prof.name,role:RL(st.prof.role),t:Date.now(),msg:String(m).slice(0,500)}).catch(()=>{})}
 // ---- 登入畫面 ----
 const ov=document.createElement('div');ov.id='fbLogin';ov.className='fb-login';ov.style.cssText='position:fixed;inset:0;z-index:9999;display:none;overflow:auto;padding:24px;font-size:17px';document.body.appendChild(ov);
-const APP_VER='v12.29';
+const APP_VER='v12.30';
 function isiOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
 function isStandalone(){return !!(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)}
 function useRedirect(){return false} // 主畫面 App 也先走 popup；只有彈窗被擋才退回 redirect
@@ -285,8 +286,8 @@ function openStaff(){if(lv()<2)return alert('需幹部以上');document.getEleme
  if(!usersUnsub)usersUnsub=onSnapshot(uq,qs=>{USERS=[];qs.forEach(d=>USERS.push({uid:d.id,...d.data()}));USERS.sort((a,b)=>(RANK[b.role]||0)-(RANK[a.role]||0)||String(a.staffId||'').localeCompare(String(b.staffId||'')));redrawTbl();const box=document.getElementById('permLogBox');if(box)box.outerHTML=permLogHtml()},fail);
  if(!permUnsub)permUnsub=onSnapshot(query(collection(db,'permLog'),orderBy('at','desc'),limit(30)),qs=>{PERMLOGS=[];qs.forEach(d=>PERMLOGS.push({id:d.id,...d.data()}));const box=document.getElementById('permLogBox');if(box)box.outerHTML=permLogHtml()},()=>{});
  drawStaff()}
-function staffTbl(){const roles=assignableRoles();return`<table class=sch id=stTbl><tr><th>編號</th><th>名字</th><th>分店<span class=vi>Cửa hàng</span></th><th>角色</th><th>狀態</th>${lv()>=4?'<th>密碼</th>':''}<th></th></tr>${USERS.map(u=>{const mine=u.uid==st.user.uid,can=canEditUser(u);
-  return`<tr class="${u.test?'testacct':''}"><td>${esc(u.staffId)}${u.room?`<br><small>包廂 ${esc(u.room)}</small>`:''}${u.girlId?`<br><small>小姐 ${esc(u.girlId)}</small>`:''}${u.email?`<br><small>${esc(u.email)}</small>`:''}${u.test?`<br><small style="color:#fc3">測試帳號</small>`:''}</td><td>${esc(u.name)}${u.test?`<br><small style="color:#fc3">測試用・可稍後停用</small>`:''}</td><td>${isOwnerPlus()&&!mine?`<select onchange="Cloud.setBranch('${u.uid}',this.value)">${(typeof branches==='function'?branches():[{id:'xindian',name:'新店'},{id:'other',name:'另一間店'}]).map(b=>`<option value="${b.id}" ${(u.branchId||'xindian')==b.id?'selected':''}>${b.name}</option>`).join('')}</select>`:esc((typeof branchText==='function'?branchText(u.branchId||'xindian'):(u.branchId==='other'?'另一間店':'新店')))}</td><td>${can?`<select onchange="Cloud.setRole('${u.uid}',this.value)">${roles.map(r=>`<option value="${r}" ${r==u.role?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>`:esc(RL(u.role))+(mine?'（自己）':'')}</td><td>${u.disabled?'<b style="color:#e44">停用</b>':'啟用'}</td>${lv()>=4?`<td>${canPw(u)?(PWshow[u.uid]?(PW[u.uid]?`<code>${esc(PW[u.uid])}</code>`:'<span style="color:#aaa">未記錄</span>'):'••••')+` <button type=button class=s onclick="Cloud.togglePw('${u.uid}')">${PWshow[u.uid]?'隱藏':'👁 顯示'}</button> <button type=button class=s onclick="Cloud.copyPw('${u.uid}')">複製</button> <button type=button class=s onclick="Cloud.resetPw('${u.uid}')">重設密碼</button>`:'—'}</td>`:''}<td>${can?`<button type=button class=s onclick="Cloud.setDisabled('${u.uid}',${!u.disabled})">${u.disabled?'啟用':'停用'}</button>`:''}</td></tr>`}).join('')}</table>`}
+function staffTbl(){const roles=assignableRoles();return`<table class=sch id=stTbl><tr><th>編號</th><th>名字</th><th>分店<span class=vi>Cửa hàng</span></th><th>角色</th><th>幹部職位<span class=vi>Chức vụ cán bộ</span></th><th>狀態</th>${lv()>=4?'<th>密碼</th>':''}<th></th></tr>${USERS.map(u=>{const mine=u.uid==st.user.uid,can=canEditUser(u);
+  return`<tr class="${u.test?'testacct':''}"><td>${esc(u.staffId)}${u.room?`<br><small>包廂 ${esc(u.room)}</small>`:''}${u.girlId?`<br><small>小姐 ${esc(u.girlId)}</small>`:''}${u.email?`<br><small>${esc(u.email)}</small>`:''}${u.test?`<br><small style="color:#fc3">測試帳號</small>`:''}</td><td>${esc(u.name)}${u.test?`<br><small style="color:#fc3">測試用・可稍後停用</small>`:''}</td><td>${isOwnerPlus()&&!mine?`<select onchange="Cloud.setBranch('${u.uid}',this.value)">${(typeof branches==='function'?branches():[{id:'xindian',name:'新店'},{id:'other',name:'另一間店'}]).map(b=>`<option value="${b.id}" ${(u.branchId||'xindian')==b.id?'selected':''}>${b.name}</option>`).join('')}</select>`:esc((typeof branchText==='function'?branchText(u.branchId||'xindian'):(u.branchId==='other'?'另一間店':'新店')))}</td><td>${can?`<select onchange="Cloud.setRole('${u.uid}',this.value)">${roles.map(r=>`<option value="${r}" ${r==u.role?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>`:esc(RL(u.role))+(mine?'（自己）':'')}</td><td>${lv()>=4?`<select onchange="Cloud.setCadrePost('${u.uid}',this.value)"><option value="">（未指定）</option>${(window.CADRE_POSTS||['店長','主要幹部','現場經理','儲備幹部']).map(p=>`<option value="${p}" ${(u.cadrePost||(typeof cadrePostOf==='function'&&cadrePostOf(u.uid))||'')==p?'selected':''}>${p}</option>`).join('')}</select>`:esc(u.cadrePost||(typeof cadrePostOf==='function'&&cadrePostOf(u.uid))||'—')}</td><td>${u.disabled?'<b style="color:#e44">停用</b>':'啟用'}</td>${lv()>=4?`<td>${canPw(u)?(PWshow[u.uid]?(PW[u.uid]?`<code>${esc(PW[u.uid])}</code>`:'<span style="color:#aaa">未記錄</span>'):'••••')+` <button type=button class=s onclick="Cloud.togglePw('${u.uid}')">${PWshow[u.uid]?'隱藏':'👁 顯示'}</button> <button type=button class=s onclick="Cloud.copyPw('${u.uid}')">複製</button> <button type=button class=s onclick="Cloud.resetPw('${u.uid}')">重設密碼</button>`:'—'}</td>`:''}<td>${can?`<button type=button class=s onclick="Cloud.setDisabled('${u.uid}',${!u.disabled})">${u.disabled?'啟用':'停用'}</button>`:''}</td></tr>`}).join('')}</table>`}
 function permLogHtml(){return`<div id=permLogBox style="margin-top:16px"><h3>權限變更紀錄</h3>
   ${PERMLOGS.length?`<table class=sch><tr><th>誰</th><th>對象</th><th>從 → 到</th><th>時間（台北）</th></tr>${PERMLOGS.map(x=>`<tr><td>${esc(x.byName||x.by||'')}</td><td>${esc(x.targetName||x.targetStaffId||x.targetUid||'')}</td><td>${esc(RL(x.fromRole||''))} → ${esc(x.action=='setDisabled'?(x.toRole||''):RL(x.toRole||''))}</td><td>${esc(x.atTaipei||'')}</td></tr>`).join('')}</table>`:'<p style="font-size:13px;color:#aaa">尚無紀錄</p>'}</div>`}
 function drawStaff(){const roles=assignableRoles();
@@ -321,7 +322,7 @@ async function setBranch(uid,branchId){
   const u=USERS.find(x=>x.uid==uid);if(!u)return;
   if((RANK[u.role]||0)>=lv()&&!isGuanting())return alert('只能改低於自己職級的帳號');
   const rec={...u,branchId:branchId||'xindian'};
-  try{await updateDoc(doc(db,'users',uid),{branchId:rec.branchId});log('將 '+(u.name||u.staffId)+' 所屬分店改為 '+(typeof branchText==='function'?branchText(rec.branchId):rec.branchId));openStaff()}
+  try{await updateDoc(doc(db,'users',uid),{branchId:rec.branchId});if(typeof setCadrePostLocal==='function'&&typeof cadrePostOf==='function'&&cadrePostOf(uid))setCadrePostLocal(uid,cadrePostOf(uid),{staffId:u.staffId,name:u.name,branchId:rec.branchId,disabled:!!u.disabled});log('將 '+(u.name||u.staffId)+' 所屬分店改為 '+(typeof branchText==='function'?branchText(rec.branchId):rec.branchId));openStaff()}
   catch(e){alert('無法改分店：'+(e.code||e.message))}
 }
 async function setRole(uid,role){
@@ -335,6 +336,56 @@ async function setRole(uid,role){
   await ok(updateDoc(doc(db,'users',uid),{role,rank:RANK[role]||0}));
   await writePermLog({targetUid:uid,targetName:u.name,targetStaffId:u.staffId,fromRole:from,toRole:role,action:'setRole'});
 }
+
+async function setCadrePost(uid,post){
+  if(lv()<4){alert('需店長以上才能指定幹部職位');return typeof redrawTbl==='function'&&redrawTbl()}
+  const u=(typeof USERS!=='undefined'?USERS:[]).find(x=>x.uid==uid);
+  if(!u)return;
+  if(u.uid!==st.user.uid && !canEditUser(u) && !isGuanting()){alert('只能修改職級低於自己的人，且除冠廷外不能改冠廷的帳號');return redrawTbl()}
+  const allow=['','店長','主要幹部','現場經理','儲備幹部'];
+  if(!allow.includes(post)){alert('無效的幹部職位');return redrawTbl()}
+  const meta={staffId:u.staffId,name:u.name,branchId:u.branchId||'xindian',disabled:!!u.disabled};
+  if(typeof setCadrePostLocal==='function')setCadrePostLocal(uid,post,meta);
+  try{await updateDoc(doc(db,'users',uid),{cadrePost:post||''})}catch(e){}
+  const shown=(u.name==='特殊'?'冠廷':(u.name||u.staffId));
+  if(typeof log==='function')log('將 '+shown+' 的幹部職位改為 '+(post||'（未指定）'));
+  try{if(typeof drawStaff==='function')drawStaff()}catch(err){}
+}
+async function getUsers(){
+  try{
+    const q=isGuanting()?query(collection(db,'users')):query(collection(db,'users'),where('rank','<',lv()));
+    const qs=await getDocs(q);
+    const L=[];qs.forEach(d=>L.push({uid:d.id,...d.data()}));
+    return L;
+  }catch(e){return (typeof USERS!=='undefined'?USERS.slice():[])}
+}
+async function getDayFields(id){
+  st.daySnaps=st.daySnaps||{};
+  if(st.daySnaps[id])return st.daySnaps[id];
+  try{
+    const snap=await getDoc(doc(db,'days',id));
+    if(!snap.exists()){st.daySnaps[id]={exists:false,id};return st.daySnaps[id]}
+    const d=snap.data()||{},rec={exists:true,id};
+    for(const k of Object.keys(d)){
+      try{rec[k]=typeof d[k]==='string'?JSON.parse(d[k]):d[k]}catch(e){rec[k]=d[k]}
+    }
+    st.daySnaps[id]=rec;return rec;
+  }catch(e){return{exists:false,id}}
+}
+async function loadMonthDaySnaps(month,opts){
+  const skip=(opts&&opts.skip)||new Set();
+  const N=typeof daysIn==='function'?daysIn(month):31;
+  const jobs=[];
+  for(let i=1;i<=N;i++){
+    const d=month+'-'+String(i).padStart(2,'0');
+    if(skip&&skip.has&&skip.has(d))continue;
+    jobs.push(getDayFields(d));
+  }
+  const L=await Promise.all(jobs);
+  const out={};L.forEach(r=>{if(r&&r.id)out[r.id]=r});
+  return out;
+}
+
 async function setDisabled(uid,v){
   const u=USERS.find(x=>x.uid==uid);
   if(lv()<2)return alert('需幹部以上');
@@ -1041,5 +1092,5 @@ async function updateImportReview(id,patch){
   await updateDoc(doc(db,'importArchive',id),upd);
 }
 
-window.Cloud={ver:"v12.29",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setBranch,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,recognizeSheet,updateSheetImport,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){if(typeof ensureRosterMap==='function')ensureRosterMap();if(typeof syncRosterNamesView==='function')syncRosterNamesView();const rec={names:J(S.rosterMap||S.rosterNames||{}),log:J(S.renameLog||[]),branches:J(S.branches||(typeof defaultBranches==='function'?defaultBranches():[])),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+window.Cloud={ver:"v12.30",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setBranch,setCadrePost,setDisabled,migrate,getUsers,getDayFields,loadMonthDaySnaps,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,recognizeSheet,updateSheetImport,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){if(typeof ensureRosterMap==='function')ensureRosterMap();if(typeof syncRosterNamesView==='function')syncRosterNamesView();const rec={names:J(S.rosterMap||S.rosterNames||{}),log:J(S.renameLog||[]),branches:J(S.branches||(typeof defaultBranches==='function'?defaultBranches():[])),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();
