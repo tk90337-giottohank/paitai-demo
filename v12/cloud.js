@@ -1,3 +1,4 @@
+// v12.28.2 小姐名冊改以 2026-11-24 名牌為在職名單；報班頁隱藏已標離職者
 // v12.28 傳統排檯表照片瀏覽器自動辨識（Firebase AI Logic）＋匯入雲端備份（Firestore sheetImports）
 // v12.27 修正 iPhone Google 登入：具名 app 的 redirect 結果不再被 [DEFAULT]／setPersistence 清掉；popup 優先
 // v12.26 主程式／報班／包廂三個登入分開（具名 Firebase app）；v12.25 匯入備份／校對、包廂鎖頭登出、店長職級；v12.24 登入畫面跟主題色
@@ -10,8 +11,8 @@
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {bootNamedApp,clearLegacyDefaultSession,authReady} from './auth-scope.js?v=12.28.1';
-import {recognizeSheetPhotos} from './recognize-sheet.js?v=12.28.1';
+import {bootNamedApp,clearLegacyDefaultSession,authReady} from './auth-scope.js?v=12.28.2';
+import {recognizeSheetPhotos} from './recognize-sheet.js?v=12.28.2';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,updateProfile,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,linkWithPopup,linkWithRedirect} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
@@ -105,7 +106,7 @@ function flush(){st.timer=null;if(!st.user||st.inited!==true||!isOps()){status()
 function audit(m){if(!st.user||TVMODE||!isOps()||st.inited!==true)return;addDoc(collection(db,'audit'),{uid:st.user.uid,name:st.prof.name,role:RL(st.prof.role),t:Date.now(),msg:String(m).slice(0,500)}).catch(()=>{})}
 // ---- 登入畫面 ----
 const ov=document.createElement('div');ov.id='fbLogin';ov.className='fb-login';ov.style.cssText='position:fixed;inset:0;z-index:9999;display:none;overflow:auto;padding:24px;font-size:17px';document.body.appendChild(ov);
-const APP_VER='v12.28.1';
+const APP_VER='v12.28.2';
 function isiOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
 function isStandalone(){return !!(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)}
 function useRedirect(){return false} // 主畫面 App 也先走 popup；只有彈窗被擋才退回 redirect
@@ -1030,5 +1031,5 @@ async function updateImportReview(id,patch){
   await updateDoc(doc(db,'importArchive',id),upd);
 }
 
-window.Cloud={ver:"v12.28.1",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,recognizeSheet,updateSheetImport,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+window.Cloud={ver:"v12.28.2",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,recognizeSheet,updateSheetImport,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();
