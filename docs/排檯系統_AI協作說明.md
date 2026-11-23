@@ -9,7 +9,7 @@
   - 小姐報班頁：https://tk90337-giottohank.github.io/paitai-demo/v12/girl/
   - 客人點檯頁：https://tk90337-giottohank.github.io/paitai-demo/v12/guest.html
 - 資料庫：Firebase 專案 `paitai-system`（Spark 免費方案，Firestore 在 asia-east1，沒有 Cloud Functions，所有邏輯都在前端＋Firestore 規則）
-- 目前版本：v12.27.1（主畫面 App 的 Google 登入改先走彈窗；登入頁顯示版本與錯誤）
+- 目前版本：v12.28（傳統排檯表照片自動辨識＋雲端備份；登入維持 v12.27.1 彈窗優先）
 
 ## 二、技術架構
 純前端 HTML／JavaScript（無框架、無打包），Firebase Auth＋Firestore 即時同步。主要檔案：
@@ -91,3 +91,14 @@
 - v12.27 在一般 iPhone 瀏覽器已改走 Google 彈窗，但「加入主畫面」的獨立 App（standalone）仍走 `signInWithRedirect`。GitHub Pages 無法代理 `/__/auth`，iOS 主畫面 App 的 storage 與 Safari 分開，redirect 回來時常丟失結果，看起來就像選完帳號又回到登入頁，且沒有錯誤文字。
 - v12.27.1：主畫面 App 也先走 `signInWithPopup`（iOS 16.4+ 支援），只有彈窗被擋才退回 redirect；若 redirect 回來沒有使用者，登入頁會顯示「redirect-lost」說明。任何 Google 失敗都會顯示錯誤代碼，並寫入 `loginFails`。登入頁下方顯示版本號（例如 v12.27.1）。
 - 主畫面 App 若仍快取舊版（沒有版本號），需刪掉圖示、用 Safari 打開新頁再重新加入主畫面。
+
+## 十二、v12.28 傳統排檯表自動辨識與雲端備份
+- 店長／幹部以上在主程式匯入傳統排檯表照片後，瀏覽器會用 Firebase AI Logic（Gemini Developer API、`gemini-flash-latest`、結構化 JSON）自動辨識，通常數秒內把草稿填進核對表。規則不變：先讀小姐編號對名冊，中文名字只做交叉核對，不符或號碼不清就黃框。確認寫入前不會改當日資料或帳單。
+- 原始 AI 結果與 model 名稱會存進 `importArchive`，供匯入校對。
+- Spark 沒有 Cloud Functions；辨識在已登入的幹部瀏覽器進行，不把 API key 寫進公開 repo。若瀏覽器辨識失敗，仍會把照片上傳到 Firestore `sheetImports`（分塊），可走既有佇列＋box 上的 `tools/sheet-photo-worker.py` 後備。
+- 每次上傳都會把壓縮後的照片與辨識 JSON 備份在 Firestore。另外用 `tools/sync-sheet-backups-to-drive.py` 定期同步到 Google Drive「排檯表匯入備份」（依營業日分子資料夾）。不依賴 Firebase Storage，不必在 Console 點 Get Started。
+- Google 登入維持 v12.27.1：主畫面 App 也先走彈窗、失敗顯示錯誤與版本號、寫入 `loginFails`。
+
+### 多日匯入（冠廷 2026-11-24 01:16）
+
+店長／幹部可一次選很多張照片或 CSV（含同一天的多頁）。系統會自動辨識每張（或同一天的多頁合併辨識），從紙本讀出營業日（可改；看不清或與檔名不符會黃框），並依日期分組。核對畫面用分頁列出各日與狀態，可「確認寫入（此日）」、「略過此日」或「全部確認寫入」。每一天分開寫入 importArchive，並分開排進雲端備份（Firestore sheetImports，再同步到 Drive「排檯表匯入備份」）。寫入時把紙本上的小姐自動加入該日報班（既有 `sheetImportCheckin`）。**絕不改帳單金額**（含已日結日的 `revenue`／`voidedRevenue`／`staffPay`）。若該日已有資料，必須明確選「合併」或「略過」才會寫入；全部確認時對已有資料的日子預設合併並再問一次。辨識與全部寫入過程有進度條。確認前不改當日資料。登入行為維持 v12.27.1（一律先 popup，含主畫面 App；失敗顯示錯誤與版本；loginFails）。

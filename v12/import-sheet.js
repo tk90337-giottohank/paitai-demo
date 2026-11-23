@@ -1,9 +1,10 @@
+// v12.28 照片自動辨識＋多日匯入（一次選多天／多頁，自動偵測營業日並分組核對，可全部確認寫入）；上傳即按日備份到雲端 sheetImports
 // v12.25 匯入備份／校對；選單可達。v12.21 匯入傳統排檯表（先讀編號對名冊，中文名字只做交叉核對；不符黃框）
 (function(global){
 const MARKS=['紅','藍','私檯','訂番'];
 const XLSX_SRC='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
 let xlsxLoading=null;
-const ST={day:'',files:[],photos:[],parsed:null,rawParsed:null,step:'pick',mode:'replace',livePol:'skip',queueId:'',busy:false,err:''};
+const ST={day:'',files:[],photos:[],parsed:null,rawParsed:null,step:'pick',mode:'replace',livePol:'skip',queueId:'',busy:false,err:'',aiRaw:null,aiModel:'',recognized:false,jobs:[],curJob:0,progress:null};
 const ARC={list:[],cur:null,photos:[],busy:false,err:''};
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -268,6 +269,15 @@ function ensureCss(){
   .arc-card{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;background:var(--surface-2,#2c3240);border-radius:10px;padding:12px;min-height:44px}
   .arc-st{font-size:13px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--soon-bg,rgba(196,163,106,.16));color:var(--soon,#c4a36a)}
   .arc-st.ok{background:var(--avail-bg,rgba(111,158,134,.16));color:var(--ok,#8fbfa8)}
+  .pi .progwrap{margin:10px 0}
+  .pi .prog{background:#2a2f3a;border-radius:999px;height:10px;overflow:hidden}
+  .pi .prog>i{display:block;height:100%;background:var(--btn,#3a6);width:0%}
+  .pi .days{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  .pi .days button{min-height:44px;padding:8px 12px;border-radius:10px;border:1px solid var(--line-strong,#445);background:var(--btn-s,#3a4150);color:var(--on-s,#eee);text-align:left;line-height:1.3}
+  .pi .days button.on{outline:2px solid var(--ok,#8fbfa8);background:#2a3a33}
+  .pi .days button.warn{outline:2px solid var(--warn,#fc6)}
+  .pi .days .st{display:block;font-size:12px;color:#bbb}
+  .pi input.unsure{outline:2px solid var(--warn,#fc6);background:var(--soon-bg,#5a4a10)}
   `;
   document.head.appendChild(s);
 }
@@ -352,37 +362,355 @@ async function readOne(file,day){
   return{kind:'csv',parsed:parseCsvText(txt,day,file.name)};
 }
 
-async function ingestFiles(fileList){
-  ST.err='';ST.msg='';
-  const day=ST.day||todayBiz();
-  let p=ST.parsed&&ST.parsed.rows&&Object.keys(ST.parsed.rows).length?ST.parsed:emptyParsed(day);
-  p.day=day||p.day;
-  const arr=[...fileList];
-  const newPhotos=[];
-  for(const f of arr){
-    ST.files.push({name:f.name,size:f.size,type:f.type});
-    ST.msg='正在處理「'+(f.name||'檔案')+'」…';
-    try{
-      const r=await readOne(f,p.day||day);
-      if(r.error)ST.err=(ST.err?ST.err+'；':'')+r.error;
-      if(r.photo){ST.photos.push(r.photo);p.photos.push(r.photo);newPhotos.push(r.photo);
-        const kb=Math.round((r.photo.dataUrl||'').length/1024);
-        if(kb>680)ST.err=(ST.err?ST.err+'；':'')+'壓縮後仍偏大（'+kb+' KB），已嘗試縮小。若上傳失敗請改傳較近的一張。';
-      }
-      if(r.parsed){if(r.parsed.day&&!day)p.day=r.parsed.day;p=mergeParsed(p,r.parsed);p.day=ST.day||p.day||r.parsed.day}
-    }catch(e){ST.err=(ST.err?ST.err+'；':'')+(f.name?f.name+'：':'')+(e.message||e)}
+function dayFromName(name){
+  const s=String(name||'');
+  let m=s.match(/(20\d{2})[-_./年]?(\d{1,2})[-_./月]?(\d{1,2})日?/);
+  if(m){
+    const y=m[1],mo=+m[2],da=+m[3];
+    if(mo>=1&&mo<=12&&da>=1&&da<=31)return y+'-'+String(mo).padStart(2,'0')+'-'+String(da).padStart(2,'0');
   }
-  p.day=ST.day||p.day;
-  p.photos=ST.photos.slice();
-  ST.parsed=p;
-  snapRawIfNeeded();
-  if(newPhotos.length){
-    ST.msg='正在上傳照片…';
-    await uploadAndWatch(newPhotos);
-  }else{
-    ST.msg='';
+  m=s.match(/(?:^|[^\d])(\d{1,2})月(\d{1,2})日?/);
+  if(!m)m=s.match(/(?:^|[^\d])(\d{1,2})[-_./](\d{1,2})(?:日|[^\d]|$)/);
+  if(m){
+    const mo=+m[1],da=+m[2];
+    if(mo>=1&&mo<=12&&da>=1&&da<=31){
+      const y=(todayBiz()||ST.day||'2026-01-01').slice(0,4)||'2026';
+      return y+'-'+String(mo).padStart(2,'0')+'-'+String(da).padStart(2,'0');
+    }
+  }
+  return '';
+}
+function validDay(d){return /^\d{4}-\d{2}-\d{2}$/.test(String(d||''))}
+function isOpenDay(d){
+  try{
+    const open=(typeof S!=='undefined'&&S.openDay)||'';
+    const today=typeof bizDay==='function'?bizDay(typeof now==='function'?now():Date.now()):'';
+    return d&&(d===open||d===today);
+  }catch(e){return false}
+}
+function dayHasData(d){
+  if(!d)return {has:false,kind:'',n:0,closed:false};
+  const imp=existingImp(d);
+  let n=imp.length,kind=imp.length?'先前匯入':'',closed=false;
+  try{
+    const logs=(S.sheetLog||[]).filter(e=>e&&e.day==d);
+    if(!n&&logs.length){n=logs.length;kind='排檯表'}
+    const att=Object.keys((S.att||{})[d]||{}).length;
+    const ck=((S.checkin||{})[d]||[]).length;
+    if(!n&&(att||ck)){n=att||ck;kind='報班'}
+    const h=(S.hist||{})[d];
+    if(h){
+      closed=true;
+      const hn=(h.rows&&h.rows.length)||0;
+      const hr=(h.revenue&&h.revenue.length)||0;
+      const ha=Object.keys(h.att||{}).length||(h.checkin&&h.checkin.length)||0;
+      if(hn||hr||ha||h.closedAt){n=n||hn||ha||1;kind=kind||(hn?'已日結排檯表':'已日結')}
+    }
+  }catch(e){}
+  return {has:n>0,kind,n,closed}
+}
+function jobStatus(j){
+  if(!j)return'';
+  if(j.status==='committed')return'已寫入';
+  if(j.status==='skipped')return'已略過';
+  if(j.status==='error')return'失敗';
+  if(j.status==='recognizing')return'辨識中';
+  if(!validDay(j.day)||j.dayUnsure)return'請確認日期';
+  const ex=dayHasData(j.day);
+  if(ex.has)return ex.closed?'當日已有資料（已日結）':'當日已有資料';
+  if(j.recognized)return'待核對';
+  return'待核對';
+}
+function emptyJob(partial){
+  return Object.assign({
+    id:'j'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    day:'',dayUnsure:false,daySource:'',
+    files:[],photos:[],parsed:null,rawParsed:null,
+    aiRaw:null,aiModel:'',recognized:false,queueId:'',
+    status:'ready',err:'',msg:'',mode:'merge',decision:''
+  },partial||{});
+}
+function curJ(){return (ST.jobs||[])[ST.curJob]||null}
+function useJob(j){
+  if(!j){
+    ST.day=ST.day||todayBiz();ST.parsed=null;ST.rawParsed=null;ST.photos=[];ST.files=[];
+    ST.queueId='';ST.aiRaw=null;ST.aiModel='';ST.recognized=false;return;
+  }
+  ST.day=j.day||'';ST.parsed=j.parsed;ST.rawParsed=j.rawParsed;ST.photos=j.photos||[];
+  ST.files=j.files||[];ST.queueId=j.queueId||'';ST.aiRaw=j.aiRaw;ST.aiModel=j.aiModel||'';
+  ST.recognized=!!j.recognized;ST.mode=j.mode||ST.mode||'merge';
+}
+function saveJobFromST(j){
+  if(!j)return;
+  j.day=ST.day||j.day;j.parsed=ST.parsed;j.rawParsed=ST.rawParsed;j.photos=ST.photos||[];
+  j.files=ST.files||[];j.queueId=ST.queueId||j.queueId;j.aiRaw=ST.aiRaw;j.aiModel=ST.aiModel;
+  j.recognized=ST.recognized;j.mode=ST.mode||j.mode;
+}
+function moveJobDay(j,newDay){
+  if(!j)return;
+  const prev=j.day;
+  j.day=newDay;j.daySource='manual';j.dayUnsure=!validDay(newDay);
+  if(j.parsed)j.parsed.day=newDay;
+  if(!validDay(newDay))return;
+  const other=ST.jobs.find(x=>x!==j&&x.day===newDay&&x.status!=='committed'&&x.status!=='skipped');
+  if(other){
+    other.parsed=mergeParsed(other.parsed||emptyParsed(newDay),j.parsed||emptyParsed(newDay));
+    other.photos=(other.photos||[]).concat(j.photos||[]);
+    other.files=(other.files||[]).concat(j.files||[]);
+    other.rawParsed=mergeParsed(other.rawParsed||other.parsed,j.rawParsed||j.parsed);
+    other.recognized=other.recognized||j.recognized;
+    other.dayUnsure=false;other.daySource=other.daySource||'manual';
+    ST.jobs=ST.jobs.filter(x=>x!==j);
+    ST.curJob=Math.max(0,ST.jobs.indexOf(other));
   }
 }
+function setProgress(done,total,label){
+  ST.progress={done,total,label:label||''};
+  const lab=document.getElementById('piProgLab');
+  const bar=document.getElementById('piProgBar');
+  if(lab)lab.textContent=label||((total?'正在處理 '+done+'／'+total+'…':''));
+  if(bar)bar.style.width=(total?Math.max(0,Math.min(100,Math.round((done/total)*100))):0)+'%';
+}
+function progressHtml(){
+  const p=ST.progress;
+  if(!p&&!ST.busy)return'';
+  const lab=(p&&p.label)||(ST.busy?'處理中…':'');
+  const w=p&&p.total?Math.max(0,Math.min(100,Math.round((p.done/p.total)*100))):ST.busy?10:0;
+  return `<div class=progwrap id=piProgWrap><p class=hint id=piProgLab>${esc(lab)}</p><div class=prog><i id=piProgBar style="width:${w}%"></i></div></div>`;
+}
+function daysNavHtml(active){
+  if(!ST.jobs||ST.jobs.length<2)return'';
+  return `<div class=days>${ST.jobs.map((j,i)=>{
+    const tot=totals(j.parsed||emptyParsed(j.day));
+    const st=jobStatus(j);
+    const uns=j.dayUnsure||!validDay(j.day);
+    const lab=validDay(j.day)?j.day:'日期未定';
+    return `<button type=button class="${i===active?'on':''}${uns?' warn':''}" data-job="${i}">
+      <b>${esc(lab)}</b>
+      <span class=st>${esc(st)}　${tot.sessions} 番</span>
+    </button>`;
+  }).join('')}</div>`;
+}
+function bindDaysNav(fromPreview){
+  document.querySelectorAll('.pi .days [data-job]').forEach(btn=>{
+    btn.onclick=()=>{
+      const i=+btn.getAttribute('data-job');
+      if(fromPreview&&curJ()){collectEdits(curJ().parsed||emptyParsed(curJ().day));saveJobFromST(curJ())}
+      ST.curJob=i;useJob(ST.jobs[i]);ST.step='preview';renderPreview();
+    };
+  });
+}
+function patchHistAfterImport(d){
+  try{
+    const h=(S.hist||{})[d];
+    if(!h)return;
+    const keepRev=h.revenue,keepVoid=h.voidedRevenue,keepPay=h.staffPay;
+    if(typeof sheetRows==='function'){
+      const rows=sheetRows(d).map(e=>Object.assign({},e,{mk:e.mk||Object.fromEntries((e.girls||[]).map(id=>[id,(typeof markType==='function'?markType(e,id):[])]))}));
+      h.rows=rows;
+    }
+    if((S.checkin||{})[d])h.checkin=(S.checkin[d]||[]).slice();
+    h.att=Object.assign({},h.att||{},(S.att||{})[d]||{});
+    if((S.clockOut||{})[d])h.clockOut=Object.assign({},h.clockOut||{},S.clockOut[d]);
+    if(typeof girlDay==='function'){
+      h.girls=h.girls||{};
+      const ids=new Set(Object.keys(h.girls||{}));
+      ((S.checkin||{})[d]||[]).forEach(c=>ids.add(String(c.id)));
+      Object.keys((S.att||{})[d]||{}).forEach(id=>ids.add(String(id)));
+      (h.rows||[]).forEach(r=>(r.girls||[]).forEach(id=>ids.add(String(id))));
+      ids.forEach(id=>{
+        const g=(typeof G==='function'&&G(id))||null;
+        const r=girlDay(id,d);
+        if(r&&(r.tai||r.red||r.blue||r.obN||(h.att&&h.att[id]))){
+          h.girls[id]=Object.assign(h.girls[id]||{},{name:(g&&g.name)||(h.girls[id]&&h.girls[id].name)||id},r,{adj:undefined});
+        }
+      });
+    }
+    h.revenue=keepRev;
+    if(keepVoid!==undefined)h.voidedRevenue=keepVoid;
+    if(keepPay!==undefined)h.staffPay=keepPay;
+  }catch(e){}
+}
+function forceEndedIfPast(p){
+  if(!p||isOpenDay(p.day))return p;
+  Object.keys(p.rows||{}).forEach(k=>{if(p.rows[k])p.rows[k].ended=true});
+  return p;
+}
+async function recognizePhotoGroup(photos,dayHint,label){
+  if(!photos||!photos.length)return null;
+  if(!window.Cloud||typeof Cloud.recognizeSheet!=='function')throw new Error('雲端辨識尚未就緒');
+  if(label)setProgress(ST.progress?ST.progress.done:0,ST.progress?ST.progress.total:1,label);
+  const r=await Cloud.recognizeSheet(photos,dayHint||'');
+  return r;
+}
+function draftToParsed(draft,day,photos){
+  const d=emptyParsed(day||(draft&&draft.day)||'');
+  if(!draft)return d;
+  d.day=draft.day||day||d.day;
+  if(draft.rows)d.rows=draft.rows;
+  if(draft.marks)d.marks=draft.marks;
+  d.tbd=(d.tbd||[]).concat(draft.tbd||[]);
+  d.bad=(d.bad||[]).concat(draft.bad||[]);
+  d.unk=(d.unk||[]).concat(draft.unk||[]);
+  if(draft.ext)d.ext=Object.assign(d.ext||{},draft.ext);
+  d.photos=photos?photos.slice():(d.photos||[]);
+  d.dayUnsure=!!draft.dayUnsure;
+  return d;
+}
+
+async function ingestFiles(fileList){
+  ST.err='';ST.msg='';
+  const arr=[...fileList];
+  if(!arr.length)return;
+  const hintDay=ST.day||todayBiz();
+  const items=[];
+  const total=arr.length;
+  for(let i=0;i<arr.length;i++){
+    const f=arr[i];
+    setProgress(i, total+2, '正在處理「'+(f.name||'檔案')+'」（'+(i+1)+'／'+total+'）…');
+    const guessed=dayFromName(f.name);
+    try{
+      const r=await readOne(f, guessed||hintDay||'');
+      if(r.error)ST.err=(ST.err?ST.err+'；':'')+r.error;
+      const rec={name:f.name,size:f.size,type:f.type,kind:r.kind,photo:r.photo||null,parsed:r.parsed||null,
+        day: (r.parsed&&r.parsed.day)||guessed||'', dayUnsure:false, daySource:''};
+      if(r.parsed&&r.parsed.day) rec.daySource='csv';
+      else if(guessed){rec.day=guessed;rec.daySource='file';rec.dayUnsure=true}
+      if(r.photo){
+        const kb=Math.round((r.photo.dataUrl||'').length/1024);
+        if(kb>680)ST.err=(ST.err?ST.err+'；':'')+'壓縮後仍偏大（'+kb+' KB），已嘗試縮小。若上傳失敗請改傳較近的一張。';
+        rec.photo.name=f.name;
+      }
+      items.push(rec);
+    }catch(e){ST.err=(ST.err?ST.err+'；':'')+(f.name?f.name+'：':'')+(e.message||e)}
+  }
+  const photos=items.filter(x=>x.photo);
+  const sheets=items.filter(x=>x.parsed);
+  // cluster photos by filename/csv day (unknown together)
+  const clusters={};
+  photos.forEach(it=>{
+    const key=validDay(it.day)&&it.daySource==='file'?it.day:'?';
+    (clusters[key]=clusters[key]||[]).push(it);
+  });
+  async function recognizeCluster(list, dayHint, label){
+    const phs=list.map(x=>x.photo);
+    try{
+      const r=await recognizePhotoGroup(phs, dayHint, label);
+      if(!r||!r.draft)return {ok:false};
+      const aiDay=r.draft.day||'';
+      const unsure=!!(r.draft.dayUnsure||(r.raw&&r.raw.day_uncertain)||!validDay(aiDay));
+      list.forEach(it=>{
+        it._draft=r.draft;it._raw=r.raw;it._model=r.model||'';
+        if(validDay(aiDay)){
+          if(it.day&&it.day!==aiDay){it.dayUnsure=true;it.daySource=it.daySource||'file+ai'}
+          else {it.day=aiDay;it.daySource=it.daySource||'ai';it.dayUnsure=unsure}
+        }else{
+          it.dayUnsure=true;
+          if(!it.day)it.daySource='unknown';
+        }
+      });
+      return {ok:true,draft:r.draft,raw:r.raw,model:r.model||'',day:aiDay,unsure};
+    }catch(e){
+      list.forEach(it=>{it._err=String(e&&e.message||e||'')});
+      return {ok:false,err:String(e&&e.message||e||'')};
+    }
+  }
+  // known-date groups first (together), unknown photos one-by-one then regroup
+  const knownKeys=Object.keys(clusters).filter(k=>k!=='?');
+  let step=0, workN=knownKeys.length+(clusters['?']?clusters['?'].length:0)+2;
+  for(const k of knownKeys){
+    step++;
+    await recognizeCluster(clusters[k], k, '正在自動辨識 '+k+'（'+clusters[k].length+' 張，'+(step)+'／'+workN+'）…');
+  }
+  const unknowns=clusters['?']||[];
+  for(let i=0;i<unknowns.length;i++){
+    step++;
+    await recognizeCluster([unknowns[i]], hintDay, '正在辨識並偵測營業日（第 '+(i+1)+'／'+unknowns.length+' 張）…');
+  }
+  // regroup previously-unknown photos that now share a day; re-recognize multi-page groups
+  const byDay={};
+  unknowns.forEach(it=>{
+    const k=validDay(it.day)?it.day:'?';
+    (byDay[k]=byDay[k]||[]).push(it);
+  });
+  for(const [k,list] of Object.entries(byDay)){
+    if(k==='?'||list.length<2)continue;
+    step++;
+    await recognizeCluster(list, k, '同一天多頁合併辨識 '+k+'（'+list.length+' 張）…');
+  }
+  setProgress(total+1, total+2, '正在依營業日分組並備份到雲端…');
+  // build jobs: merge photos + csv by day
+  const jobMap={};
+  function jobFor(day, unsure, source){
+    const key=validDay(day)?day:('?'+Math.random().toString(36).slice(2,6));
+    if(!jobMap[key]){
+      jobMap[key]=emptyJob({day:validDay(day)?day:'',dayUnsure:!!unsure||!validDay(day),daySource:source||''});
+    }
+    const j=jobMap[key];
+    if(unsure)j.dayUnsure=true;
+    return j;
+  }
+  items.filter(x=>x.photo).forEach(it=>{
+    const j=jobFor(it.day, it.dayUnsure, it.daySource);
+    j.photos.push(it.photo);
+    j.files.push({name:it.name,size:it.size,type:it.type});
+    if(it._draft){
+      j.parsed=draftToParsed(it._draft, j.day||it._draft.day, j.photos);
+      if(j.parsed.day)j.day=j.parsed.day;
+      j.dayUnsure=j.dayUnsure||!!it._draft.dayUnsure||!validDay(j.day);
+      j.aiRaw=it._raw||j.aiRaw;j.aiModel=it._model||j.aiModel;j.recognized=true;
+      j.rawParsed=j.rawParsed||cloneParsed(j.parsed);
+    }
+    if(it._err){j.err=(j.err?j.err+'；':'')+it._err;j.msg='自動辨識暫時無法完成（'+it._err.slice(0,80)+'），照片仍會上傳備份。'}
+  });
+  sheets.forEach(it=>{
+    const d=it.parsed.day||it.day||'';
+    const j=jobFor(d, it.dayUnsure&&it.daySource!=='csv', it.daySource||'csv');
+    j.files.push({name:it.name,size:it.size,type:it.type});
+    j.parsed=mergeParsed(j.parsed||emptyParsed(j.day||d), it.parsed);
+    j.parsed.day=j.day||j.parsed.day||d;
+    j.rawParsed=j.rawParsed||cloneParsed(j.parsed);
+    if(it.parsed.day&&!j.day){j.day=it.parsed.day;j.dayUnsure=false;j.daySource='csv'}
+  });
+  const newJobs=Object.values(jobMap);
+  if(!newJobs.length){
+    ST.msg='';
+    ST.progress=null;
+    return;
+  }
+  // append to existing uncommitted jobs of same day when user adds more files
+  newJobs.forEach(nj=>{
+    const ex=ST.jobs.find(x=>x.day&&x.day===nj.day&&x.status!=='committed'&&x.status!=='skipped');
+    if(ex){
+      ex.parsed=mergeParsed(ex.parsed||emptyParsed(ex.day), nj.parsed||emptyParsed(nj.day));
+      ex.photos=(ex.photos||[]).concat(nj.photos||[]);
+      ex.files=(ex.files||[]).concat(nj.files||[]);
+      ex.recognized=ex.recognized||nj.recognized;
+      ex.aiRaw=nj.aiRaw||ex.aiRaw;ex.aiModel=nj.aiModel||ex.aiModel;
+      if(nj.err)ex.err=(ex.err?ex.err+'；':'')+nj.err;
+    }else ST.jobs.push(nj);
+  });
+  ST.jobs.sort((a,b)=>(a.day||'￿').localeCompare(b.day||'￿'));
+  // backup each day separately
+  for(const j of ST.jobs){
+    if(j.status==='committed'||j.status==='skipped')continue;
+    if(!j.photos.length)continue;
+    if(j.queueId)continue;
+    ST.day=j.day||hintDay;ST.photos=j.photos;ST.files=j.files;ST.parsed=j.parsed;
+    ST.aiRaw=j.aiRaw;ST.aiModel=j.aiModel;ST.recognized=j.recognized;
+    try{
+      await uploadAndWatch(j.photos,{recognized:j.recognized,draft:j.parsed,aiRaw:j.aiRaw,aiModel:j.aiModel,job:j});
+      j.queueId=ST.queueId||j.queueId;
+    }catch(e){j.err=(j.err?j.err+'；':'')+(e&&e.message||e)}
+  }
+  const ok=ST.jobs.filter(j=>j.recognized).length;
+  const uns=ST.jobs.filter(j=>j.dayUnsure||!validDay(j.day)).length;
+  ST.msg='已處理 '+ST.jobs.length+' 個營業日'+(ok?'，其中 '+ok+' 日已自動辨識':'')+(uns?'；有 '+uns+' 日請先確認黃框中的日期':'')+'。請逐日核對，或按「全部確認寫入」。確認寫入前不會改到當日資料。照片會按日備份到雲端。';
+  ST.curJob=0;useJob(ST.jobs[0]);
+  ST.step='preview';
+  ST.progress=null;
+}
+
 function applyDraft(draft){
   if(!draft)return;
   const day=draft.day||ST.day||todayBiz();
@@ -397,21 +725,35 @@ function applyDraft(draft){
   ST.parsed=p;ST.day=day;
   snapRawIfNeeded();
 }
-async function uploadAndWatch(photos){
+async function uploadAndWatch(photos,opt){
   if(!photos||!photos.length)return;
   if(!global.Cloud||typeof Cloud.queueSheetImport!=='function'){
     ST.err=(ST.err?ST.err+'；':'')+'雲端尚未就緒，照片先留在本機核對畫面。請確認已登入後再傳一次。';
-    ST.msg='';return;
+    if(!opt||!opt.recognized)ST.msg='';return;
   }
   try{
+    const job=opt&&opt.job;
+    const recognized=!!(opt&&opt.recognized&&(opt.draft||ST.parsed||(job&&job.parsed)));
     const id=await Cloud.queueSheetImport({
-      day:ST.day||todayBiz(),status:'queued',note:'傳統排檯表照片，待辨識',
-      files:ST.files,sessions:ST.parsed?Object.keys(ST.parsed.rows||{}).length:0,
-      marks:ST.parsed?(ST.parsed.marks||[]).length:0
+      day:(job&&job.day)||ST.day||todayBiz(),
+      status:recognized?'已辨識，待核對':'queued',
+      note:recognized?'傳統排檯表照片，已自動辨識，待核對（雲端備份）':'傳統排檯表照片，待辨識（雲端備份）',
+      files:(job&&job.files)||ST.files,
+      sessions:ST.parsed?Object.keys(ST.parsed.rows||{}).length:0,
+      marks:ST.parsed?(ST.parsed.marks||[]).length:0,
+      recognized,
+      draft:recognized?(opt.draft||ST.parsed):null,
+      aiRaw:opt&&opt.aiRaw||ST.aiRaw||null,
+      model:opt&&opt.aiModel||ST.aiModel||''
     },photos);
     ST.queueId=id||'';
-    ST.msg='照片已上傳，正在辨識…（通常十多秒，完成後會自動填入核對表。確認寫入前不會改到當日資料。）';
-    if(ST.queueId)watchImport(ST.queueId);
+    if(job)job.queueId=ST.queueId;
+    if(recognized){
+      if(!ST.msg||ST.msg.indexOf('已自動辨識')<0)ST.msg='已自動辨識，請核對黃框後再確認寫入。照片已備份到雲端。確認寫入前不會改到當日資料。';
+    }else{
+      ST.msg='照片已上傳備份，正在等候辨識…（完成後會自動填入核對表。確認寫入前不會改到當日資料。）';
+      if(ST.queueId)watchImport(ST.queueId);
+    }
   }catch(e){
     const m=String(e&&e.message||e||'');
     let tip='照片上傳失敗：'+m;
@@ -459,43 +801,57 @@ function markMenu(cur){return MARKS.map(m=>`<option value="${m}" ${m===cur?'sele
 function renderPick(){
   const day=ST.day||todayBiz();
   ST.day=day;
-  const files=ST.files.map(f=>esc(f.name)).join('、')||'尚未選擇';
-  const thumbs=ST.photos.map((p,i)=>`<img src="${p.dataUrl}" alt="紙本${i+1}">`).join('');
+  const allFiles=(ST.jobs&&ST.jobs.length?ST.jobs.flatMap(j=>j.files||[]):ST.files);
+  const allPhotos=(ST.jobs&&ST.jobs.length?ST.jobs.flatMap(j=>j.photos||[]):ST.photos);
+  const files=allFiles.map(f=>esc(f.name)).join('、')||'尚未選擇';
+  const thumbs=allPhotos.map((p,i)=>`<img src="${p.dataUrl}" alt="紙本${i+1}">`).join('');
   page(`<h2>匯入傳統排檯表</h2>
-    <p class=hint>幹部以上可把現在的紙本排檯表或試算表匯入系統。確認前會先給你核對；<b>不會默默蓋掉既有資料</b>。</p>
-    <div class=row><label>營業日 <input type=date id=piDay value="${esc(day)}"></label></div>
+    <p class=hint>幹部以上可一次選很多張照片或 CSV（也可含同一天的多頁）。系統會自動辨識，並依紙本上的營業日分組；日期可改，看不清會黃框。確認前會先給你逐日核對，也可「全部確認寫入」；<b>不會默默蓋掉既有資料，也不會改帳單金額</b>。每一天會分開備份到雲端。</p>
+    <div class=row><label>預設營業日（僅在紙本看不出日期時使用） <input type=date id=piDay value="${esc(day)}"></label></div>
     <div class=row>
-      <label class=pibtn>拍照<input type=file accept="image/*" capture="environment" hidden id=piCam></label>
-      <label class="pibtn s">相簿<input type=file accept="image/*" multiple hidden id=piAlbum></label>
-      <label class="pibtn s">試算表／CSV<input type=file accept=".csv,.txt,.tsv,.xlsx,.xls,.numbers,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden id=piSheet></label>
+      <label class=pibtn>拍照<input type=file accept="image/*" capture="environment" hidden id=piCam ${ST.busy?'disabled':''}></label>
+      <label class="pibtn s">相簿<input type=file accept="image/*" multiple hidden id=piAlbum ${ST.busy?'disabled':''}></label>
+      <label class="pibtn s">試算表／CSV<input type=file accept=".csv,.txt,.tsv,.xlsx,.xls,.numbers,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden id=piSheet ${ST.busy?'disabled':''}></label>
     </div>
-    <p class=files>已選：${files}</p>
+    <p class=files>已選：${files}${ST.jobs.length?'（'+ST.jobs.length+' 個營業日）':''}</p>
     <div class=thumbs>${thumbs}</div>
+    ${progressHtml()}
     <p class=hint>試算表／CSV（含 Numbers 匯出的 Excel／CSV）會在手機上直接解析成格子。<br>
-    選好照片後會先壓縮再上傳；辨識先讀編號對名冊填名字，再用紙本名字交叉核對。號碼與名字一致會直接帶入；不符或號碼看不清會黃框（例如「57 冰冰 → 名單:寶貝」）。<b>確認寫入前不會改到當日資料</b>。若相簿是 HEIC、預覽失敗，請在「照片」App 匯出 JPEG 再傳（選「相簿」時 iPhone 通常會自動轉 JPEG）。</p>
+    選好照片後會先壓縮，接著自動辨識（先讀編號對名冊，再用紙本名字交叉核對），並依偵測到的營業日分組。同一天的多頁會併成一張核對表。號碼與名字一致會直接帶入；不符或號碼看不清會黃框（例如「57 冰冰 → 名單:寶貝」）。日期看不清也會黃框，請改正。照片會按日備份到雲端。<b>確認寫入前不會改到當日資料</b>。若自動辨識失敗，仍可對照照片手動填，或等候後備辨識。若相簿是 HEIC、預覽失敗，請在「照片」App 匯出 JPEG 再傳（選「相簿」時 iPhone 通常會自動轉 JPEG）。</p>
+    ${ST.jobs.length?daysNavHtml(ST.curJob):''}
     ${ST.msg?`<p class=hint style="color:#8fd">${esc(ST.msg)}</p>`:''}
     ${ST.err?`<p class=err>${esc(ST.err)}</p>`:''}
     <div class=row>
-      <button type=button id=piGo>開始核對</button>
+      <button type=button id=piGo ${ST.busy?'disabled':''}>開始核對</button>
       <button type=button class=s id=piTpl>下載 CSV 範本</button>
       <button type=button class=s id=piArc>匯入校對</button>
       <button type=button class=s id=piBack>返回排檯表</button>
     </div>`);
-  const bind=(id,fn)=>{const el=document.getElementById(id);if(el)el.addEventListener(id==='piDay'?'change':'click',fn)};
   document.getElementById('piDay').onchange=e=>{ST.day=e.target.value;if(ST.parsed)ST.parsed.day=ST.day};
   const onFiles=async ev=>{
     const list=ev.target.files;if(!list||!list.length)return;
     ST.day=(document.getElementById('piDay')||{}).value||ST.day;
     ST.busy=true;ST.msg='正在壓縮照片…';ST.err='';renderPick();
-    try{await ingestFiles(list)}finally{ST.busy=false;ev.target.value='';renderPick()}
+    try{await ingestFiles(list)}finally{ST.busy=false;ev.target.value='';if(ST.step==='preview')renderPreview();else renderPick()}
   };
   document.getElementById('piCam').onchange=onFiles;
   document.getElementById('piAlbum').onchange=onFiles;
   document.getElementById('piSheet').onchange=onFiles;
-  document.getElementById('piGo').onclick=()=>{ST.day=(document.getElementById('piDay')||{}).value||ST.day;if(ST.parsed)ST.parsed.day=ST.day;if(!ST.parsed)ST.parsed=emptyParsed(ST.day);ST.step='preview';renderPreview()};
+  document.getElementById('piGo').onclick=()=>{
+    ST.day=(document.getElementById('piDay')||{}).value||ST.day;
+    if(!ST.jobs.length){
+      if(ST.parsed)ST.parsed.day=ST.day;
+      if(!ST.parsed)ST.parsed=emptyParsed(ST.day);
+      ST.jobs=[emptyJob({day:ST.day,parsed:ST.parsed,photos:ST.photos.slice(),files:ST.files.slice(),recognized:ST.recognized,aiRaw:ST.aiRaw,aiModel:ST.aiModel,queueId:ST.queueId})];
+      ST.curJob=0;
+    }
+    useJob(ST.jobs[ST.curJob]||ST.jobs[0]);
+    ST.step='preview';renderPreview();
+  };
   document.getElementById('piTpl').onclick=downloadTpl;
   const arc=document.getElementById('piArc');if(arc)arc.onclick=()=>openArchive();
   document.getElementById('piBack').onclick=backToSheet;
+  bindDaysNav(false);
 }
 function downloadTpl(){
   const d=ST.day||todayBiz()||'2026-01-01';
@@ -511,7 +867,7 @@ function backToSheet(){
 
 function collectEdits(p){
   const dayEl=document.getElementById('piDay');if(dayEl&&dayEl.value){ST.day=dayEl.value;p.day=dayEl.value}
-  const mode=document.getElementById('piMode');if(mode)ST.mode=mode.value;
+  const mode=document.getElementById('piMode');if(mode){ST.mode=mode.value||ST.mode;if(typeof curJ==='function'&&curJ()){curJ().mode=mode.value||curJ().mode;curJ().decision=mode.value||curJ().decision}}
   const pol=document.getElementById('piPol');if(pol)ST.livePol=pol.value;
   const rows={};const marks=[];
   document.querySelectorAll('tr[data-seq]').forEach(tr=>{
@@ -546,14 +902,21 @@ function collectEdits(p){
   return p;
 }
 function renderPreview(){
-  let p=ST.parsed||emptyParsed(ST.day);
+  if(!ST.jobs.length && ST.parsed){
+    ST.jobs=[emptyJob({day:ST.day||(ST.parsed&&ST.parsed.day),parsed:ST.parsed,photos:ST.photos.slice(),files:ST.files.slice(),recognized:ST.recognized,aiRaw:ST.aiRaw,aiModel:ST.aiModel,queueId:ST.queueId,rawParsed:ST.rawParsed})];
+    ST.curJob=0;
+  }
+  const j=curJ();
+  if(j)useJob(j);
+  let p=ST.parsed||(j&&j.parsed)||emptyParsed(ST.day);
   p.day=ST.day||p.day||todayBiz();
+  if(j){j.parsed=p;ST.parsed=p}
   const tot=totals(p);
+  const ex=dayHasData(p.day);
   const prev=existingImp(p.day);
-  const thumbs=ST.photos.map((ph,i)=>`<img class=big src="${ph.dataUrl}" alt="紙本${i+1}">`).join('');
+  const thumbs=(j?j.photos:ST.photos).map((ph,i)=>`<img class=big src="${ph.dataUrl}" alt="紙本${i+1}">`).join('');
   const seqs=Object.keys(p.rows).sort((a,b)=>((+a)||0)-((+b)||0));
   if(!seqs.length){
-    // blank grid so 幹部 can transcribe from the photo
     p.rows['1']={seq:'1',room:'',tm:null,guests:null,ended:false,orderStaff:'',note:'',conf:0.4,src:'空白'};
   }
   const body=Object.keys(p.rows).sort((a,b)=>((+a)||0)-((+b)||0)).map(seq=>{
@@ -584,52 +947,81 @@ function renderPreview(){
       <td><input data-k=staff value="${esc(r.orderStaff||'')}" style="width:64px"></td>
       ${marksHtml}
     </tr>`}).join('');
+  const dayUnsure=!!(j&&(j.dayUnsure||!validDay(p.day)));
+  const done=j&&(j.status==='committed'||j.status==='skipped');
   const warn=[
+    dayUnsure?`<p class=warn>這一日的營業日是從紙本自動偵測的，請先核對黃框中的日期再寫入（看不清或與檔名不符會標黃）。</p>`:'',
     tot.tbd?`<p class=warn>待確認／低信心 ${tot.tbd} 項（黃框：號碼與名字不符或號碼看不清），請改正。</p>`:'',
     tot.unk?`<p class=warn>不在名冊或號碼待確認：${esc((p.unk||[]).slice(0,8).join('；'))}${(p.unk||[]).length>8?'…':''}</p>`:'',
     tot.bad?`<p class=err>無法讀取 ${tot.bad} 行：${esc((p.bad||[]).slice(0,5).join('；'))}</p>`:'',
     tot.skipped?`<p class=hint>已排除不匯入 ${tot.skipped} 筆（含記號 x）。</p>`:'',
-    prev.length?`<p class=warn>這一天已經有 ${prev.length} 列先前匯入的資料。確認時請選擇「取代」或「合併」，不會默默覆蓋。寫入前會先做本機備份，可到匯入紀錄還原。</p>`:'',
-    ST.photos.length?`<p class=hint>已附 ${ST.photos.length} 張照片。確認寫入時會一併送進佇列（狀態：待辨識）。目前不會自動把照片變成格子，請先對照核對。</p>`:''
+    ex.has?`<p class=warn>這一天已經有資料${ex.kind?'（'+esc(ex.kind)+'）':''}${ex.closed?'，且已日結':''}。寫入前必須明確選擇「合併」或「略過」；不會默默覆蓋，也<b>不會改帳單金額</b>。寫入前會先做本機備份，可到匯入紀錄還原。</p>`:'',
+    (j?j.photos:ST.photos).length?`<p class=hint>已附 ${(j?j.photos:ST.photos).length} 張照片${ST.recognized||(j&&j.recognized)?'，已自動辨識填入下方格子，請核對黃框後再確認寫入。':'，已上傳備份；若尚未自動填入，可先對照照片填格子，完成辨識後會自動帶入。'} 照片已按日備份到雲端。<b>確認寫入前不會改到當日資料</b>。寫入時會把這些小姐自動加入該日報班。</p>`:''
   ].join('');
-  page(`<h2>核對傳統排檯表</h2>
-    <div class=row><label>營業日 <input type=date id=piDay value="${esc(p.day||'')}"></label></div>
+  const hasMode = ex.has ? `<div class=row><label>當日已有資料時 <select id=piMode>
+        <option value="" ${!(j&&j.decision||ST.mode==='merge'||ST.mode==='replace')?'selected':''}>請選擇（合併或略過）</option>
+        <option value=merge ${(j&&j.decision==='merge')||ST.mode==='merge'?'selected':''}>合併（同包廂＋同時刻保留既有、略過新列）</option>
+        <option value=skip ${(j&&j.decision==='skip')||ST.mode==='skip'?'selected':''}>略過此日（不寫入）</option>
+        <option value=replace ${ST.mode==='replace'&&j&&j.decision==='replace'?'selected':''}>取代本日已匯入列（需再確認；仍不會改帳單）</option>
+      </select></label>
+      <label>與現場進行中包廂衝突時 <select id=piPol>
+        <option value=skip ${ST.livePol==='skip'?'selected':''}>略過該列</option>
+        <option value=merge ${ST.livePol==='merge'?'selected':''}>合併進現場</option>
+        <option value=replace ${ST.livePol==='replace'?'selected':''}>取代現場該番</option>
+      </select></label></div>` : `<div class=row>
+      <label>與現場進行中包廂衝突時 <select id=piPol>
+        <option value=skip ${ST.livePol==='skip'?'selected':''}>略過該列</option>
+        <option value=merge ${ST.livePol==='merge'?'selected':''}>合併進現場</option>
+        <option value=replace ${ST.livePol==='replace'?'selected':''}>取代現場該番</option>
+      </select></label></div>`;
+  page(`<h2>核對傳統排檯表${ST.jobs.length>1?'（多日）':''}</h2>
+    ${daysNavHtml(ST.curJob)}
+    ${progressHtml()}
+    <div class=row><label>營業日 <input type=date id=piDay class="${dayUnsure?'unsure':''}" value="${esc(p.day||'')}"></label>${dayUnsure?'<span class=warn>請確認日期</span>':''}</div>
     <div class=photoCol><div class=thumbs>${thumbs}</div></div>
-    <p class=tot><b>番數</b> ${tot.sessions}　<b>小姐台數合計</b> ${tot.girlTai}　<small>（私檯 ${tot.priv}・訂番 ${tot.ord}；寫入後會餵學習，學習時依既有規則排除私檯／訂番）</small></p>
+    <p class=tot><b>番數</b> ${tot.sessions}　<b>小姐台數合計</b> ${tot.girlTai}　<small>（私檯 ${tot.priv}・訂番 ${tot.ord}；寫入後會自動加入該日報班，並餵學習；學習時依既有規則排除私檯／訂番）</small></p>
     ${warn}
     <div class=tw style="overflow:auto"><table>
       <tr><th>序</th><th>包廂</th><th>進場</th><th>人數</th><th>結束</th><th>訂番幹部</th><th colspan=20>記號（號碼＋紅／藍／私檯／訂番）</th></tr>
       ${body}
     </table></div>
     <p><button type=button class=s id=piAddRow>＋ 新增一序</button></p>
-    <div class=row>
-      <label>已有匯入時 <select id=piMode>
-        <option value=replace ${ST.mode==='replace'?'selected':''}>取代本日已匯入列（先備份）</option>
-        <option value=merge ${ST.mode==='merge'?'selected':''}>合併（同包廂＋同時刻保留既有、略過新列）</option>
-      </select></label>
-      <label>與現場進行中包廂衝突時 <select id=piPol>
-        <option value=skip ${ST.livePol==='skip'?'selected':''}>略過該列</option>
-        <option value=merge ${ST.livePol==='merge'?'selected':''}>合併進現場</option>
-        <option value=replace ${ST.livePol==='replace'?'selected':''}>取代現場該番</option>
-      </select></label>
-    </div>
+    ${hasMode}
     ${ST.msg?`<p class=hint style="color:#8fd">${esc(ST.msg)}</p>`:''}
     ${ST.err?`<p class=err>${esc(ST.err)}</p>`:''}
+    ${(j&&j.err)?`<p class=err>${esc(j.err)}</p>`:''}
     <div class=row>
-      <button type=button id=piCommit>確認寫入</button>
+      <button type=button id=piCommit ${done||ST.busy?'disabled':''}>確認寫入${ST.jobs.length>1?'（此日）':''}</button>
+      ${ST.jobs.length>1?`<button type=button id=piCommitAll ${ST.busy?'disabled':''}>全部確認寫入</button>`:''}
+      ${ST.jobs.length>1?`<button type=button class=s id=piSkipDay ${done||ST.busy?'disabled':''}>略過此日</button>`:''}
       <button type=button class=s id=piBackEdit>返回選檔</button>
       <button type=button class=s id=piCancel>取消</button>
     </div>`);
-  document.getElementById('piDay').onchange=e=>{ST.day=e.target.value;p.day=e.target.value};
+  document.getElementById('piDay').onchange=e=>{
+    const v=e.target.value;
+    ST.day=v;p.day=v;
+    if(j){j.dayUnsure=false;moveJobDay(j,v);useJob(curJ());}
+    renderPreview();
+  };
+  const modeEl=document.getElementById('piMode');
+  if(modeEl)modeEl.onchange=e=>{ST.mode=e.target.value||ST.mode;if(j){j.mode=e.target.value||j.mode;j.decision=e.target.value||''}};
   document.getElementById('piAddRow').onclick=()=>{
     collectEdits(p);
     const n=String(Math.max(0,...Object.keys(p.rows).map(x=>+x||0))+1);
     p.rows[n]={seq:n,room:'',tm:null,guests:null,ended:false,orderStaff:'',note:'',conf:0.4,src:'手動'};
-    ST.parsed=p;renderPreview();
+    ST.parsed=p;if(j)j.parsed=p;renderPreview();
   };
-  document.getElementById('piCommit').onclick=()=>commit();
-  document.getElementById('piBackEdit').onclick=()=>{collectEdits(p);ST.parsed=p;ST.step='pick';renderPick()};
+  document.getElementById('piCommit').onclick=()=>commitOne();
+  const allBtn=document.getElementById('piCommitAll');if(allBtn)allBtn.onclick=()=>commitAll();
+  const skipBtn=document.getElementById('piSkipDay');if(skipBtn)skipBtn.onclick=()=>{
+    if(j){collectEdits(p);saveJobFromST(j);j.status='skipped';j.decision='skip'}
+    const nxt=ST.jobs.findIndex((x,i)=>i>ST.curJob&&x.status!=='committed'&&x.status!=='skipped');
+    ST.curJob=nxt>=0?nxt:ST.curJob;
+    useJob(curJ());renderPreview();
+  };
+  document.getElementById('piBackEdit').onclick=()=>{collectEdits(p);ST.parsed=p;if(j)saveJobFromST(j);ST.step='pick';renderPick()};
   document.getElementById('piCancel').onclick=backToSheet;
+  bindDaysNav(true);
 }
 
 async function queuePhotos(p){
@@ -648,48 +1040,145 @@ function toApplyShape(p){
   return out;
 }
 
-async function commit(){
-  if(typeof needRole==='function'&&!needRole(2,'匯入傳統排檯表'))return;
-  let p=collectEdits(ST.parsed||emptyParsed(ST.day));
-  if(!p.day||!/^\d{4}-\d{2}-\d{2}$/.test(p.day)){alert('請先選擇營業日');return}
-  if(!Object.keys(p.rows).length){alert('沒有可寫入的列');return}
+async function commitOne(opts){
+  opts=opts||{};
+  if(typeof needRole==='function'&&!needRole(2,'匯入傳統排檯表'))return {ok:false,reason:'role'};
+  const j=opts.job||curJ();
+  if(j)useJob(j);
+  let p=collectEdits(ST.parsed||(j&&j.parsed)||emptyParsed(ST.day));
+  if(j){j.parsed=p;saveJobFromST(j)}
+  if(!p.day||!validDay(p.day)){if(!opts.silent)alert('請先選擇營業日');return {ok:false,reason:'day'}}
+  if(j&&j.dayUnsure&&!opts.forceUnsure){if(!opts.silent)alert('請先在黃框中確認營業日（'+p.day+'）');return {ok:false,reason:'unsure'}}
+  if(!Object.keys(p.rows).length){if(!opts.silent)alert('沒有可寫入的列');return {ok:false,reason:'empty'}}
+  if(j&&j.status==='committed')return {ok:true,reason:'already'};
+  if(j&&(j.status==='skipped'||j.decision==='skip'||ST.mode==='skip')){
+    if(j)j.status='skipped';
+    return {ok:true,skipped:true};
+  }
+  const ex=dayHasData(p.day);
   const prev=existingImp(p.day);
-  const mode=ST.mode||'replace';
-  if(prev.length){
-    const msg=mode==='merge'
-      ?`本日已有 ${prev.length} 列先前匯入資料。將合併寫入：同包廂且同時刻的新列會略過，既有列保留。確定？`
-      :`本日已有 ${prev.length} 列先前匯入資料。將取代這些已匯入列（現場未匯入的進行中包廂不會默默蓋掉，衝突時依你選的政策）。寫入前會備份，可到匯入紀錄還原。確定取代？`;
-    if(!confirm(msg))return;
-  }else if(!confirm(`寫入 ${p.day} 的排檯表？\n番數 ${totals(p).sessions}、小姐台數合計 ${totals(p).girlTai}`))return;
+  let mode=(j&&j.decision)||ST.mode||'replace';
+  if(ex.has){
+    if(!mode||mode==='replace'&&!opts.allowReplace){
+      if(opts.batch){
+        if(!mode||(mode!=='merge'&&mode!=='skip'&&mode!=='replace'))return {ok:false,reason:'need-decision',job:j,day:p.day,ex};
+      }else{
+        if(!mode){alert('這一天已有資料，請先選擇「合併」或「略過」。');return {ok:false,reason:'need-decision'}}
+      }
+    }
+    if(mode==='skip'){if(j)j.status='skipped';return {ok:true,skipped:true}}
+    if(!opts.silent){
+      const msg=mode==='merge'
+        ?`本日已有資料${ex.kind?'（'+ex.kind+'）':''}${ex.closed?'，且已日結':''}。將合併寫入：同包廂且同時刻的新列會略過，既有列保留。不會改帳單金額。確定？`
+        :`本日已有資料${ex.kind?'（'+ex.kind+'）':''}${ex.closed?'，且已日結':''}。將取代這些已匯入列（現場未匯入的進行中包廂不會默默蓋掉，衝突時依你選的政策）。寫入前會備份，可到匯入紀錄還原。帳單金額不會改。確定取代？`;
+      if(!confirm(msg))return {ok:false,reason:'cancel'};
+    }else if(mode==='replace'&&!opts.allowReplace){
+      return {ok:false,reason:'need-replace-confirm',job:j,day:p.day,ex};
+    }
+  }else if(!opts.silent){
+    if(!confirm(`寫入 ${p.day} 的排檯表？\n番數 ${totals(p).sessions}、小姐台數合計 ${totals(p).girlTai}\n寫入後會把這些小姐加入該日報班，不會改帳單金額。`))return {ok:false,reason:'cancel'};
+  }
   let applyP=p;
   if(mode==='merge'&&prev.length){
     applyP=mergeKeepOld(fromExisting(p.day),p);
   }
+  applyP=forceEndedIfPast(applyP);
   const shaped=toApplyShape(applyP);
   let stat={};
   try{
-    if(typeof snapState==='function')S.impSnap=snapState();
+    if(typeof snapState==='function'&&!opts.noSnap)S.impSnap=snapState();
     const pol=ST.livePol||'skip';
     stat=typeof applySheet==='function'?applySheet(shaped,pol):{error:'找不到 applySheet'};
-    if(S.impAudit)S.impAudit.unshift(Object.assign({t:typeof now==='function'?now():Date.now(),by:(S.cur&&S.cur.name)||'',role:(S.cur&&S.cur.role)||'',type:'排檯表',day:p.day,reason:'匯入傳統排檯表',policy:mode+'/'+pol,queueId:ST.queueId||''},stat||{}));
+    if(S.impAudit)S.impAudit.unshift(Object.assign({t:typeof now==='function'?now():Date.now(),by:(S.cur&&S.cur.name)||'',role:(S.cur&&S.cur.role)||'',type:'排檯表',day:p.day,reason:'匯入傳統排檯表'+(opts.batch?'（全部確認）':''),policy:mode+'/'+pol,queueId:(j&&j.queueId)||ST.queueId||''},stat||{}));
     if(typeof log==='function')log(`【匯入傳統排檯表】${p.day}（${(S.cur&&S.cur.name)||''}／${(S.cur&&S.cur.role)||''}）${mode==='merge'?'合併':'取代'} ${totals(applyP).sessions} 番`);
+    patchHistAfterImport(p.day);
+    if(typeof save==='function')save();
+    if(typeof render==='function'&&!opts.batch)render();
+  }catch(e){if(!opts.silent)alert('寫入失敗：'+(e.message||e));return {ok:false,reason:String(e&&e.message||e)}}
+  if(j){ST.photos=j.photos||[];ST.files=j.files||[];ST.queueId=j.queueId||'';ST.aiRaw=j.aiRaw;ST.aiModel=j.aiModel;ST.recognized=j.recognized;ST.rawParsed=j.rawParsed||ST.rawParsed}
+  const qid=await queuePhotos(p);
+  if(j)j.queueId=qid||j.queueId;
+  let archOk='';
+  try{const aid=await saveArchive(p,applyP,stat,qid,j);if(aid)archOk='\n已存備份，可到「匯入校對」對照原圖。'}catch(e){archOk='\n寫入成功，但備份失敗：'+(e&&e.message||e)}
+  const extra=(qid?'\n照片已備份到雲端'+(ST.recognized||(j&&j.recognized)?'（含自動辨識結果，供校對）。':'（辨識佇列）。'):'')+archOk;
+  const bits=stat&&typeof stat==='object'?Object.entries(stat).filter(([,v])=>v).map(([k,v])=>k+' '+v).join('、'):'';
+  if(j)j.status='committed';
+  if(!opts.silent && !opts.batch){
+    alert('已寫入 '+p.day+'：番數 '+totals(applyP).sessions+'、小姐台數合計 '+totals(applyP).girlTai+(bits?'（'+bits+'）':'')+'。已加入該日報班。'+extra);
+    const left=(ST.jobs||[]).filter(x=>x.status!=='committed'&&x.status!=='skipped');
+    if(left.length){
+      ST.curJob=ST.jobs.findIndex(x=>x.status!=='committed'&&x.status!=='skipped');
+      if(ST.curJob<0)ST.curJob=0;
+      useJob(curJ());ST.step='preview';renderPreview();
+      return {ok:true,day:p.day,stat};
+    }
+    ST.step='pick';ST.parsed=null;ST.rawParsed=null;ST.files=[];ST.photos=[];ST.queueId='';ST.aiRaw=null;ST.aiModel='';ST.recognized=false;ST.jobs=[];ST.curJob=0;
+    try{if(typeof shDay!=='undefined')shDay=p.day;if(typeof openSheet==='function')openSheet()}catch(e){}
+  }
+  return {ok:true,day:p.day,stat,arch:archOk};
+}
+async function commit(){return commitOne()}
+async function commitAll(){
+  if(typeof needRole==='function'&&!needRole(2,'匯入傳統排檯表'))return;
+  if(curJ()){collectEdits(curJ().parsed||emptyParsed(curJ().day));saveJobFromST(curJ())}
+  const pending=(ST.jobs||[]).filter(j=>j.status!=='committed'&&j.status!=='skipped');
+  if(!pending.length){alert('沒有可寫入的營業日');return}
+  for(const j of pending){
+    if(!validDay(j.day)||j.dayUnsure){
+      ST.curJob=ST.jobs.indexOf(j);useJob(j);ST.step='preview';renderPreview();
+      alert('請先確認「'+(j.day||'日期未定')+'」的營業日（黃框）後，再全部寫入。');
+      return;
+    }
+  }
+  const need=[];
+  pending.forEach(j=>{
+    const ex=dayHasData(j.day);
+    if(ex.has&&j.decision!=='merge'&&j.decision!=='skip'&&j.decision!=='replace')need.push(j);
+  });
+  if(need.length){
+    const lines=need.map(j=>{
+      const ex=dayHasData(j.day);
+      const tot=totals(j.parsed||emptyParsed(j.day));
+      return j.day+'（'+tot.sessions+' 番'+(ex.kind?'，已有'+ex.kind:'')+(ex.closed?'，已日結':'')+'）';
+    }).join('\n');
+    if(!confirm('以下營業日已有資料，全部寫入時將「合併」（同包廂同時刻保留既有），不會改帳單金額。若要略過某日，請先在該日選「略過此日」。\n\n'+lines+'\n\n確定對這些日合併寫入，其餘日直接寫入？'))return;
+    need.forEach(j=>{j.decision='merge';j.mode='merge'});
+  }else if(!confirm('將依序寫入 '+pending.length+' 個營業日。已有資料的日子會依你選的「合併／略過」處理，不會改帳單金額。確定？'))return;
+  ST.busy=true;
+  const results=[];
+  try{
+    if(typeof snapState==='function')S.impSnap=snapState();
+    for(let i=0;i<pending.length;i++){
+      const j=pending[i];
+      setProgress(i, pending.length, '正在寫入 '+j.day+'（'+(i+1)+'／'+pending.length+'）…');
+      ST.curJob=ST.jobs.indexOf(j);useJob(j);
+      const r=await commitOne({job:j,silent:true,batch:true,noSnap:true,allowReplace:j.decision==='replace'});
+      results.push(r);
+      if(!r.ok&&r.reason==='need-decision'){
+        ST.busy=false;ST.progress=null;renderPreview();
+        alert(j.day+' 已有資料，請先選擇合併或略過。');
+        return;
+      }
+      if(!r.ok){
+        ST.busy=false;ST.progress=null;renderPreview();
+        alert('寫入 '+j.day+' 失敗：'+(r.reason||''));
+        return;
+      }
+    }
     if(typeof save==='function')save();
     if(typeof render==='function')render();
-  }catch(e){alert('寫入失敗：'+(e.message||e));return}
-  const qid=await queuePhotos(p);
-  let archOk='';
-  try{const aid=await saveArchive(p,applyP,stat,qid);if(aid)archOk='\n已存備份，可到「匯入校對」對照原圖。'}catch(e){archOk='\n寫入成功，但備份失敗：'+(e&&e.message||e)}
-  const extra=(qid?'\n照片已送進待辨識佇列。':'')+archOk;
-  const bits=stat&&typeof stat==='object'?Object.entries(stat).filter(([,v])=>v).map(([k,v])=>k+' '+v).join('、'):'';
-  alert('已寫入 '+p.day+'：番數 '+totals(applyP).sessions+'、小姐台數合計 '+totals(applyP).girlTai+(bits?'（'+bits+'）':'')+extra);
-  ST.step='pick';ST.parsed=null;ST.rawParsed=null;ST.files=[];ST.photos=[];ST.queueId='';
-  try{if(typeof shDay!=='undefined')shDay=p.day;if(typeof openSheet==='function')openSheet()}catch(e){}
+  }finally{ST.busy=false;ST.progress=null}
+  const ok=results.filter(r=>r.ok&&!r.skipped).map(r=>r.day);
+  const sk=results.filter(r=>r.skipped).length;
+  alert('全部確認完成。已寫入：'+(ok.join('、')||'無')+(sk?'；略過 '+sk+' 日':'')+'。各日已分開備份，並已把紙本上的小姐加入該日報班。帳單金額未改。');
+  ST.step='pick';ST.parsed=null;ST.rawParsed=null;ST.files=[];ST.photos=[];ST.queueId='';ST.aiRaw=null;ST.aiModel='';ST.recognized=false;ST.jobs=[];ST.curJob=0;
+  try{if(ok[0]&&typeof shDay!=='undefined')shDay=ok[0];if(typeof openSheet==='function')openSheet()}catch(e){}
 }
 
 function open(opt){
   if(typeof needRole==='function'&&!needRole(2,'匯入傳統排檯表'))return;
   ST.day=(opt&&opt.day)||(typeof shDay!=='undefined'&&shDay)||todayBiz();
-  ST.files=[];ST.photos=[];ST.parsed=null;ST.rawParsed=null;ST.step='pick';ST.mode='replace';ST.livePol='skip';ST.err='';ST.queueId='';
+  ST.files=[];ST.photos=[];ST.parsed=null;ST.rawParsed=null;ST.step='pick';ST.mode='replace';ST.livePol='skip';ST.err='';ST.queueId='';ST.aiRaw=null;ST.aiModel='';ST.recognized=false;ST.jobs=[];ST.curJob=0;ST.progress=null;
   renderPick();
 }
 function hookButtons(){
@@ -757,22 +1246,24 @@ function collectDiffs(saved,raw){
   const seen=new Set();
   return diffs.filter(d=>{const k=d.kind+'|'+d.text;if(seen.has(k))return false;seen.add(k);return true});
 }
-async function saveArchive(orig,applied,stat,qid){
+async function saveArchive(orig,applied,stat,qid,job){
   if(!window.Cloud||typeof Cloud.saveImportArchive!=='function')return '';
-  const raw=compactParsed(ST.rawParsed||orig);
+  const raw=compactParsed((job&&job.rawParsed)||ST.rawParsed||orig);
   const saved=compactParsed(applied||orig);
   const tot=totals(applied||orig);
   return await Cloud.saveImportArchive({
     day:(applied||orig).day,
-    queueId:qid||ST.queueId||'',
-    files:(ST.files||[]).map(f=>({name:f.name||'',size:f.size||0,type:f.type||''})),
-    photoCount:(ST.photos||[]).length,
-    mode:ST.mode||'',
+    queueId:qid||(job&&job.queueId)||ST.queueId||'',
+    files:((job&&job.files)||ST.files||[]).map(f=>({name:f.name||'',size:f.size||0,type:f.type||''})),
+    photoCount:((job&&job.photos)||ST.photos||[]).length,
+    mode:(job&&job.mode)||ST.mode||'',
     livePol:ST.livePol||'',
     raw,saved,
     diffs:collectDiffs(saved,raw),
     stat:stat&&typeof stat==='object'?stat:{},
-    sessions:tot.sessions,marks:(saved.marks||[]).length
+    sessions:tot.sessions,marks:(saved.marks||[]).length,
+    aiModel:(job&&job.aiModel)||ST.aiModel||'',
+    aiRaw:(job&&job.aiRaw)||ST.aiRaw||null
   });
 }
 function taipeiText(ms,fallback){

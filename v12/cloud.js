@@ -1,4 +1,4 @@
-// v12.27.1 主畫面 App 也先走 Google 彈窗；登入失敗要顯示錯誤與版本號
+// v12.28 傳統排檯表照片瀏覽器自動辨識（Firebase AI Logic）＋匯入雲端備份（Firestore sheetImports）
 // v12.27 修正 iPhone Google 登入：具名 app 的 redirect 結果不再被 [DEFAULT]／setPersistence 清掉；popup 優先
 // v12.26 主程式／報班／包廂三個登入分開（具名 Firebase app）；v12.25 匯入備份／校對、包廂鎖頭登出、店長職級；v12.24 登入畫面跟主題色
 // v12.23 Google 登入＋幹部改權限＋kt 與 Google 合併
@@ -10,7 +10,8 @@
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {bootNamedApp,clearLegacyDefaultSession,authReady} from './auth-scope.js?v=12.27.1';
+import {bootNamedApp,clearLegacyDefaultSession,authReady} from './auth-scope.js?v=12.28';
+import {recognizeSheetPhotos} from './recognize-sheet.js?v=12.28';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,updateProfile,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,linkWithPopup,linkWithRedirect} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
@@ -104,7 +105,7 @@ function flush(){st.timer=null;if(!st.user||st.inited!==true||!isOps()){status()
 function audit(m){if(!st.user||TVMODE||!isOps()||st.inited!==true)return;addDoc(collection(db,'audit'),{uid:st.user.uid,name:st.prof.name,role:RL(st.prof.role),t:Date.now(),msg:String(m).slice(0,500)}).catch(()=>{})}
 // ---- 登入畫面 ----
 const ov=document.createElement('div');ov.id='fbLogin';ov.className='fb-login';ov.style.cssText='position:fixed;inset:0;z-index:9999;display:none;overflow:auto;padding:24px;font-size:17px';document.body.appendChild(ov);
-const APP_VER='v12.27.1';
+const APP_VER='v12.28';
 function isiOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
 function isStandalone(){return !!(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)}
 function useRedirect(){return false} // 主畫面 App 也先走 popup；只有彈窗被擋才退回 redirect
@@ -873,6 +874,20 @@ function paintQrBtns(){
 
 
 
+async function recognizeSheet(photos,day){
+  if(lv()<2)throw new Error('需幹部以上才能自動辨識');
+  if(!auth.currentUser)throw new Error('需登入才能自動辨識');
+  const roster=(typeof S!=='undefined'&&S.rosterNames)||{};
+  return await recognizeSheetPhotos({app,photos,day,roster});
+}
+async function updateSheetImport(id,patch){
+  if(lv()<2||!id)throw new Error('需幹部以上');
+  const allowed=['status','note','error','model','aiRaw','aiText','draft','draftJson','recognizedAt','sessions','marks','driveSynced','driveSyncedAt','driveUrl','archiveId','archivedAt'];
+  const upd={};
+  Object.keys(patch||{}).forEach(k=>{if(allowed.includes(k)&&patch[k]!==undefined)upd[k]=patch[k]});
+  if(!Object.keys(upd).length)return;
+  await updateDoc(doc(db,'sheetImports',id),upd);
+}
 async function queueSheetImport(meta,photos){
   if(lv()<2)throw new Error('需幹部以上才能上傳排檯表照片');
   const CHUNK=400000;
@@ -887,7 +902,8 @@ async function queueSheetImport(meta,photos){
     sessions:meta&&meta.sessions||0,
     marks:meta&&meta.marks||0,
     note:(meta&&meta.note)||'傳統排檯表照片，待辨識',
-    files:(meta&&meta.files||[]).map(f=>({name:f.name,size:f.size,type:f.type}))
+    files:(meta&&meta.files||[]).map(f=>({name:f.name,size:f.size,type:f.type})),
+    driveSynced:false
   };
   const ref=await addDoc(collection(db,'sheetImports'),rec);
   for(let i=0;i<(photos||[]).length;i++){
@@ -904,6 +920,24 @@ async function queueSheetImport(meta,photos){
       if(chunks.length===1)break;
       await setDoc(doc(db,'sheetImports',ref.id,'chunks',i+'-'+c),{photo:String(i),i:c,data:chunks[c]});
     }
+  }
+  // 瀏覽器已辨識：把草稿寫回佇列並標「已辨識」，避免後備 worker 重跑；照片已在此備份（不依賴 Storage）
+  if(meta&&meta.recognized&&(meta.draft||meta.draftJson)){
+    const draft=meta.draft||meta.draftJson;
+    const js=typeof draft==='string'?draft:JSON.stringify(draft);
+    try{
+      await updateDoc(doc(db,'sheetImports',ref.id),{
+        status:'已辨識，待核對',
+        note:(meta.note||'傳統排檯表照片，已自動辨識，待核對'),
+        model:String(meta.model||meta.aiModel||''),
+        aiRaw:typeof meta.aiRaw==='string'?meta.aiRaw:JSON.stringify(meta.aiRaw||{}),
+        draft:js,
+        draftJson:js,
+        recognizedAt:Date.now(),
+        sessions:meta.sessions||0,
+        marks:meta.marks||0
+      });
+    }catch(e){}
   }
   return ref.id;
 }
@@ -956,6 +990,8 @@ async function saveImportArchive(rec){
     stat:clean.stat&&typeof clean.stat==='object'?clean.stat:{},
     sessions:+clean.sessions||0,
     marks:+clean.marks||0,
+    aiModel:String(clean.aiModel||clean.model||''),
+    aiRaw:clean.aiRaw&&typeof clean.aiRaw==='object'?clean.aiRaw:(()=>{try{return JSON.parse(clean.aiRaw||'null')}catch(e){return clean.aiRaw||null}})(),
     status:'待校對',
     reviewed:false,
     reviewedRows:{},
@@ -994,5 +1030,5 @@ async function updateImportReview(id,patch){
   await updateDoc(doc(db,'importArchive',id),upd);
 }
 
-window.Cloud={ver:"v12.27.1",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+window.Cloud={ver:"v12.28",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,recognizeSheet,updateSheetImport,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();
