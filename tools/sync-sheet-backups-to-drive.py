@@ -258,6 +258,12 @@ def mark_synced(marks_file=None):
             }
             n += 1
             log('marked synced %s' % iid)
+        elif st == 404:
+            # import was wiped; do not error the routine. New uploads get new ids.
+            state.setdefault('synced', {})['sheetImports:' + iid] = {
+                'at': now, 'day': it.get('day'), 'gone': True
+            }
+            log('mark skip missing (wiped) %s' % iid)
         else:
             log('mark fail %s %s %s' % (iid, st, (res.get('error') or {}).get('message', '') if isinstance(res, dict) else ''))
     save_state(state)

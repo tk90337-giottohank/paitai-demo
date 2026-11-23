@@ -102,3 +102,20 @@
 ### 多日匯入（冠廷 2026-11-24 01:16）
 
 店長／幹部可一次選很多張照片或 CSV（含同一天的多頁）。系統會自動辨識每張（或同一天的多頁合併辨識），從紙本讀出營業日（可改；看不清或與檔名不符會黃框），並依日期分組。核對畫面用分頁列出各日與狀態，可「確認寫入（此日）」、「略過此日」或「全部確認寫入」。每一天分開寫入 importArchive，並分開排進雲端備份（Firestore sheetImports，再同步到 Drive「排檯表匯入備份」）。寫入時把紙本上的小姐自動加入該日報班（既有 `sheetImportCheckin`）。**絕不改帳單金額**（含已日結日的 `revenue`／`voidedRevenue`／`staffPay`）。若該日已有資料，必須明確選「合併」或「略過」才會寫入；全部確認時對已有資料的日子預設合併並再問一次。辨識與全部寫入過程有進度條。確認前不改當日資料。登入行為維持 v12.27.1（一律先 popup，含主畫面 App；失敗顯示錯誤與版本；loginFails）。
+
+### 2026-11-24 清空營業資料（讓店長重新上傳）
+
+授權：冠廷「先取消全部資料 讓店長重新上傳」；範圍為全部營業資料清掉，帳號與小姐名單保留。
+
+完整 Firestore 備份（含將清除與保留的集合，可還原）在：
+
+`/workspace/hostess-club-system/import/2026-11-24-wipe/`
+
+- `backup-meta.json`：時間、集合、文件數、checksum
+- `firestore-dump/`：各集合文件
+- `firestore-wipe-toolkit.py --restore`：還原（可加 `--restore-collections=...`）
+- `wipe-report.json`：清除後對照
+
+已清除：days（今日改寫成空看板並保留小姐／少爺名冊）、hist、guestTokens、punches、public 等營業資料。當時不存在、故無文件可刪的集合：sheetImports、importArchive、orders、girlCheckin、girlHist、leaves、wine、wineLog、ledger、loginFails、guestReq。
+
+已保留：users、config（settings／roster／boot）、permLog、loginFails（空）、loginLogs、secrets、menu、audit（操作紀錄，不確定是否算營業資料故保留）。Google Drive「排檯表匯入備份」未刪。線上版本 v12.28.1（cleanVer=3；空資料也可開排檯／報表／匯入）。
