@@ -1,13 +1,14 @@
-// v12.25 鎖頭面板：包廂密碼登出＋員工解鎖（含 Google）；職級含店長
+// v12.26 包廂頁獨立登入（具名 Firebase app room）；v12.25 鎖頭面板：包廂密碼登出＋員工解鎖（含 Google）；職級含店長
 // v12.21.2 可點規則：滿 bookedMax／他房私檯／暫停才灰；隨機只抽亮燈
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import {bootNamedApp} from './auth-scope.js?v=12.26';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence,EmailAuthProvider,reauthenticateWithCredential,GoogleAuthProvider,signInWithPopup} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {initializeFirestore,persistentLocalCache,connectFirestoreEmulator,doc,getDoc,setDoc,updateDoc,collection,onSnapshot,addDoc,query,where} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
-const app=initializeApp(firebaseConfig),auth=getAuth(app),db=initializeFirestore(app,{localCache:persistentLocalCache()});
-if(EMU){connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});connectFirestoreEmulator(db,'127.0.0.1',8080)}
-setPersistence(auth,browserLocalPersistence).catch(()=>{});
+const {app,auth}=bootNamedApp('room');
+const db=initializeFirestore(app,{localCache:persistentLocalCache()});
+if(EMU){try{connectFirestoreEmulator(db,'127.0.0.1',8080)}catch(e){}}
 const mail=id=>String(id).trim().toLowerCase()+'@paitai-system.local';
 const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'店長':4,'老闆':5,'特殊':6};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -20,14 +21,33 @@ function idle(){clearTimeout(idleT);idleT=setTimeout(()=>{if(G.view!='home'){G.v
 function flash(t){const m=$('msg');m.innerHTML=t;m.style.display='block';setTimeout(()=>m.style.display='none',2200)}
 const day=()=>G.day||new Date(Date.now()-7.17*36e5).toLocaleDateString('sv-SE');
 // ---- 設定（綁定包廂）：用房間平板帳號登入 ----
-function staffAppLink(){return `<p class="staff-link"><a href="index.html">員工請到排檯主程式登入<span class="vi">Nhân viên đăng nhập hệ thống chính</span></a></p>`}
+function roleLabel(p){const r=(p&&p.role)||'';if(r==='特殊')return'冠廷';if(r==='小姐')return'小姐';if(r==='kitchen')return'廚房';if(r==='tv')return'TV 看板';return r||'員工'}
+function staffOnGuestUI(p){
+  const o=$('ov');o.style.display='flex';
+  const disabled=p&&p.disabled;
+  const noRoom=p&&p.role==='room'&&!p.room;
+  const title=disabled?'此帳號已停用':(noRoom?'此房間平板未綁定包廂':'這不是房間平板帳號');
+  const titleVi=disabled?'Tài khoản đã bị khóa':(noRoom?'Máy tính bảng phòng chưa gắn phòng':'Đây không phải tài khoản máy tính bảng phòng');
+  const who=p?esc((p.name||p.staffId||'')+(p.role&&p.role!=='room'?'（'+roleLabel(p)+'）':'')):'';
+  o.innerHTML=`<div class=box><h2>${esc(title)}<span class="vi">${esc(titleVi)}</span></h2>
+    ${who?`<p>目前帳號：<b>${who}</b></p>`:''}
+    <p class=lock-hint>包廂客人頁只能用「房間平板」帳號。員工請到排檯主程式或小姐報班頁登入。三個頁面的登入已分開，這裡不會自動跳轉。<span class="vi">Trang khách phòng chỉ dùng tài khoản máy tính bảng phòng. Nhân viên hãy đăng nhập ở hệ thống chính hoặc trang điểm danh.</span></p>
+    <p class="staff-link"><a href="index.html">開啟排檯主程式<span class="vi">Mở hệ thống xếp bàn chính</span></a></p>
+    <p class="staff-link"><a href="girl/">開啟小姐報班頁<span class="vi">Mở trang điểm danh tiếp viên</span></a></p>
+    <button id=sgOut type=button class=lock-x>登出此頁帳號<span class="vi">Đăng xuất tài khoản trang này</span></button>
+    <button id=sgBack type=button class=lock-pri>改用房間平板登入<span class="vi">Đăng nhập bằng tài khoản phòng</span></button>
+  </div>`;
+  $('sgOut').onclick=async()=>{if(!confirm('確定登出此頁帳號？主程式或報班頁的登入不會一起被登出。'))return;await signOut(auth);setupUI()};
+  $('sgBack').onclick=async()=>{await signOut(auth).catch(()=>{});setupUI()};
+}
+function staffAppLink(){return `<p class="staff-link"><a href="index.html">員工請到排檯主程式登入<span class="vi">Nhân viên đăng nhập hệ thống chính</span></a></p><p class="staff-link"><a href="girl/">小姐報班頁<span class="vi">Trang điểm danh tiếp viên</span></a></p>`}
 function setupUI(err){const o=$('ov');o.style.display='flex';o.innerHTML=`<div class=box><h2>包廂平板設定<span class="vi">Cài đặt máy tính bảng phòng</span></h2><p style="color:#aab">請幹部用「房間平板」帳號登入（老闆在人員帳號管理建立，角色選「房間平板」並綁定包廂）。<span class="vi">Cán bộ đăng nhập tài khoản máy tính bảng phòng.</span></p>${err?`<p style="color:#f66">${esc(err)}</p>`:''}
  <input id=sId placeholder="平板帳號（例 room208）" autocapitalize=none autocomplete=username><input id=sPw type=password placeholder="密碼" autocomplete=current-password><button id=sGo style="background:#2fb47a;color:#fff;min-height:44px">登入並綁定<span class="vi">Đăng nhập và gắn phòng</span></button>${staffAppLink()}</div>`;
  $('sGo').onclick=async()=>{try{$('sGo').disabled=true;await signInWithEmailAndPassword(auth,mail($('sId').value),$('sPw').value)}catch(e){setupUI('登入失敗：'+(e.code||''))}}}
 if(TOKEN){G.prof=G.prof||{name:'客人',role:'guest'};draw();startTokenMode()}
 else onAuthStateChanged(auth,async u=>{G.unsub.forEach(f=>f());G.unsub=[];G.user=u;if(!u)return setupUI();
  let p=null;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null}catch(e){}
- if(!p||p.disabled||p.role!='room'||!p.room){await signOut(auth);return setupUI(p&&p.role!='room'?'這不是房間平板帳號（員工請用一般排檯系統）':'此帳號未綁定包廂或已停用')}
+ if(!p||p.disabled||p.role!='room'||!p.room){return staffOnGuestUI(p)}
  G.prof=p;G.room=p.room;$('ov').style.display='none';$('rm').textContent=p.room+' 包廂';subs();draw()});
 function startTokenMode(){
   const f=e=>console.warn(e);

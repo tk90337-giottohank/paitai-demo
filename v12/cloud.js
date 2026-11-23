@@ -1,4 +1,4 @@
-// v12.25 匯入備份／校對、包廂鎖頭登出、店長職級；v12.24 登入畫面跟主題色
+// v12.26 主程式／報班／包廂三個登入分開（具名 Firebase app）；v12.25 匯入備份／校對、包廂鎖頭登出、店長職級；v12.24 登入畫面跟主題色
 // v12.23 Google 登入＋幹部改權限＋kt 與 Google 合併
 // v12.22 介面五組選單；換日重設離看板
 // v12.21.4 換日補跑＋交易鎖修正（不把複製的舊 dayRoll 當成已完成）
@@ -8,12 +8,14 @@
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import {bootNamedApp,clearLegacyDefaultSession} from './auth-scope.js?v=12.26';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,updateProfile,browserLocalPersistence,setPersistence,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,linkWithPopup,linkWithRedirect} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
-const app=initializeApp(firebaseConfig),auth=getAuth(app);
+const {app,auth}=bootNamedApp('staff');
 const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
-if(EMU){connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});connectFirestoreEmulator(db,'127.0.0.1',8080)}
+if(EMU){try{connectFirestoreEmulator(db,'127.0.0.1',8080)}catch(e){}}
+clearLegacyDefaultSession(['room']);
 const DOMAIN='paitai-system.local',mail=id=>String(id).trim().toLowerCase()+'@'+DOMAIN;
 const RANK={'小姐':1,'少爺':1,'幹部':2,'經理':3,'店長':4,'老闆':5,'特殊':6,'tv':0,'kitchen':0,'room':0,'pending':0};const RL=r=>r=='特殊'?'冠廷':r=='kitchen'?'廚房':r=='room'?'房間平板':r=='pending'?'待核准':r;const ROLE_ALL=['小姐','少爺','幹部','經理','店長','老闆','特殊','tv','kitchen','room','pending'];
 const KT_UID='PJGFBvQAUxSQQTdWgMLBsGwx7VN2';
@@ -106,7 +108,7 @@ function loginUI(msg){ov.style.display='block';const hint=msg||googleHint();ov.i
  <label>員工編號<br><input id=fbId autocomplete=username autocapitalize=none style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <label>密碼<br><input id=fbPw type=password autocomplete=current-password style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <button id=fbGo style="width:100%;font-size:20px;padding:12px">登入</button>
- <p style="font-size:14px"><a href="#" id=fbBoot class="login-link">首次啟用：建立最高權限帳號</a>・<a href="#" id=fbHelp class="login-link">登入教學</a>・<a href="girl/" class="login-link">小姐報班頁</a>${EMU?'・<b style="color:#e90">模擬器</b>':''}</p></div>`;
+ <p style="font-size:14px"><a href="#" id=fbBoot class="login-link">首次啟用：建立最高權限帳號</a>・<a href="#" id=fbHelp class="login-link">登入教學</a>・<a href="girl/" class="login-link">小姐報班頁</a>・<a href="guest.html" class="login-link">包廂客人頁</a>${EMU?'・<b style="color:#e90">模擬器</b>':''}</p></div>`;
  const go=async()=>{const id=fbId.value,pw=fbPw.value;if(!id||!pw)return;st.manual=true;fbGo.disabled=true;fbGo.textContent='登入中…';try{await signInWithEmailAndPassword(auth,mail(id),pw)}catch(e){loginUI(e.code=='auth/network-request-failed'?'網路連不上，請稍後再試':'員工編號或密碼錯誤')}};
  fbGo.onclick=go;fbPw.onkeydown=e=>{if(e.key=='Enter')go()};fbHelp.onclick=e=>{e.preventDefault();helpOverlay()};fbBoot.onclick=e=>{e.preventDefault();bootUI()};
  fbG.onclick=()=>socialLogin('google')}
@@ -161,6 +163,17 @@ function disabledUI(){
   dsOut.onclick=()=>{if(confirm('確定登出？'))signOut(auth)};
 }
 
+function wrongPageUI(kind){
+  const p=st.prof||{};
+  const room=p.room||String(p.staffId||'').replace(/^room-?/i,'');
+  ov.style.display='block';
+  ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>這是排檯主程式</h2>
+    <p>目前登入的是「${esc(room||'?')} 包廂平板」帳號，不能在主程式使用。請到包廂客人頁用房間平板帳號登入。主程式、報班頁、包廂頁的登入已分開，這裡登出不會把包廂頁一起登出。</p>
+    <p><a class="login-link" href="guest.html">開啟包廂客人頁</a></p>
+    <p><button id=wpOut type=button class=s style="font-size:18px;padding:10px 16px;min-height:44px">登出</button></p></div>`;
+  wpOut.onclick=()=>{if(confirm('確定登出？'))signOut(auth)};
+}
+
 function bootUI(msg){ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>首次啟用：建立最高權限帳號</h2><p style="font-size:14px">只能做一次。之後所有帳號都在系統內建立。</p><label>帳號類型<br><select id=bRole style="width:100%;font-size:20px;padding:8px"><option value="特殊" selected>冠廷（最高權限）</option><option value="老闆">老闆</option></select></label><br><br>${msg?`<p style="color:#f88">${msg}</p>`:''}
  <label>員工編號（英數）<br><input id=bId autocapitalize=none value="guanting" style="width:100%;font-size:20px;padding:8px"></label><br><br><label>名字<br><input id=bNm value="冠廷" style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <label>密碼（至少 6 碼）<br><input id=bPw type=password autocomplete=new-password style="width:100%;font-size:20px;padding:8px"></label><br><br><button id=bGo style="width:100%;font-size:20px;padding:12px">建立並登入</button> <p><a href="#" id=bBack class="login-link">← 返回登入</a></p></div>`;
@@ -176,7 +189,7 @@ onAuthStateChanged(auth,async u=>{stopSync();st.user=u;st.prof=null;st.inited=nu
  let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null;if(!p)p=await createPending(u)}catch(e){p=null;if(String(e&&e.message||'').includes('kt-google-must-link')){await signOut(auth);loginUI('這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入，再按「綁定 Google」。');return}}
  if(!p){await signOut(auth);loginUI('此帳號沒有權限資料，請找老闆');return}
  if(p.disabled){st.prof=p;disabledUI();status();return}
- if(p.role=='room'){location.replace('guest.html'+location.search);return}
+ if(p.role=='room'){st.prof=p;wrongPageUI('room');status();return}
  if(p.role=='小姐'){location.replace(girlPageUrl());return}
  st.prof=p;S.cur={name:p.name,role:p.role,uid:u.uid,staffId:p.staffId,girlId:p.girlId};S.op=p.name;const op=document.getElementById('op');if(op)op.value=p.name;
  if(p.role=='pending'){pendingUI();status();return}
@@ -922,5 +935,5 @@ async function updateImportReview(id,patch){
   await updateDoc(doc(db,'importArchive',id),upd);
 }
 
-window.Cloud={ver:"v12.25",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+window.Cloud={ver:"v12.26",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();

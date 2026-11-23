@@ -1,4 +1,4 @@
-// v12.25 登出可達、店長職級；v12.24 報班頁跟主題色
+// v12.26 報班頁獨立登入（具名 Firebase app girl）；v12.25 登出可達、店長職級；v12.24 報班頁跟主題色
 // v12.23 Google 登入（popup＋redirect、內建瀏覽器提示）
 // v12.22 換日補跑時新日看板清空（未關帳房只留在歸檔／待辦）
 // v12.21.4 報班頁開啟時也補跑錯過的換日（交易鎖，只跑一次）
@@ -7,15 +7,16 @@
 // v12.15 小姐報班（Google＋編號密碼；已取消 Apple）
 import {firebaseConfig} from '../firebase-config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import {bootNamedApp,clearLegacyDefaultSession} from '../auth-scope.js?v=12.26';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence,
   GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,updateProfile} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {initializeFirestore,persistentLocalCache,connectFirestoreEmulator,doc,getDoc,setDoc,updateDoc,collection,onSnapshot,query,where,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
 const EMU=/[?&]emu=1/.test(location.search);
-const app=initializeApp(firebaseConfig),auth=getAuth(app);
+const {app,auth}=bootNamedApp('girl');
 const db=initializeFirestore(app,{localCache:persistentLocalCache()});
-if(EMU){connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});connectFirestoreEmulator(db,'127.0.0.1',8080)}
-setPersistence(auth,browserLocalPersistence).catch(()=>{});
+if(EMU){try{connectFirestoreEmulator(db,'127.0.0.1',8080)}catch(e){}}
+clearLegacyDefaultSession(['room']);
 const mail=id=>String(id).trim().toLowerCase()+'@paitai-system.local';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
@@ -152,6 +153,7 @@ function loginUI(msg, wrongProf){
   const w=wrongProf?wrongRoleCopy(wrongProf):null;
   $('ov').innerHTML=`<div class=box><h2>${T('login')}<span class=vi>Đăng nhập điểm danh</span></h2>
     ${w?`<div class=warn id=wrongRole data-no-i18n><b>${esc(w.zh)}</b><span class=vi>${esc(w.vi)}</span></div>
+      ${wrongProf&&wrongProf.role==='room'?`<p><a href="../guest.html">開啟包廂客人頁<span class=vi>Mở trang khách phòng</span></a></p>`:`<p><a href="../index.html">開啟排檯主程式<span class=vi>Mở hệ thống xếp bàn chính</span></a></p>`}
       <button class="btn s" id=gSwitch type=button data-no-i18n>登出／切換帳號<span class=vi>Đăng xuất / Đổi tài khoản</span></button>`:''}
     ${msg?`<p class=err>${esc(msg)}</p>`:(googleHint()?`<p class=err>${esc(googleHint())}</p>`:'')}
     <button class="btn g" id=gGo type=button>${T('google')}</button>
