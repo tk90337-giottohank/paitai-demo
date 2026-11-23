@@ -1,3 +1,4 @@
+// v12.27.1 主畫面 App 也先走 Google 彈窗；登入失敗要顯示錯誤與版本號
 // v12.27 修正 iPhone Google 登入：具名 app 的 redirect 結果不再被 [DEFAULT]／setPersistence 清掉；popup 優先
 // v12.26 主程式／報班／包廂三個登入分開（具名 Firebase app）；v12.25 匯入備份／校對、包廂鎖頭登出、店長職級；v12.24 登入畫面跟主題色
 // v12.23 Google 登入＋幹部改權限＋kt 與 Google 合併
@@ -9,7 +10,7 @@
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {bootNamedApp,clearLegacyDefaultSession,authReady} from './auth-scope.js?v=12.27';
+import {bootNamedApp,clearLegacyDefaultSession,authReady} from './auth-scope.js?v=12.27.1';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,updateProfile,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,linkWithPopup,linkWithRedirect} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
@@ -103,18 +104,59 @@ function flush(){st.timer=null;if(!st.user||st.inited!==true||!isOps()){status()
 function audit(m){if(!st.user||TVMODE||!isOps()||st.inited!==true)return;addDoc(collection(db,'audit'),{uid:st.user.uid,name:st.prof.name,role:RL(st.prof.role),t:Date.now(),msg:String(m).slice(0,500)}).catch(()=>{})}
 // ---- 登入畫面 ----
 const ov=document.createElement('div');ov.id='fbLogin';ov.className='fb-login';ov.style.cssText='position:fixed;inset:0;z-index:9999;display:none;overflow:auto;padding:24px;font-size:17px';document.body.appendChild(ov);
+const APP_VER='v12.27.1';
 function isiOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
-function isStandalone(){return window.matchMedia('(display-mode: standalone)').matches}
-function useRedirect(){return isStandalone()} // iOS 一般瀏覽器改走 popup（使用者點擊）；僅主畫面 App 才用 redirect
+function isStandalone(){return !!(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)}
+function useRedirect(){return false} // 主畫面 App 也先走 popup；只有彈窗被擋才退回 redirect
 let loginHold='';
-function loginUI(msg){if(msg)loginHold=msg;ov.style.display='block';const hint=msg||loginHold||googleHint();ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>🔐 排檯系統登入</h2>${hint?`<p style="color:#f88">${hint}</p>`:''}
+function socialErr(e){
+  const c=(e&&e.code)||'';
+  const m=(e&&e.message)||'';
+  if(c=='auth/operation-not-allowed')return 'Google 登入尚未在 Firebase 開啟（'+c+'）。請用員工編號密碼，或到 Firebase 主控台啟用 Google 登入。';
+  if(c=='auth/unauthorized-domain')return '這個網址尚未列入 Google 登入授權網域（'+c+'）。請用編號密碼，並檢查 Firebase 授權網域是否包含 github.io。';
+  if(c=='auth/network-request-failed')return '網路連不上 Google 登入（'+c+'）。請檢查網路後再試，或改用員工編號密碼。';
+  if(c=='auth/popup-blocked')return '瀏覽器擋住了 Google 登入彈窗（'+c+'）。請允許彈窗後再試，或改用員工編號密碼。';
+  if(c=='auth/popup-closed-by-user'||c=='auth/cancelled-popup-request')return '已取消 Google 登入（'+c+'）。若不是你關掉的，請再點一次，或改用員工編號密碼。';
+  if(c=='auth/account-exists-with-different-credential')return '這個 Google 已用其他方式註冊（'+c+'）。請先用員工編號密碼登入再綁定。';
+  if(c=='auth/web-storage-unsupported'||c=='auth/operation-not-supported-in-this-environment')return '這個環境無法完成 Google 登入（'+c+'）。請改用 Safari 打開本頁，或用員工編號密碼。';
+  return 'Google 登入失敗：'+(c||m||'未知錯誤')+'。請再試一次，或改用員工編號密碼。';
+}
+async function logLoginFail(code,err){
+  try{
+    const rec={
+      atMs:Date.now(),
+      atTaipei:taipeiNow(),
+      type:'google-fail',
+      code:String(code||(err&&err.code)||'').slice(0,80),
+      message:String((err&&(err.message||err))||code||'').slice(0,300),
+      userAgent:(navigator.userAgent||'').slice(0,400),
+      device:(typeof devSum==='function'?devSum():''),
+      standalone:isStandalone(),
+      ver:APP_VER,
+      page:'staff'
+    };
+    await addDoc(collection(db,'loginFails'),rec);
+  }catch(e){}
+}
+function consumeRedirectFlag(){
+  try{
+    if(sessionStorage.getItem('paitai-google-redirect')==='1'){
+      sessionStorage.removeItem('paitai-google-redirect');
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+function loginUI(msg){if(msg)loginHold=msg;ov.style.display='block';const hint=msg||loginHold||googleHint();const stand=isStandalone();ov.innerHTML=`<div style="max-width:380px;margin:6vh auto"><h2>🔐 排檯系統登入</h2>${hint?`<p style="color:#f88">${hint}</p>`:''}
  <button id=fbG type=button style="width:100%;font-size:18px;padding:12px;margin:0 0 16px;background:#fff;color:#222;border-radius:10px;border:0;min-height:48px">使用 Google 登入</button>
  <p style="text-align:center;color:#888;font-size:13px;margin:0 0 12px">或用員工編號與密碼</p>
  <label>員工編號<br><input id=fbId autocomplete=username autocapitalize=none style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <label>密碼<br><input id=fbPw type=password autocomplete=current-password style="width:100%;font-size:20px;padding:8px"></label><br><br>
  <button id=fbGo style="width:100%;font-size:20px;padding:12px">登入</button>
- <p style="font-size:14px"><a href="#" id=fbBoot class="login-link">首次啟用：建立最高權限帳號</a>・<a href="#" id=fbHelp class="login-link">登入教學</a>・<a href="girl/" class="login-link">小姐報班頁</a>・<a href="guest.html" class="login-link">包廂客人頁</a>${EMU?'・<b style="color:#e90">模擬器</b>':''}</p></div>`;
- const go=async()=>{const id=fbId.value,pw=fbPw.value;if(!id||!pw)return;st.manual=true;fbGo.disabled=true;fbGo.textContent='登入中…';try{await signInWithEmailAndPassword(auth,mail(id),pw)}catch(e){loginUI(e.code=='auth/network-request-failed'?'網路連不上，請稍後再試':'員工編號或密碼錯誤')}};
+ <p style="font-size:14px"><a href="#" id=fbBoot class="login-link">首次啟用：建立最高權限帳號</a>・<a href="#" id=fbHelp class="login-link">登入教學</a>・<a href="girl/" class="login-link">小姐報班頁</a>・<a href="guest.html" class="login-link">包廂客人頁</a>${EMU?'・<b style="color:#e90">模擬器</b>':''}</p>
+ ${stand?`<p style="color:#9ab;font-size:13px;margin:14px 0 0">你現在用的是主畫面 App。請直接點「使用 Google 登入」（會開彈窗）。若這裡沒有顯示 ${APP_VER}，請刪掉主畫面圖示，用 Safari 打開本頁再重新加入。</p>`:''}
+ <p style="text-align:center;color:#667;font-size:12px;margin:18px 0 0">${APP_VER}${stand?' · 主畫面 App':''}</p></div>`;
+ const go=async()=>{const id=fbId.value,pw=fbPw.value;if(!id||!pw)return;st.manual=true;fbGo.disabled=true;fbGo.textContent='登入中…';try{await signInWithEmailAndPassword(auth,mail(id),pw)}catch(e){loginUI(e.code=='auth/network-request-failed'?'網路連不上，請稍後再試（'+(e.code||'')+'）':'員工編號或密碼錯誤'+(e.code?'（'+e.code+'）':''))}};
  fbGo.onclick=go;fbPw.onkeydown=e=>{if(e.key=='Enter')go()};fbHelp.onclick=e=>{e.preventDefault();helpOverlay()};fbBoot.onclick=e=>{e.preventDefault();bootUI()};
  fbG.onclick=()=>socialLogin('google')}
 async function socialLogin(kind){
@@ -124,22 +166,21 @@ async function socialLogin(kind){
   if(hint)return loginUI(hint);
   const p=new GoogleAuthProvider();
   try{
-    // GitHub Pages 與 authDomain 不同站，iOS redirect 容易在回來時對不到具名 app。先用 popup（點擊觸發）。
-    if(!useRedirect()){
-      try{await signInWithPopup(auth,p);return}
-      catch(e){
-        const c=e.code||'';
-        if(c=='auth/popup-closed-by-user'||c=='auth/cancelled-popup-request')return;
-        if(!(c=='auth/popup-blocked'||c=='auth/operation-not-supported-in-this-environment'||c=='auth/web-storage-unsupported'))throw e;
-      }
+    // GitHub Pages 無法代理 /__/auth；iOS 主畫面 App 的 redirect 常丟失結果。一律先 popup（含 standalone）。
+    try{await signInWithPopup(auth,p);return}
+    catch(e){
+      const c=e.code||'';
+      if(c=='auth/popup-closed-by-user'||c=='auth/cancelled-popup-request'){loginUI(socialErr(e));logLoginFail(c,e);return}
+      if(!(c=='auth/popup-blocked'||c=='auth/operation-not-supported-in-this-environment'||c=='auth/web-storage-unsupported')){loginUI(socialErr(e));logLoginFail(c,e);return}
     }
-    loginUI('正在前往 Google，完成後會自動回到本頁…');
+    try{sessionStorage.setItem('paitai-google-redirect','1')}catch(e){}
+    loginUI('彈窗無法使用，改為跳轉到 Google。完成後會回到本頁…');
     await signInWithRedirect(auth,p);
   }catch(e){
     const c=e.code||'';
-    if(c=='auth/popup-closed-by-user'||c=='auth/cancelled-popup-request')return;
-    if(c=='auth/operation-not-allowed')loginUI('Google 登入尚未在 Firebase 開啟。請冠廷到 Firebase 主控台 Authentication → Sign-in method → Google → 啟用 → 儲存。或先用編號密碼。');
-    else loginUI('社群登入失敗：'+(c||e.message||''));
+    if(c=='auth/popup-closed-by-user'||c=='auth/cancelled-popup-request'){loginUI(socialErr(e));logLoginFail(c,e);return}
+    loginUI(socialErr(e));
+    logLoginFail(c,e);
   }
 }
 async function createPending(u){
@@ -195,14 +236,18 @@ onAuthStateChanged(auth,async u=>{stopSync();st.user=u;st.prof=null;st.inited=nu
     if(ov.style.display!=='block')loginUI('正在確認登入狀態…');
     await authGate;
     if(auth.currentUser)return;
-    if(loginHold==='正在確認登入狀態…'||loginHold==='正在前往 Google，完成後會自動回到本頁…')loginHold='';
+    if(loginHold==='正在確認登入狀態…'||loginHold.indexOf('改為跳轉到 Google')>=0||loginHold==='正在前往 Google，完成後會自動回到本頁…')loginHold='';
+  }
+  if(consumeRedirectFlag()&&!auth.currentUser){
+    loginHold='Google 登入沒有完成（redirect-lost）。從主畫面 App 跳轉到 Google 再回來時，iPhone 常會失去登入結果。請再點「使用 Google 登入」（會開彈窗），或用 Safari 打開本頁，或用員工編號密碼。';
+    logLoginFail('redirect-lost','standalone or redirect returned no user');
   }
   S.cur=null;status();loginUI();return
  }
  loginHold='';
- if(isKtGoogle(u)&&u.uid!==KT_UID){loginHold='這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入，再於「人員帳號管理」或個人設定按「綁定 Google」。';await signOut(auth);loginUI(loginHold);return}
- let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null;if(!p)p=await createPending(u)}catch(e){p=null;if(String(e&&e.message||'').includes('kt-google-must-link')){loginHold='這個 Google 帳號應與 kt（冠廷）合併。請先用 kt 編號密碼登入，再按「綁定 Google」。';await signOut(auth);loginUI(loginHold);return}}
- if(!p){loginHold='此帳號沒有權限資料，請找老闆';await signOut(auth);loginUI(loginHold);return}
+ if(isKtGoogle(u)&&u.uid!==KT_UID){loginHold='這個 Google 帳號應與 kt（冠廷）合併（帳號未連結）。請先用 kt 編號密碼登入，再於「人員帳號管理」或個人設定按「綁定 Google」。';logLoginFail('kt-google-must-link','uid '+u.uid);await signOut(auth);loginUI(loginHold);return}
+ let p;try{const s=await getDoc(doc(db,'users',u.uid));p=s.exists()?s.data():null;if(!p)p=await createPending(u)}catch(e){p=null;if(String(e&&e.message||'').includes('kt-google-must-link')){loginHold='這個 Google 帳號應與 kt（冠廷）合併（帳號未連結）。請先用 kt 編號密碼登入，再按「綁定 Google」。';logLoginFail('kt-google-must-link',e);await signOut(auth);loginUI(loginHold);return}}
+ if(!p){loginHold='此帳號沒有權限資料，請找老闆';logLoginFail('no-profile','users doc missing');await signOut(auth);loginUI(loginHold);return}
  if(p.disabled){st.prof=p;disabledUI();status();return}
  if(p.role=='room'){st.prof=p;wrongPageUI('room');status();return}
  if(p.role=='小姐'){location.replace(girlPageUrl());return}
@@ -949,5 +994,5 @@ async function updateImportReview(id,patch){
   await updateDoc(doc(db,'importArchive',id),upd);
 }
 
-window.Cloud={ver:"v12.27",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+window.Cloud={ver:"v12.27.1",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();

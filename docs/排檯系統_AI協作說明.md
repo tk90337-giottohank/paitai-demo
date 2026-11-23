@@ -9,7 +9,7 @@
   - 小姐報班頁：https://tk90337-giottohank.github.io/paitai-demo/v12/girl/
   - 客人點檯頁：https://tk90337-giottohank.github.io/paitai-demo/v12/guest.html
 - 資料庫：Firebase 專案 `paitai-system`（Spark 免費方案，Firestore 在 asia-east1，沒有 Cloud Functions，所有邏輯都在前端＋Firestore 規則）
-- 目前版本：v12.27（修正 iPhone Google 登入會跳回登入頁；主程式／小姐報班／包廂客人頁登入仍分開）
+- 目前版本：v12.27.1（主畫面 App 的 Google 登入改先走彈窗；登入頁顯示版本與錯誤）
 
 ## 二、技術架構
 純前端 HTML／JavaScript（無框架、無打包），Firebase Auth＋Firestore 即時同步。主要檔案：
@@ -86,3 +86,8 @@
 - 不要在載入時新建 `[DEFAULT]` app（舊的「清房間平板 session」只在本機已經有預設 app 時才跑），也不要在 redirect 途中再呼叫 `setPersistence`，以免 iOS 把 Google 登入結果清掉後跳回登入頁。
 - iPhone／iPad 一般瀏覽器改先用 Google 彈窗（使用者點擊觸發）；加到主畫面的 App 仍走 redirect。若應與 kt 合併的 Google 帳號被登出，錯誤說明會留在登入頁，不會一閃而過。
 - 包廂客人頁本身不用 Google 登入；鎖頭「員工解鎖」仍用彈窗（臨時 app），不受主程式 session 影響。
+
+## 十一、v12.27.1 主畫面 App Google 登入
+- v12.27 在一般 iPhone 瀏覽器已改走 Google 彈窗，但「加入主畫面」的獨立 App（standalone）仍走 `signInWithRedirect`。GitHub Pages 無法代理 `/__/auth`，iOS 主畫面 App 的 storage 與 Safari 分開，redirect 回來時常丟失結果，看起來就像選完帳號又回到登入頁，且沒有錯誤文字。
+- v12.27.1：主畫面 App 也先走 `signInWithPopup`（iOS 16.4+ 支援），只有彈窗被擋才退回 redirect；若 redirect 回來沒有使用者，登入頁會顯示「redirect-lost」說明。任何 Google 失敗都會顯示錯誤代碼，並寫入 `loginFails`。登入頁下方顯示版本號（例如 v12.27.1）。
+- 主畫面 App 若仍快取舊版（沒有版本號），需刪掉圖示、用 Safari 打開新頁再重新加入主畫面。

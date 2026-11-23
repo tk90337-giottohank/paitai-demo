@@ -190,6 +190,20 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if actorIsGuanting();
     }
+    // v12.27.1 Google 登入失敗紀錄（未登入也可寫入，供主畫面 App 排查；欄位受限）
+    match /loginFails/{id} {
+      allow create: if request.resource.data.atMs is number
+        && request.resource.data.type is string
+        && request.resource.data.type.size() <= 40
+        && request.resource.data.message is string
+        && request.resource.data.message.size() <= 300
+        && request.resource.data.userAgent is string
+        && request.resource.data.userAgent.size() <= 400
+        && request.resource.data.keys().hasOnly(['atMs','atTaipei','type','code','message','userAgent','device','standalone','ver','page']);
+      allow read: if actorIsGuanting();
+      allow update: if false;
+      allow delete: if actorIsGuanting();
+    }
     // 包廂平板（v12.6）：可點小姐清單（只有編號、名字、照片）
     match /public/avail {
       allow read: if reader() || isRoomTab();

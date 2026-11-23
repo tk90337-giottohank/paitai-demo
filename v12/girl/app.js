@@ -1,3 +1,4 @@
+// v12.27.1 主畫面 App 也先走 Google 彈窗；失敗顯示錯誤與版本
 // v12.27 修正 iPhone Google 登入（具名 app redirect／persistence）；v12.26 報班頁獨立登入（具名 Firebase app girl）；v12.25 登出可達、店長職級；v12.24 報班頁跟主題色
 // v12.23 Google 登入（popup＋redirect、內建瀏覽器提示）
 // v12.22 換日補跑時新日看板清空（未關帳房只留在歸檔／待辦）
@@ -7,10 +8,10 @@
 // v12.15 小姐報班（Google＋編號密碼；已取消 Apple）
 import {firebaseConfig} from '../firebase-config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {bootNamedApp,clearLegacyDefaultSession,authReady} from '../auth-scope.js?v=12.27';
+import {bootNamedApp,clearLegacyDefaultSession,authReady} from '../auth-scope.js?v=12.27.1';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,
   GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,updateProfile} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import {initializeFirestore,persistentLocalCache,connectFirestoreEmulator,doc,getDoc,setDoc,updateDoc,collection,onSnapshot,query,where,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {initializeFirestore,persistentLocalCache,connectFirestoreEmulator,doc,getDoc,setDoc,updateDoc,addDoc,collection,onSnapshot,query,where,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
 const EMU=/[?&]emu=1/.test(location.search);
 const {app,auth}=bootNamedApp('girl');
@@ -24,7 +25,8 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const $=id=>document.getElementById(id);
 const isiOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches;
-const useRedirect=()=>isStandalone(); // iOS 一般瀏覽器改走 popup；僅主畫面 App 才 redirect
+const APP_VER='v12.27.1';
+const useRedirect=()=>false; // 主畫面 App 也先 popup
 let loginHold='';
 const KT_UID='PJGFBvQAUxSQQTdWgMLBsGwx7VN2';
 const KT_GOOGLE_EMAILS=['tk90337@gmail.com'];
@@ -167,6 +169,8 @@ function loginUI(msg, wrongProf){
     <input id=sId placeholder="${T('id')}" autocapitalize=none autocomplete=username>
     <input id=sPw type=password placeholder="${T('pw')}" autocomplete=current-password>
     <button class=btn id=sGo type=button>${T('go')}</button>
+    ${isStandalone()?`<p style="color:#9ab;font-size:13px;margin:14px 0 0">你現在用的是主畫面 App。請直接點 Google 登入（會開彈窗）。若沒有顯示 ${APP_VER}，請刪掉圖示，用 Safari 打開再重新加入。</p>`:''}
+    <p style="text-align:center;color:#667;font-size:12px;margin:14px 0 0">${APP_VER}${isStandalone()?' · 主畫面 App':''}</p>
   </div>`;
   const go=async()=>{try{$('sGo').disabled=true;if(auth.currentUser){G._switch=true;try{await signOut(auth)}finally{G._switch=false}}await signInWithEmailAndPassword(auth,mail($('sId').value),$('sPw').value)}catch(e){G._switch=false;loginUI(e.code=='auth/network-request-failed'?T('net'):T('bad'),wrongProf)}};
   $('sGo').onclick=go;$('sPw').onkeydown=e=>{if(e.key==='Enter')go()};
@@ -174,27 +178,47 @@ function loginUI(msg, wrongProf){
   const sw=$('gSwitch');if(sw)sw.onclick=()=>{if(confirm('確定登出？'))signOut(auth)};
 }
 
+function socialErr(e){
+  const c=(e&&e.code)||'';
+  const m=(e&&e.message)||'';
+  if(c==='auth/operation-not-allowed')return 'Google 登入尚未在 Firebase 開啟（'+c+'）。請用編號密碼。';
+  if(c==='auth/unauthorized-domain')return '這個網址尚未列入授權網域（'+c+'）。請用編號密碼。';
+  if(c==='auth/network-request-failed')return '網路連不上 Google 登入（'+c+'）。請稍後再試，或用編號密碼。';
+  if(c==='auth/popup-blocked')return '瀏覽器擋住了 Google 彈窗（'+c+'）。請允許後再試，或用編號密碼。';
+  if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request')return '已取消 Google 登入（'+c+'）。請再試一次，或用編號密碼。';
+  return 'Google 登入失敗：'+(c||m||'未知錯誤')+'。請再試一次，或用編號密碼。';
+}
+async function logLoginFail(code,err){
+  try{
+    await addDoc(collection(db,'loginFails'),{
+      atMs:Date.now(),atTaipei:new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}),
+      type:'google-fail',code:String(code||(err&&err.code)||'').slice(0,80),
+      message:String((err&&(err.message||err))||code||'').slice(0,300),
+      userAgent:(navigator.userAgent||'').slice(0,400),
+      device:'girl'+(isStandalone()?' standalone':''),
+      standalone:isStandalone(),ver:APP_VER,page:'girl'
+    });
+  }catch(e){}
+}
 async function social(kind){
   if(kind==='apple')return loginUI('目前僅提供 Google 與編號密碼登入。');
   const hint=googleHint();
   if(hint)return loginUI(hint);
   const p=new GoogleAuthProvider();
   try{
-    if(!useRedirect()){
-      try{await signInWithPopup(auth,p);return}
-      catch(e){
-        const c=e.code||'';
-        if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request')return;
-        if(!(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment'||c==='auth/web-storage-unsupported'))throw e;
-      }
+    try{await signInWithPopup(auth,p);return}
+    catch(e){
+      const c=e.code||'';
+      if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request'){loginUI(socialErr(e));logLoginFail(c,e);return}
+      if(!(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment'||c==='auth/web-storage-unsupported')){loginUI(socialErr(e));logLoginFail(c,e);return}
     }
-    loginUI('正在前往 Google，完成後會自動回到本頁…');
+    try{sessionStorage.setItem('paitai-google-redirect','1')}catch(e){}
+    loginUI('彈窗無法使用，改為跳轉到 Google。完成後會回到本頁…');
     await signInWithRedirect(auth,p);
   }catch(e){
     const c=e.code||'';
-    if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request')return;
-    if(c==='auth/operation-not-allowed')loginUI(T('fail')+'Google 登入尚未在 Firebase 開啟。請冠廷到 Firebase 主控台 Authentication → Sign-in method → Google → 啟用 → 儲存。');
-    else loginUI(T('fail')+(c||e.message||''));
+    loginUI(socialErr(e));
+    logLoginFail(c,e);
   }
 }
 
@@ -220,8 +244,17 @@ onAuthStateChanged(auth,async u=>{
       await authGate;
       if(G._switch)return;
       if(auth.currentUser)return;
-      if(loginHold==='正在確認登入狀態…'||loginHold==='正在前往 Google，完成後會自動回到本頁…')loginHold='';
+      if(loginHold==='正在確認登入狀態…'||loginHold.indexOf('改為跳轉到 Google')>=0||loginHold==='正在前往 Google，完成後會自動回到本頁…')loginHold='';
     }
+    try{
+      if(sessionStorage.getItem('paitai-google-redirect')==='1'){
+        sessionStorage.removeItem('paitai-google-redirect');
+        if(!auth.currentUser){
+          loginHold='Google 登入沒有完成（redirect-lost）。請再點 Google 登入（會開彈窗），或用 Safari 打開，或用編號密碼。';
+          logLoginFail('redirect-lost','redirect returned no user');
+        }
+      }
+    }catch(e){}
     loginUI();draw();return
   }
   loginHold='';

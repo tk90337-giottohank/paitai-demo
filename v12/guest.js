@@ -1,8 +1,8 @@
-// v12.27 沿用獨立登入；Google 解鎖仍走 popup。v12.26 包廂頁獨立登入（具名 Firebase app room）；v12.25 鎖頭面板：包廂密碼登出＋員工解鎖（含 Google）；職級含店長
+// v12.27.1 快取版本號。v12.27 沿用獨立登入；Google 解鎖仍走 popup。v12.26 包廂頁獨立登入（具名 Firebase app room）；v12.25 鎖頭面板：包廂密碼登出＋員工解鎖（含 Google）；職級含店長
 // v12.21.2 可點規則：滿 bookedMax／他房私檯／暫停才灰；隨機只抽亮燈
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {bootNamedApp} from './auth-scope.js?v=12.27';
+import {bootNamedApp} from './auth-scope.js?v=12.27.1';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence,EmailAuthProvider,reauthenticateWithCredential,GoogleAuthProvider,signInWithPopup} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {initializeFirestore,persistentLocalCache,connectFirestoreEmulator,doc,getDoc,setDoc,updateDoc,collection,onSnapshot,addDoc,query,where} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
