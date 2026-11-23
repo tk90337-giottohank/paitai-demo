@@ -77,7 +77,7 @@ const PAL=[['紅','<b style="color:#e22">✓</b> 紅勾 點選'],['藍','<b styl
 // ---- 繪製 ----
 function cols(d){const X=S.dayExt[d]||{colOrder:[],others:[]},rows=sheetRows(d),inRows=new Set(rows.flatMap(e=>e.girls)),ck=(S.checkin||{})[d]||[];
  const offAt=g=>((S.clockOut||{})[d]||{})[g.id]||(g.offAt&&bizDay(g.offAt)==d?g.offAt:0);
- let L=S.girls.filter(g=>(g.on&&d==bizDay(now()))||inRows.has(g.id)||offAt(g)||ck.some(c=>c.id==g.id)||(X.others||[]).includes(g.id)||(X.colOrder||[]).includes(g.id));
+ let L=(typeof girlsHere==='function'?girlsHere():S.girls).filter(g=>(g.on&&d==bizDay(now()))||inRows.has(g.id)||offAt(g)||ck.some(c=>c.id==g.id)||(X.others||[]).includes(g.id)||(X.colOrder||[]).includes(g.id));
  const ord=X.colOrder||[];L.sort((a,b)=>{const ia=ord.indexOf(a.id),ib=ord.indexOf(b.id);if(ia!=ib)return(ia<0?999:ia)-(ib<0?999:ib);const ca=ck.findIndex(c=>c.id==a.id),cb=ck.findIndex(c=>c.id==b.id);if(ca!=cb)return(ca<0?999:ca)-(cb<0?999:cb);return(a.clockAt||9e15)-(b.clockAt||9e15)||a.id.localeCompare(b.id)});
  const oth=new Set(X.others||[]);L.forEach(g=>{if(/^\d+$/.test(g.id)&&catOf(g.id)!='小姐')oth.add(g.id)});
  return{main:L.filter(g=>!oth.has(g.id)),other:[...oth].map(id=>G(id)||{id,name:id}),rows,X,offAt}}

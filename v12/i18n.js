@@ -4,7 +4,7 @@ const HAN=/\p{Script=Han}/u;
 const VI=/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ]/;
 const DATA=global.__I18N_DATA__||{strings:{},templates:[],skip:[],corrections:[]};
 const STRINGS=Object.assign({
-  '列印':'In','關閉':'Đóng','登入中':'Đang đăng nhập','改名':'Đổi tên','新藝名':'Nghệ danh mới','確認改名':'Xác nhận đổi tên','改名紀錄':'Nhật ký đổi tên','請輸入藝名':'Vui lòng nhập nghệ danh','名字沒有變更':'Tên không thay đổi','小姐名冊（編輯／新增／離職）':'Danh sách tiếp viên (sửa / thêm / nghỉ việc)'
+  '列印':'In','關閉':'Đóng','登入中':'Đang đăng nhập','改名':'Đổi tên','新藝名':'Nghệ danh mới','確認改名':'Xác nhận đổi tên','改名紀錄':'Nhật ký đổi tên','請輸入藝名':'Vui lòng nhập nghệ danh','名字沒有變更':'Tên không thay đổi','小姐名冊（編輯／新增／離職）':'Danh sách tiếp viên (sửa / thêm / nghỉ việc)','分店':'Cửa hàng','新店':'Tân Điếm','另一間店':'Cửa hàng khác','目前分店':'Cửa hàng hiện tại','管理分店':'Quản lý cửa hàng','分店管理':'Quản lý cửa hàng','所屬分店':'Thuộc cửa hàng','切換分店':'Chuyển cửa hàng','重新命名分店':'Đổi tên cửa hàng','儲存名稱':'Lưu tên'
 }, DATA.strings||{});
 const SKIP=new Set(DATA.skip||['冠廷']);
 SKIP.add('冠廷');

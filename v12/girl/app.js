@@ -8,7 +8,7 @@
 // v12.15 小姐報班（Google＋編號密碼；已取消 Apple）
 import {firebaseConfig} from '../firebase-config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {bootNamedApp,clearLegacyDefaultSession,authReady} from '../auth-scope.js?v=12.28.2';
+import {bootNamedApp,clearLegacyDefaultSession,authReady} from '../auth-scope.js?v=12.29';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,signOut,onAuthStateChanged,
   GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,updateProfile} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {initializeFirestore,persistentLocalCache,connectFirestoreEmulator,doc,getDoc,setDoc,updateDoc,addDoc,collection,onSnapshot,query,where,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
@@ -25,7 +25,7 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const $=id=>document.getElementById(id);
 const isiOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches;
-const APP_VER='v12.28.2';
+const APP_VER='v12.29';
 const useRedirect=()=>false; // 主畫面 App 也先 popup
 let loginHold='';
 const KT_UID='PJGFBvQAUxSQQTdWgMLBsGwx7VN2';
@@ -278,7 +278,7 @@ function subs(){
     subMine();draw();
   },f));
   G.unsub.push(onSnapshot(doc(db,'config','roster'),s=>{
-    try{let n=s.exists()?s.data().names:null;if(typeof n==='string')n=JSON.parse(n);G.rosterNames=n&&typeof n==='object'?n:{}}catch(_){G.rosterNames=G.rosterNames||{}}
+    try{let n=s.exists()?s.data().names:null;if(typeof n==='string')n=JSON.parse(n);const bid=(G.prof&&G.prof.branchId)||'xindian';const nested=n&&typeof n==='object'&&!Array.isArray(n)&&n[bid]&&typeof n[bid]==='object';G.rosterNames=nested?n[bid]:(n&&typeof n==='object'?n:{})}catch(_){G.rosterNames=G.rosterNames||{}}
     draw(true);
   },f));
   if(G.staffMode){
@@ -409,7 +409,7 @@ function draw(){
 
 function drawStaff(){
   const day=G.day||bizDay(Date.now());
-  const roster=(G.roster||[]).filter(g=>g&&g.id&&!g.off&&!g.gone);
+  const bid=(G.prof&&G.prof.branchId)||'xindian';const roster=(G.roster||[]).filter(g=>g&&g.id&&!g.off&&!g.gone&&((g.branchId||'xindian')===bid));
   const list=G.todayList||[];
   const onIds=new Set(list.filter(x=>x.on).map(x=>String(x.girlId)));
   const pick=G.pickId||'';

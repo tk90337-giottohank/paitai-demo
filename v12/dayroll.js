@@ -191,7 +191,7 @@ function resetRoomsForRollover(from){
  Object.keys(rooms).forEach(r=>{
   const x=rooms[r];if(!x)return;
   const gs=(S.girls||[]).filter(g=>g.room==r);
-  const snap={room:JSON.parse(JSON.stringify(x)),girls:gs.map(g=>JSON.parse(JSON.stringify({id:g.id,status:g.status,room:g.room,src:g.src,start:g.start,until:g.until,priv:g.priv||null,tables:g.tables}))),dirty:(S.dirty||{})[r]?JSON.parse(JSON.stringify(S.dirty[r])):null,cleaning:(S.cleaning||{})[r]||null};
+  const snap={room:JSON.parse(JSON.stringify(x)),girls:gs.map(g=>JSON.parse(JSON.stringify({id:g.id,branchId:g.branchId||(typeof DEFAULT_BRANCH!=='undefined'?DEFAULT_BRANCH:'xindian'),status:g.status,room:g.room,src:g.src,start:g.start,until:g.until,priv:g.priv||null,tables:g.tables}))),dirty:(S.dirty||{})[r]?JSON.parse(JSON.stringify(S.dirty[r])):null,cleaning:(S.cleaning||{})[r]||null};
   S.roomResetLog.unshift({id:'rr-'+t+'-'+r,t,day:from,room:r,by:'系統（換日重設）',byRole:'系統',reason:'換日重設',carryDay:x.carryDay||from,paperSeq:x.paperSeq||null,snap,restored:false});
   gs.forEach(g=>{g.room=null;g.status='休息室';g.src='';g.until=0;g.priv=null});
   if(S.reqs)S.reqs=S.reqs.filter(q=>q.room!=r);
@@ -209,7 +209,7 @@ function restoreRolledRoom(r){
  if(!room)return false;
  S.rooms=S.rooms||{};
  S.rooms[r]=room;S.rooms[r].id=r;
- if(e&&e.snap&&e.snap.girls){(e.snap.girls||[]).forEach(s=>{const g=typeof G==='function'?G(s.id):null;if(!g)return;if(g.room&&g.room!=r)return;Object.assign(g,{room:r,status:s.status||'在檯',src:s.src||'',start:s.start,until:s.until,priv:s.priv||null})})}
+ if(e&&e.snap&&e.snap.girls){(e.snap.girls||[]).forEach(s=>{const g=typeof G==='function'?G(s.id,s.branchId||'xindian'):null;if(!g)return;if(g.room&&g.room!=r)return;Object.assign(g,{room:r,status:s.status||'在檯',src:s.src||'',start:s.start,until:s.until,priv:s.priv||null})})}
  if(e&&e.snap&&e.snap.dirty){(S.dirty=S.dirty||{})[r]=e.snap.dirty}
  if(e&&e.snap&&e.snap.cleaning){(S.cleaning=S.cleaning||{})[r]=e.snap.cleaning}
  if(e&&!e.restored){e.restored=true;e.restoredAt=rollNow();e.restoredBy=S.cur?S.cur.name:'';}
@@ -281,7 +281,7 @@ function resetRoom(r){
  bits.push('已完成的買單與已記入的台數不會刪除，並會留下可還原的快照');
  if(!confirm(`重設包廂 ${r}？\n\n${bits.join('\n')}\n\n確定重設？`))return;
  S.roomResetLog=S.roomResetLog||[];
- const snap={room:x?JSON.parse(JSON.stringify(x)):null,girls:gs.map(g=>JSON.parse(JSON.stringify({id:g.id,status:g.status,room:g.room,src:g.src,start:g.start,until:g.until,priv:g.priv||null,tables:g.tables}))),dirty:dirty?JSON.parse(JSON.stringify(dirty)):null,cleaning:cl||null};
+ const snap={room:x?JSON.parse(JSON.stringify(x)):null,girls:gs.map(g=>JSON.parse(JSON.stringify({id:g.id,branchId:g.branchId||(typeof DEFAULT_BRANCH!=='undefined'?DEFAULT_BRANCH:'xindian'),status:g.status,room:g.room,src:g.src,start:g.start,until:g.until,priv:g.priv||null,tables:g.tables}))),dirty:dirty?JSON.parse(JSON.stringify(dirty)):null,cleaning:cl||null};
  const rec={id:'rr-'+Date.now(),t:now(),day:S.openDay||bizDay(now()),room:r,by:S.cur?S.cur.name:(S.op||''),byRole:S.cur?S.cur.role:'',snap,restored:false};
  S.roomResetLog.unshift(rec);
  if(gs.length&&typeof leave==='function')gs.forEach(g=>leave(g,'重設包廂'));

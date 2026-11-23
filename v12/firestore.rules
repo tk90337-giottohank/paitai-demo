@@ -53,6 +53,11 @@ service cloud.firestore {
       allow read: if reader() || isHostess();
       allow write: if lvl() >= 2;
     }
+    // v12.29 分店清單（老闆以上可改名稱；實際也寫在 config/roster.branches 以便相容）
+    match /config/branches {
+      allow read: if reader() || isHostess();
+      allow write: if lvl() >= 5;
+    }
     // 首次啟用標記：與第一位老闆帳號同一批寫入，之後不可改
     match /config/boot {
       allow read: if signedIn();

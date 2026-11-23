@@ -1,4 +1,4 @@
-// v12.28.2 小姐名冊改以 2026-11-24 名牌為在職名單；報班頁隱藏已標離職者
+// v12.29 小姐名冊改以 2026-11-24 名牌為在職名單；報班頁隱藏已標離職者
 // v12.28 傳統排檯表照片瀏覽器自動辨識（Firebase AI Logic）＋匯入雲端備份（Firestore sheetImports）
 // v12.27 修正 iPhone Google 登入：具名 app 的 redirect 結果不再被 [DEFAULT]／setPersistence 清掉；popup 優先
 // v12.26 主程式／報班／包廂三個登入分開（具名 Firebase app）；v12.25 匯入備份／校對、包廂鎖頭登出、店長職級；v12.24 登入畫面跟主題色
@@ -11,8 +11,8 @@
 // v12 雲端同步層：Firebase Auth（員工編號＋密碼）＋ Firestore 即時同步
 import {firebaseConfig} from './firebase-config.js';
 import {initializeApp,deleteApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {bootNamedApp,clearLegacyDefaultSession,authReady} from './auth-scope.js?v=12.28.2';
-import {recognizeSheetPhotos} from './recognize-sheet.js?v=12.28.2';
+import {bootNamedApp,clearLegacyDefaultSession,authReady} from './auth-scope.js?v=12.29';
+import {recognizeSheetPhotos} from './recognize-sheet.js?v=12.29';
 import {getAuth,connectAuthEmulator,signInWithEmailAndPassword,createUserWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,updateProfile,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult,linkWithPopup,linkWithRedirect} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {where,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,connectFirestoreEmulator,doc,collection,onSnapshot,setDoc,deleteDoc,getDoc,writeBatch,addDoc,query,orderBy,limit,updateDoc,onSnapshotsInSync,serverTimestamp,getDocs,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const EMU=/[?&]emu=1/.test(location.search);
@@ -38,7 +38,7 @@ function isInAppBrowser(){const ua=navigator.userAgent||'';return /Line\//i.test
 function googleHint(){return isInAppBrowser()?'Google 無法在 LINE 或其他 App 內建瀏覽器完成登入。請用系統的 Chrome 或 Safari 開啟本頁，再按「使用 Google 登入」。':''}
 async function writePermLog(o){const rec={by:st.user&&st.user.uid,byName:(st.prof&&st.prof.name)||'',byRole:st.prof&&st.prof.role,targetUid:o.targetUid||'',targetName:o.targetName||'',targetStaffId:o.targetStaffId||'',fromRole:o.fromRole||'',toRole:o.toRole||'',action:o.action||'setRole',at:Date.now(),atTaipei:taipeiNow()};try{await addDoc(collection(db,'permLog'),rec)}catch(e){}if(typeof log==='function')log((rec.byName||'')+' 將 '+(rec.targetName||rec.targetStaffId)+' 權限 '+RL(rec.fromRole)+' → '+RL(rec.toRole)+'（'+rec.atTaipei+' 台北）')}
 
-const LOCAL=new Set(['cur','op','users','usersExample','impSnap','wsSeq','rosterNames','renameLog']);
+const LOCAL=new Set(['cur','op','users','usersExample','impSnap','wsSeq','rosterNames','renameLog','rosterMap','branches','branchId']);
 const SETTINGS=['cfg','wines','catalog','cb','attVer','cutVer','cleanVer','imp1026','beerVer','sheetLearn'];
 const isDayKey=k=>!LOCAL.has(k)&&!SETTINGS.includes(k)&&!['hist','wineStore','wsLog','ledger','dayRoll'].includes(k);
 const J=v=>JSON.stringify(v===undefined?null:v);
@@ -69,10 +69,11 @@ function startSync(){stopSync();foodSub();
  st.unsub.push(onSnapshot(doc(db,'config','settings'),snap=>{if(snap.metadata.hasPendingWrites)return;st.inited=snap.exists();
   if(snap.exists()&&applyFields(snap.data(),st.last.set,SETTINGS))rerender();status();if(!st.inited&&isOwnerPlus())banner();if(st.inited){syncServerTime();if(typeof maybeDayRoll==='function')setTimeout(()=>maybeDayRoll({reason:'sync'}),600)}},fail));
  st.unsub.push(onSnapshot(doc(db,'config','roster'),snap=>{if(snap.metadata.hasPendingWrites)return;if(!snap.exists())return;const d=snap.data()||{};
-  try{S.rosterNames=typeof d.names==='string'?JSON.parse(d.names):(d.names||S.rosterNames||{})}catch(e){}
+  try{let n=typeof d.names==='string'?JSON.parse(d.names):(d.names||{});const nested=n&&typeof n==='object'&&!Array.isArray(n)&&Object.values(n)[0]&&typeof Object.values(n)[0]==='object'&&!Array.isArray(Object.values(n)[0]);S.rosterMap=nested?n:{xindian:n||{}};if(typeof defaultBranches==='function'&&!Array.isArray(S.branches))S.branches=defaultBranches();if(d.branches){try{const b=typeof d.branches==='string'?JSON.parse(d.branches):d.branches;if(Array.isArray(b)&&b.length)S.branches=b}catch(e){}}}catch(e){}
   try{S.renameLog=typeof d.log==='string'?JSON.parse(d.log):(d.log||S.renameLog||[])}catch(e){}
-  st.last.roster=J({names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:d.at,by:d.by});
-  if(typeof applyRosterNames==='function')applyRosterNames();rerender()},fail));
+  if(typeof syncRosterNamesView==='function')syncRosterNamesView();
+  st.last.roster=J({names:J(S.rosterMap||S.rosterNames||{}),log:J(S.renameLog||[]),branches:J(S.branches||[]),at:d.at,by:d.by});
+  if(typeof applyRosterNames==='function')applyRosterNames();if(typeof paintBranchBar==='function')try{paintBranchBar()}catch(e){}rerender()},fail));
  subDay(S.openDay||bizDay(now()));
  if(isOps()){subGirlCheckin();subHr()}
  if(lv()>=2){
@@ -92,7 +93,7 @@ function flush(){st.timer=null;if(!st.user||st.inited!==true||!isOps()){status()
  if(Object.keys(dch).length){const size=Object.values(dch).reduce((a,v)=>a+v.length,0);if(size>900000){st.err='當日資料過大';status()}Object.assign(st.last.day,dch);ok(setDoc(doc(db,'days',id),dch,{merge:true}))}
  // 設定（經理以上）
  if(lv()>=3){const sch={};for(const k of SETTINGS){const j=J(S[k]);if(st.last.set[k]!==j)sch[k]=j}if(Object.keys(sch).length){Object.assign(st.last.set,sch);ok(setDoc(doc(db,'config','settings'),sch,{merge:true}))}}
- if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user.uid};const j=J(rec);if(st.last.roster!==j){st.last.roster=j;ok(setDoc(doc(db,'config','roster'),rec))}}
+ if(lv()>=2){if(typeof ensureRosterMap==='function')ensureRosterMap();if(typeof syncRosterNamesView==='function')syncRosterNamesView();const rec={names:J(S.rosterMap||S.rosterNames||{}),log:J(S.renameLog||[]),branches:J(S.branches||(typeof defaultBranches==='function'?defaultBranches():[])),at:Date.now(),by:st.user.uid};const j=J(rec);if(st.last.roster!==j){st.last.roster=j;ok(setDoc(doc(db,'config','roster'),rec))}}
  // 歷史
  for(const [d,v] of Object.entries(S.hist||{})){const j=J(v);if(st.last.hist[d]===j)continue;if(lv()<2&&st.last.hist[d]!==undefined)continue;st.last.hist[d]=j;ok(setDoc(doc(db,'hist',d),{json:j,by:st.user.uid,at:Date.now()}))}
  if(lv()>=3)for(const d of Object.keys(st.last.hist))if(!(S.hist||{})[d]){delete st.last.hist[d];ok(deleteDoc(doc(db,'hist',d)))}
@@ -106,7 +107,7 @@ function flush(){st.timer=null;if(!st.user||st.inited!==true||!isOps()){status()
 function audit(m){if(!st.user||TVMODE||!isOps()||st.inited!==true)return;addDoc(collection(db,'audit'),{uid:st.user.uid,name:st.prof.name,role:RL(st.prof.role),t:Date.now(),msg:String(m).slice(0,500)}).catch(()=>{})}
 // ---- 登入畫面 ----
 const ov=document.createElement('div');ov.id='fbLogin';ov.className='fb-login';ov.style.cssText='position:fixed;inset:0;z-index:9999;display:none;overflow:auto;padding:24px;font-size:17px';document.body.appendChild(ov);
-const APP_VER='v12.28.2';
+const APP_VER='v12.29';
 function isiOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
 function isStandalone(){return !!(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)}
 function useRedirect(){return false} // 主畫面 App 也先走 popup；只有彈窗被擋才退回 redirect
@@ -253,7 +254,7 @@ onAuthStateChanged(auth,async u=>{stopSync();st.user=u;st.prof=null;st.inited=nu
  if(p.disabled){st.prof=p;disabledUI();status();return}
  if(p.role=='room'){st.prof=p;wrongPageUI('room');status();return}
  if(p.role=='小姐'){location.replace(girlPageUrl());return}
- st.prof=p;S.cur={name:p.name,role:p.role,uid:u.uid,staffId:p.staffId,girlId:p.girlId};S.op=p.name;const op=document.getElementById('op');if(op)op.value=p.name;
+ st.prof=p;S.cur={name:p.name,role:p.role,uid:u.uid,staffId:p.staffId,girlId:p.girlId,branchId:p.branchId||'xindian'};S.op=p.name;S.branchId=(isOwnerPlus()&&S.branchId)||p.branchId||'xindian';const op=document.getElementById('op');if(op)op.value=p.name;
  if(p.role=='pending'){pendingUI();status();return}
  ov.style.display='none';startSync();if(location.hash=='#kitchen')openKitchen();rerender();log(`登入：${p.name}${p.role=='特殊'?'':'（'+RL(p.role)+'）'}`);const ty=st.manual?'登入':'自動登入';st.manual=false;loginLog(ty)});
 // ---- 帳號選單 / 人員管理 ----
@@ -284,8 +285,8 @@ function openStaff(){if(lv()<2)return alert('需幹部以上');document.getEleme
  if(!usersUnsub)usersUnsub=onSnapshot(uq,qs=>{USERS=[];qs.forEach(d=>USERS.push({uid:d.id,...d.data()}));USERS.sort((a,b)=>(RANK[b.role]||0)-(RANK[a.role]||0)||String(a.staffId||'').localeCompare(String(b.staffId||'')));redrawTbl();const box=document.getElementById('permLogBox');if(box)box.outerHTML=permLogHtml()},fail);
  if(!permUnsub)permUnsub=onSnapshot(query(collection(db,'permLog'),orderBy('at','desc'),limit(30)),qs=>{PERMLOGS=[];qs.forEach(d=>PERMLOGS.push({id:d.id,...d.data()}));const box=document.getElementById('permLogBox');if(box)box.outerHTML=permLogHtml()},()=>{});
  drawStaff()}
-function staffTbl(){const roles=assignableRoles();return`<table class=sch id=stTbl><tr><th>編號</th><th>名字</th><th>角色</th><th>狀態</th>${lv()>=4?'<th>密碼</th>':''}<th></th></tr>${USERS.map(u=>{const mine=u.uid==st.user.uid,can=canEditUser(u);
-  return`<tr class="${u.test?'testacct':''}"><td>${esc(u.staffId)}${u.room?`<br><small>包廂 ${esc(u.room)}</small>`:''}${u.girlId?`<br><small>小姐 ${esc(u.girlId)}</small>`:''}${u.email?`<br><small>${esc(u.email)}</small>`:''}${u.test?`<br><small style="color:#fc3">測試帳號</small>`:''}</td><td>${esc(u.name)}${u.test?`<br><small style="color:#fc3">測試用・可稍後停用</small>`:''}</td><td>${can?`<select onchange="Cloud.setRole('${u.uid}',this.value)">${roles.map(r=>`<option value="${r}" ${r==u.role?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>`:esc(RL(u.role))+(mine?'（自己）':'')}</td><td>${u.disabled?'<b style="color:#e44">停用</b>':'啟用'}</td>${lv()>=4?`<td>${canPw(u)?(PWshow[u.uid]?(PW[u.uid]?`<code>${esc(PW[u.uid])}</code>`:'<span style="color:#aaa">未記錄</span>'):'••••')+` <button type=button class=s onclick="Cloud.togglePw('${u.uid}')">${PWshow[u.uid]?'隱藏':'👁 顯示'}</button> <button type=button class=s onclick="Cloud.copyPw('${u.uid}')">複製</button> <button type=button class=s onclick="Cloud.resetPw('${u.uid}')">重設密碼</button>`:'—'}</td>`:''}<td>${can?`<button type=button class=s onclick="Cloud.setDisabled('${u.uid}',${!u.disabled})">${u.disabled?'啟用':'停用'}</button>`:''}</td></tr>`}).join('')}</table>`}
+function staffTbl(){const roles=assignableRoles();return`<table class=sch id=stTbl><tr><th>編號</th><th>名字</th><th>分店<span class=vi>Cửa hàng</span></th><th>角色</th><th>狀態</th>${lv()>=4?'<th>密碼</th>':''}<th></th></tr>${USERS.map(u=>{const mine=u.uid==st.user.uid,can=canEditUser(u);
+  return`<tr class="${u.test?'testacct':''}"><td>${esc(u.staffId)}${u.room?`<br><small>包廂 ${esc(u.room)}</small>`:''}${u.girlId?`<br><small>小姐 ${esc(u.girlId)}</small>`:''}${u.email?`<br><small>${esc(u.email)}</small>`:''}${u.test?`<br><small style="color:#fc3">測試帳號</small>`:''}</td><td>${esc(u.name)}${u.test?`<br><small style="color:#fc3">測試用・可稍後停用</small>`:''}</td><td>${isOwnerPlus()&&!mine?`<select onchange="Cloud.setBranch('${u.uid}',this.value)">${(typeof branches==='function'?branches():[{id:'xindian',name:'新店'},{id:'other',name:'另一間店'}]).map(b=>`<option value="${b.id}" ${(u.branchId||'xindian')==b.id?'selected':''}>${b.name}</option>`).join('')}</select>`:esc((typeof branchText==='function'?branchText(u.branchId||'xindian'):(u.branchId==='other'?'另一間店':'新店')))}</td><td>${can?`<select onchange="Cloud.setRole('${u.uid}',this.value)">${roles.map(r=>`<option value="${r}" ${r==u.role?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>`:esc(RL(u.role))+(mine?'（自己）':'')}</td><td>${u.disabled?'<b style="color:#e44">停用</b>':'啟用'}</td>${lv()>=4?`<td>${canPw(u)?(PWshow[u.uid]?(PW[u.uid]?`<code>${esc(PW[u.uid])}</code>`:'<span style="color:#aaa">未記錄</span>'):'••••')+` <button type=button class=s onclick="Cloud.togglePw('${u.uid}')">${PWshow[u.uid]?'隱藏':'👁 顯示'}</button> <button type=button class=s onclick="Cloud.copyPw('${u.uid}')">複製</button> <button type=button class=s onclick="Cloud.resetPw('${u.uid}')">重設密碼</button>`:'—'}</td>`:''}<td>${can?`<button type=button class=s onclick="Cloud.setDisabled('${u.uid}',${!u.disabled})">${u.disabled?'啟用':'停用'}</button>`:''}</td></tr>`}).join('')}</table>`}
 function permLogHtml(){return`<div id=permLogBox style="margin-top:16px"><h3>權限變更紀錄</h3>
   ${PERMLOGS.length?`<table class=sch><tr><th>誰</th><th>對象</th><th>從 → 到</th><th>時間（台北）</th></tr>${PERMLOGS.map(x=>`<tr><td>${esc(x.byName||x.by||'')}</td><td>${esc(x.targetName||x.targetStaffId||x.targetUid||'')}</td><td>${esc(RL(x.fromRole||''))} → ${esc(x.action=='setDisabled'?(x.toRole||''):RL(x.toRole||''))}</td><td>${esc(x.atTaipei||'')}</td></tr>`).join('')}</table>`:'<p style="font-size:13px;color:#aaa">尚無紀錄</p>'}</div>`}
 function drawStaff(){const roles=assignableRoles();
@@ -298,22 +299,31 @@ function drawStaff(){const roles=assignableRoles();
     <select id="apRole_${u.uid}">${roles.map(r=>`<option value="${r}" ${r=='小姐'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select>
     <button type=button onclick="Cloud.approveUser('${u.uid}')">核准並綁定</button>
     <button type=button class=s onclick="Cloud.setDisabled('${u.uid}',true)">拒絕／停用</button></p>`).join('')}</div>`:''}
- ${isOwnerPlus()?`<details open><summary>新增帳號（老闆以上）</summary><label>員工編號（英數）<input id=nId autocapitalize=none></label> <label>名字<input id=nNm></label> <label>角色 <select id=nRole>${roles.map(r=>`<option value="${r}" ${r=='少爺'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select></label> <label>小姐編號（角色選「小姐」時必填，如 08）<input id=nGirl placeholder="08"></label> <label>初始密碼（≥6）<input id=nPw></label> <button type=button onclick="Cloud.createStaff()">建立</button><p><button type=button onclick="Cloud.createRoomTabs()">🔑 一鍵建立每個包廂的房間平板帳號</button></p><p style="font-size:12px;color:#aaa">小姐請走獨立報班頁 <a href="girl/" target="_blank" rel="noopener">/v12/girl/</a>（不能進主系統）。TV 看板請建立角色「tv」的帳號。</p></details>`:''}
+ ${isOwnerPlus()?`<details open><summary>新增帳號（老闆以上）</summary><label>員工編號（英數）<input id=nId autocapitalize=none></label> <label>名字<input id=nNm></label> <label>角色 <select id=nRole>${roles.map(r=>`<option value="${r}" ${r=='少爺'?'selected':''}>${r=='特殊'?'冠廷（最高）':RL(r)}</option>`).join('')}</select></label> <label>所屬分店<span class=vi>Cửa hàng</span> <select id=nBranch>${(typeof branches==='function'?branches():[{id:'xindian',name:'新店'},{id:'other',name:'另一間店'}]).map(b=>`<option value="${b.id}" ${b.id==='xindian'?'selected':''}>${b.name}</option>`).join('')}</select></label> <label>小姐編號（角色選「小姐」時必填，如 08）<input id=nGirl placeholder="08"></label> <label>初始密碼（≥6）<input id=nPw></label> <button type=button onclick="Cloud.createStaff()">建立</button><p><button type=button onclick="Cloud.createRoomTabs()">🔑 一鍵建立每個包廂的房間平板帳號</button></p><p style="font-size:12px;color:#aaa">小姐請走獨立報班頁 <a href="girl/" target="_blank" rel="noopener">/v12/girl/</a>（不能進主系統）。TV 看板請建立角色「tv」的帳號。</p></details>`:''}
  <div class=tw>${staffTbl()}</div>
  ${permLogHtml()}
  <p style="font-size:12px;color:#aaa">密碼：店長可看經理以下；老闆可看店長以下；冠廷可看全部。有記錄密碼的帳號可按「重設密碼」；顯示「未記錄」的舊帳號忘記密碼時，請先停用再建立新編號。</p>`)}
 async function createStaff(){if(!isOwnerPlus())return alert('只有老闆以上可以建立帳號');const id=nId.value.trim(),nm=nNm.value.trim()||id,role=nRole.value,pw=nPw.value;if((RANK[role]||0)>=lv())return alert('只能建立低於自己職級的帳號');let room='',girlId='';if(role=='room'){room=(prompt('這台房間平板綁定哪個包廂？（例 208）')||'').trim();if(!room)return}if(role=='小姐'){girlId=(document.getElementById('nGirl')&&nGirl.value.trim())||id;if(!girlId)return alert('請填小姐編號（如 08）')}if(role=='pending')return alert('請改選實際角色');if(!/^[A-Za-z0-9._-]+$/.test(id))return alert('員工編號只能用英文、數字');if(pw.length<6)return alert('密碼至少 6 碼');
  const sec=initializeApp(firebaseConfig,'sec'+Date.now()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
- try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid,...(room?{room}:{}),...(girlId?{girlId}:{})});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}${girlId?'・小姐'+girlId:''}）`);alert(`已建立：${id}（${RL(role)}${girlId?'・小姐編號 '+girlId:''}）`+(role=='小姐'?'\n請使用報班頁：'+girlPageUrl():''))}
+ try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);const branchId=(document.getElementById('nBranch')&&nBranch.value)||'xindian';await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid,branchId,...(room?{room}:{}),...(girlId?{girlId}:{})});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}${girlId?'・小姐'+girlId:''}）`);alert(`已建立：${id}（${RL(role)}${girlId?'・小姐編號 '+girlId:''}）`+(role=='小姐'?'\n請使用報班頁：'+girlPageUrl():''))}
  catch(e){alert(e.code=='auth/email-already-in-use'?'此編號已被使用':'建立失敗：'+(e.code||e.message))}finally{deleteApp(sec).catch(()=>{})}}
 // v12.6.1 一鍵建立房間平板帳號（老闆以上；走同一個建立流程，密碼存 secrets）
 async function mkUser(id,nm,role,pw,room){const sec=initializeApp(firebaseConfig,'sec'+Date.now()+Math.random()),sa=getAuth(sec);if(EMU)connectAuthEmulator(sa,'http://127.0.0.1:9099',{disableWarnings:true});
- try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid,...(room?{room}:{})});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}${room?'・'+room:''}）`);return c.user.uid}finally{deleteApp(sec).catch(()=>{})}}
+ try{const c=await createUserWithEmailAndPassword(sa,mail(id),pw);await setDoc(doc(db,'users',c.user.uid),{staffId:id.toLowerCase(),name:nm,role,rank:RANK[role]||0,disabled:false,createdAt:Date.now(),by:st.user.uid,branchId:'xindian',...(room?{room}:{})});await signOut(sa);await savePw(c.user.uid,pw).catch(()=>{});log(`建立帳號 ${id}（${nm}・${RL(role)}${room?'・'+room:''}）`);return c.user.uid}finally{deleteApp(sec).catch(()=>{})}}
 function rndPw(){const A='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789',b=new Uint32Array(16);crypto.getRandomValues(b);return [...b].map(x=>A[x%A.length]).join('')}
 async function createRoomTabs(){if(!isOwnerPlus())return alert('只有老闆以上可以建立');const have=new Set(USERS.filter(u=>u.role=='room'&&u.room).map(u=>u.room));const todo=(typeof officialRooms==='function'?officialRooms():roomList()).filter(r=>!have.has(r));
  if(!todo.length)return alert('每個包廂都已經有房間平板帳號');if(!confirm(`建立 ${todo.length} 個房間平板帳號？\n${todo.map(r=>'room-'+r.toLowerCase()+' → '+r).join('\n')}\n（密碼隨機產生，可在本頁「查看密碼」）`))return;
  const done=[],bad=[];for(const r of todo){const id='room-'+r.toLowerCase();try{await mkUser(id,r+' 平板','room',rndPw(),r);done.push(id+'→'+r)}catch(e){bad.push(id+'：'+(e.code=='auth/email-already-in-use'?'編號已被使用':(e.code||e.message)))}}
  alert(`已建立 ${done.length} 個：\n${done.join('\n')}${bad.length?'\n\n失敗：\n'+bad.join('\n'):''}`);openStaff()}
+
+async function setBranch(uid,branchId){
+  if(!isOwnerPlus())return alert('只有老闆以上可以改所屬分店');
+  const u=USERS.find(x=>x.uid==uid);if(!u)return;
+  if((RANK[u.role]||0)>=lv()&&!isGuanting())return alert('只能改低於自己職級的帳號');
+  const rec={...u,branchId:branchId||'xindian'};
+  try{await updateDoc(doc(db,'users',uid),{branchId:rec.branchId});log('將 '+(u.name||u.staffId)+' 所屬分店改為 '+(typeof branchText==='function'?branchText(rec.branchId):rec.branchId));openStaff()}
+  catch(e){alert('無法改分店：'+(e.code||e.message))}
+}
 async function setRole(uid,role){
   const u=USERS.find(x=>x.uid==uid);
   if(lv()<2){alert('需幹部以上');return redrawTbl()}
@@ -445,9 +455,9 @@ async function gqAct(id,stt){const q=GQ.list.find(z=>z.id==id);if(!q)return;if(l
 // 可點小姐清單（給包廂平板，只有編號、名字、照片）
 let availLast='';
 function buildAvailList(room){if(typeof guestAvailList==='function')return guestAvailList(room);
- if(typeof guestPickState==='function')return(S.girls||[]).map(g=>{const st=guestPickState(g,room);if(st.st=='hide')return null;const item={id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{})};if(st.st=='grey'){item.busy=true;item.reason=st.reason;if(st.room)item.room=st.room}return item}).filter(Boolean);
+ if(typeof guestPickState==='function')return(typeof girlsHere==='function'?girlsHere('xindian'):(S.girls||[])).map(g=>{const st=guestPickState(g,room);if(st.st=='hide')return null;const item={id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,''),...(g.photo?{photo:g.photo}:{})};if(st.st=='grey'){item.busy=true;item.reason=st.reason;if(st.room)item.room=st.room}return item}).filter(Boolean);
  const d=bizDay(now()),X=(S.dayExt||{})[d]||{},early=X.early||{};
- return (S.girls||[]).filter(g=>g&&g.on&&!g.gone&&!g.leave&&g.status!='下班'&&!(early&&early[g.id])&&!((X.others||[]).includes(g.id))).map(g=>({id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,'')}))}
+ return (typeof girlsHere==='function'?girlsHere('xindian'):(S.girls||[])).filter(g=>g&&g.on&&!g.gone&&!g.leave&&g.status!='下班'&&!(early&&early[g.id])&&!((X.others||[]).includes(g.id))).map(g=>({id:g.id,name:String(g.name||'').replace(/^\s*\d+\s*號?\s*/,'')}))}
 setInterval(()=>{if(!st.user||!isOps()||TVMODE||st.inited!==true||!S.girls)return;const d=bizDay(now());
  const list=buildAvailList();
  const j=JSON.stringify({list,d});if(j==availLast)return;availLast=j;ok(setDoc(doc(db,'public','avail'),{list,day:d,at:Date.now()}));syncGuestTokenViews()},5000);
@@ -636,7 +646,7 @@ function girlDayStats(day,id){
 function publishGirlHist(day){
   if(!isOps()||!day)return;
   const ids=new Set([...(S.checkin[day]||[]).map(c=>c.id),...Object.keys((S.att||{})[day]||{})]);
-  (S.girls||[]).forEach(g=>{if(g&&g.on)ids.add(g.id)});
+  (typeof girlsHere==='function'?girlsHere():(S.girls||[])).forEach(g=>{if(g&&g.on)ids.add(g.id)});
   ids.forEach(id=>{
     const rec=girlDayStats(day,id);
     ok(setDoc(doc(db,'girlHist',day+'_'+id),rec,{merge:true}));
@@ -878,7 +888,7 @@ function paintQrBtns(){
 async function recognizeSheet(photos,day){
   if(lv()<2)throw new Error('需幹部以上才能自動辨識');
   if(!auth.currentUser)throw new Error('需登入才能自動辨識');
-  const roster=(typeof S!=='undefined'&&S.rosterNames)||{};
+  const roster=(typeof namesFor==='function'?namesFor():(typeof S!=='undefined'&&S.rosterNames))||{};
   return await recognizeSheetPhotos({app,photos,day,roster});
 }
 async function updateSheetImport(id,patch){
@@ -1031,5 +1041,5 @@ async function updateImportReview(id,patch){
   await updateDoc(doc(db,'importArchive',id),upd);
 }
 
-window.Cloud={ver:"v12.28.2",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,recognizeSheet,updateSheetImport,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+window.Cloud={ver:"v12.29",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setBranch,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,recognizeSheet,updateSheetImport,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){if(typeof ensureRosterMap==='function')ensureRosterMap();if(typeof syncRosterNamesView==='function')syncRosterNamesView();const rec={names:J(S.rosterMap||S.rosterNames||{}),log:J(S.renameLog||[]),branches:J(S.branches||(typeof defaultBranches==='function'?defaultBranches():[])),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();

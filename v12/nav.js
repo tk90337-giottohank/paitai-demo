@@ -74,6 +74,7 @@
     {label:'我的帳號',fn:'navAccount',min:0},
     {label:'人員帳號管理',fn:'navStaff',min:2},
     {label:'登入教學',fn:'openHelp',min:0},
+    {label:'分店管理',fn:'openBranches',min:5},
     {label:'登入紀錄',fn:'navLoginLogs',min:4}
   ];
   if(L>=4) items.push({label:'重設示範資料',fn:'navResetDemo',min:4,danger:true});
