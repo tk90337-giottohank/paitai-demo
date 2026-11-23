@@ -1,9 +1,10 @@
-// v12.21 匯入傳統排檯表（照片辨識先讀編號對名冊，名字只做交叉核對；不符或號碼不清才黃框）
+// v12.25 匯入備份／校對；選單可達。v12.21 匯入傳統排檯表（先讀編號對名冊，中文名字只做交叉核對；不符黃框）
 (function(global){
 const MARKS=['紅','藍','私檯','訂番'];
 const XLSX_SRC='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
 let xlsxLoading=null;
-const ST={day:'',files:[],photos:[],parsed:null,step:'pick',mode:'replace',livePol:'skip',queueId:'',busy:false,err:''};
+const ST={day:'',files:[],photos:[],parsed:null,rawParsed:null,step:'pick',mode:'replace',livePol:'skip',queueId:'',busy:false,err:''};
+const ARC={list:[],cur:null,photos:[],busy:false,err:''};
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function todayBiz(){try{return (typeof shDay!=='undefined'&&shDay)||(typeof bizDay==='function'?bizDay(typeof now==='function'?now():Date.now()):'')}catch(e){return ''}
@@ -239,26 +240,34 @@ function ensureCss(){
   if(document.getElementById('paperImpCss'))return;
   const s=document.createElement('style');s.id='paperImpCss';
   s.textContent=`
-  .pi{max-width:720px;margin:0 auto;padding:0 0 24px;font-size:16px}
-  .pi h2{font-size:20px;margin:8px 0 12px}
-  .pi .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
-  .pi button,.pi label.pibtn{min-height:44px;min-width:44px;padding:10px 14px;font-size:16px;border-radius:10px;border:0;background:#3a6;color:#fff}
-  .pi button.s,.pi label.pibtn.s{background:#3a4150}
-  .pi button:disabled{opacity:.5}
-  .pi input[type=date],.pi input[type=text],.pi input[type=number],.pi select{font-size:16px;min-height:44px;padding:8px;border-radius:8px;border:1px solid #445;background:#1c1f27;color:#eee}
-  .pi .hint{font-size:14px;color:#bbb;line-height:1.5}
-  .pi .warn{color:#fc6}
-  .pi .err{color:#f66}
-  .pi .files{font-size:14px}
-  .pi .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
-  .pi .thumbs img{width:120px;height:90px;object-fit:cover;border-radius:8px;border:1px solid #445;background:#111}
-  .pi .thumbs img.big{width:100%;max-width:720px;height:auto;max-height:280px}
-  .pi table{border-collapse:collapse;width:100%;font-size:14px}
-  .pi td,.pi th{border:1px solid #445;padding:6px 4px;text-align:center}
-  .pi td.low{background:#5a4a10;outline:2px solid #fc6}
-  .pi .tot{font-size:16px;margin:8px 0}
-  .pi textarea, .pi input.cell{width:100%;font-size:16px;min-height:36px;background:#1c1f27;color:#eee;border:0;text-align:center}
-  .pi .photoCol{position:sticky;top:0;z-index:2;background:#1a1d24;padding:6px 0}
+  .pi,.arc{max-width:960px;margin:0 auto;padding:0 0 24px;font-size:16px;color:var(--text,#eee)}
+  .pi h2,.arc h2{font-size:20px;margin:8px 0 12px}
+  .pi .row,.arc .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+  .pi button,.pi label.pibtn,.arc button{min-height:44px;min-width:44px;padding:10px 14px;font-size:16px;border-radius:10px;border:0;background:var(--btn,#3a6);color:var(--on-btn,#fff)}
+  .pi button.s,.pi label.pibtn.s,.arc button.s{background:var(--btn-s,#3a4150);color:var(--on-s,#eee)}
+  .pi button:disabled,.arc button:disabled{opacity:.5}
+  .pi input[type=date],.pi input[type=text],.pi input[type=number],.pi select,.arc input[type=date],.arc select{font-size:16px;min-height:44px;padding:8px;border-radius:8px;border:1px solid var(--line-strong,#445);background:var(--input,#1c1f27);color:var(--text,#eee)}
+  .pi .hint,.arc .hint{font-size:14px;color:var(--muted,#bbb);line-height:1.5}
+  .pi .warn,.arc .warn{color:var(--warn,#fc6)}
+  .pi .err,.arc .err{color:var(--danger,#f66)}
+  .pi .files,.arc .files{font-size:14px}
+  .pi .thumbs,.arc .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+  .pi .thumbs img,.arc .thumbs img{width:120px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--line-strong,#445);background:var(--surface-2,#111)}
+  .pi .thumbs img.big,.arc .thumbs img.big{width:100%;max-width:720px;height:auto;max-height:280px}
+  .pi table,.arc table{border-collapse:collapse;width:100%;font-size:14px;background:var(--surface,transparent)}
+  .pi td,.pi th,.arc td,.arc th{border:1px solid var(--line-strong,#445);padding:6px 4px;text-align:center}
+  .pi td.low,.arc td.low{background:var(--soon-bg,#5a4a10);outline:2px solid var(--warn,#fc6)}
+  .pi .tot,.arc .tot{font-size:16px;margin:8px 0}
+  .pi textarea,.pi input.cell{width:100%;font-size:16px;min-height:36px;background:var(--input,#1c1f27);color:var(--text,#eee);border:0;text-align:center}
+  .pi .photoCol,.arc .photoCol{position:sticky;top:0;z-index:2;background:var(--bg,#1a1d24);padding:6px 0}
+  .arc-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}
+  .arc-split .pane{background:var(--surface,#232833);border-radius:10px;padding:10px;border:1px solid var(--line,rgba(255,255,255,.08))}
+  .arc-split .pane img{width:100%;height:auto;max-height:70vh;object-fit:contain;border-radius:8px;background:var(--surface-2,#111)}
+  @media (max-width:700px){.arc-split{grid-template-columns:1fr}.arc-split .pane.photo{position:sticky;top:0;z-index:2}}
+  .arc-list{display:flex;flex-direction:column;gap:8px}
+  .arc-card{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;background:var(--surface-2,#2c3240);border-radius:10px;padding:12px;min-height:44px}
+  .arc-st{font-size:13px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--soon-bg,rgba(196,163,106,.16));color:var(--soon,#c4a36a)}
+  .arc-st.ok{background:var(--avail-bg,rgba(111,158,134,.16));color:var(--ok,#8fbfa8)}
   `;
   document.head.appendChild(s);
 }
@@ -366,6 +375,7 @@ async function ingestFiles(fileList){
   p.day=ST.day||p.day;
   p.photos=ST.photos.slice();
   ST.parsed=p;
+  snapRawIfNeeded();
   if(newPhotos.length){
     ST.msg='正在上傳照片…';
     await uploadAndWatch(newPhotos);
@@ -385,6 +395,7 @@ function applyDraft(draft){
   p.unk=(p.unk||[]).concat(draft.unk||[]);
   if(draft.ext)p.ext=Object.assign(p.ext||{},draft.ext);
   ST.parsed=p;ST.day=day;
+  snapRawIfNeeded();
 }
 async function uploadAndWatch(photos){
   if(!photos||!photos.length)return;
@@ -467,6 +478,7 @@ function renderPick(){
     <div class=row>
       <button type=button id=piGo>開始核對</button>
       <button type=button class=s id=piTpl>下載 CSV 範本</button>
+      <button type=button class=s id=piArc>匯入校對</button>
       <button type=button class=s id=piBack>返回排檯表</button>
     </div>`);
   const bind=(id,fn)=>{const el=document.getElementById(id);if(el)el.addEventListener(id==='piDay'?'change':'click',fn)};
@@ -482,6 +494,7 @@ function renderPick(){
   document.getElementById('piSheet').onchange=onFiles;
   document.getElementById('piGo').onclick=()=>{ST.day=(document.getElementById('piDay')||{}).value||ST.day;if(ST.parsed)ST.parsed.day=ST.day;if(!ST.parsed)ST.parsed=emptyParsed(ST.day);ST.step='preview';renderPreview()};
   document.getElementById('piTpl').onclick=downloadTpl;
+  const arc=document.getElementById('piArc');if(arc)arc.onclick=()=>openArchive();
   document.getElementById('piBack').onclick=backToSheet;
 }
 function downloadTpl(){
@@ -664,17 +677,19 @@ async function commit(){
     if(typeof render==='function')render();
   }catch(e){alert('寫入失敗：'+(e.message||e));return}
   const qid=await queuePhotos(p);
-  const extra=qid?'\n照片已送進待辨識佇列。':'';
+  let archOk='';
+  try{const aid=await saveArchive(p,applyP,stat,qid);if(aid)archOk='\n已存備份，可到「匯入校對」對照原圖。'}catch(e){archOk='\n寫入成功，但備份失敗：'+(e&&e.message||e)}
+  const extra=(qid?'\n照片已送進待辨識佇列。':'')+archOk;
   const bits=stat&&typeof stat==='object'?Object.entries(stat).filter(([,v])=>v).map(([k,v])=>k+' '+v).join('、'):'';
   alert('已寫入 '+p.day+'：番數 '+totals(applyP).sessions+'、小姐台數合計 '+totals(applyP).girlTai+(bits?'（'+bits+'）':'')+extra);
-  ST.step='pick';ST.parsed=null;ST.files=[];ST.photos=[];ST.queueId='';
+  ST.step='pick';ST.parsed=null;ST.rawParsed=null;ST.files=[];ST.photos=[];ST.queueId='';
   try{if(typeof shDay!=='undefined')shDay=p.day;if(typeof openSheet==='function')openSheet()}catch(e){}
 }
 
 function open(opt){
   if(typeof needRole==='function'&&!needRole(2,'匯入傳統排檯表'))return;
   ST.day=(opt&&opt.day)||(typeof shDay!=='undefined'&&shDay)||todayBiz();
-  ST.files=[];ST.photos=[];ST.parsed=null;ST.step='pick';ST.mode='replace';ST.livePol='skip';ST.err='';ST.queueId='';
+  ST.files=[];ST.photos=[];ST.parsed=null;ST.rawParsed=null;ST.step='pick';ST.mode='replace';ST.livePol='skip';ST.err='';ST.queueId='';
   renderPick();
 }
 function hookButtons(){
@@ -683,18 +698,269 @@ function hookButtons(){
     const b=document.createElement('button');b.type='button';b.className='s gimp';b.textContent='匯入傳統排檯表';
     b.onclick=()=>open({day:typeof shDay!=='undefined'?shDay:(GR&&GR.day)||''});
     h.appendChild(b);
+    if(!h.querySelector('.garc')){const a=document.createElement('button');a.type='button';a.className='s garc';a.textContent='匯入校對';a.onclick=()=>openArchive();h.appendChild(a)}
   }
   const gtop=document.querySelector('.gtop');
   if(gtop&&!gtop.querySelector('.gimp')&&(typeof canEdit!=='function'||typeof lvl!=='function'||lvl()>=2)){
     const b=document.createElement('button');b.type='button';b.className='s gimp';b.textContent='匯入傳統排檯表';
     b.onclick=()=>open({day:(typeof GR!=='undefined'&&GR.day)||todayBiz()});
     gtop.appendChild(b);
+    if(!gtop.querySelector('.garc')){const a=document.createElement('button');a.type='button';a.className='s garc';a.textContent='匯入校對';a.onclick=()=>openArchive();gtop.appendChild(a)}
   }
 }
 
-const PaperImport={open,parseCsvText,parseWorkbook,mergeParsed,totals,emptyParsed,ingestFiles,ST,hookButtons};
+
+function cloneParsed(p){
+  try{return JSON.parse(JSON.stringify(p,function(k,v){return (k==='photos'||k==='dataUrl')?undefined:v}))}catch(e){return p}
+}
+function snapRawIfNeeded(){
+  if(ST.rawParsed||!ST.parsed)return;
+  if(!Object.keys(ST.parsed.rows||{}).length&&!(ST.parsed.marks||[]).length)return;
+  ST.rawParsed=cloneParsed(ST.parsed);
+}
+function compactParsed(p){
+  if(!p)return {};
+  const rows={};
+  Object.keys(p.rows||{}).forEach(k=>{
+    const r=p.rows[k]||{};
+    rows[k]={seq:r.seq||k,room:r.room||'',tm:r.tm||null,guests:r.guests==null?null:r.guests,ended:!!r.ended,orderStaff:r.orderStaff||'',note:r.note||'',conf:r.conf==null?null:r.conf,src:r.src||''};
+  });
+  const marks=(p.marks||[]).map(m=>[m[0],m[1],m[2],m[3]==null?null:m[3],m[4]||'',m[5]||'',m[6]||'']);
+  return {day:p.day||'',rows,marks,tbd:p.tbd||[],bad:p.bad||[],unk:p.unk||[],skipped:p.skipped||[]};
+}
+function collectDiffs(saved,raw){
+  const diffs=[];
+  const add=(kind,text,extra)=>diffs.push(Object.assign({kind,text},extra||{}));
+  (saved&&saved.tbd||[]).concat(raw&&raw.tbd||[]).forEach(t=>add('待審',String(t)));
+  (saved&&saved.unk||[]).concat(raw&&raw.unk||[]).forEach(t=>add('不在名冊',String(t)));
+  (saved&&saved.bad||[]).concat(raw&&raw.bad||[]).forEach(t=>add('無法讀取',String(t)));
+  (saved&&saved.marks||[]).forEach(m=>{
+    const paper=String(m[5]||'').replace(/\s+/g,'').replace(/^\d+號?/,'');
+    const roster=String(m[6]||'').replace(/\s+/g,'').replace(/^\d+號?/,'');
+    if(paper&&roster&&paper!==roster)add('名字不符','編號 '+(m[1]||'？')+' 紙本「'+(m[5]||'')+'」→ 名冊「'+(m[6]||'')+'」',{seq:String(m[0]),id:m[1],paper:m[5],sys:m[6]});
+    if(!String(m[1]||'').trim())add('號碼不清','序'+m[0]+' 紙本名字「'+(m[5]||'')+'」',{seq:String(m[0]),paper:m[5]});
+  });
+  if(raw&&raw.rows){
+    const rawKeys=new Set(Object.keys(raw.rows));
+    const savKeys=new Set(Object.keys((saved&&saved.rows)||{}));
+    savKeys.forEach(k=>{
+      if(!rawKeys.has(k)){add('人工新增','序'+k,{seq:k});return}
+      const a=raw.rows[k]||{},b=(saved.rows||{})[k]||{},ch=[];
+      if((a.room||'')!==(b.room||''))ch.push('包廂 '+(a.room||'（空）')+'→'+(b.room||'（空）'));
+      if(hmText(a.tm)!==hmText(b.tm))ch.push('時間 '+(hmText(a.tm)||'（空）')+'→'+(hmText(b.tm)||'（空）'));
+      if(!!a.ended!==!!b.ended)ch.push('結束 '+(a.ended?'Y':'N')+'→'+(b.ended?'Y':'N'));
+      if((a.orderStaff||'')!==(b.orderStaff||''))ch.push('訂番幹部變更');
+      if(ch.length)add('人工修改','序'+k+' '+ch.join('、'),{seq:k});
+    });
+    rawKeys.forEach(k=>{if(!savKeys.has(k))add('人工刪除','序'+k+' 包廂'+((raw.rows[k]||{}).room||''),{seq:k})});
+  }
+  const seen=new Set();
+  return diffs.filter(d=>{const k=d.kind+'|'+d.text;if(seen.has(k))return false;seen.add(k);return true});
+}
+async function saveArchive(orig,applied,stat,qid){
+  if(!window.Cloud||typeof Cloud.saveImportArchive!=='function')return '';
+  const raw=compactParsed(ST.rawParsed||orig);
+  const saved=compactParsed(applied||orig);
+  const tot=totals(applied||orig);
+  return await Cloud.saveImportArchive({
+    day:(applied||orig).day,
+    queueId:qid||ST.queueId||'',
+    files:(ST.files||[]).map(f=>({name:f.name||'',size:f.size||0,type:f.type||''})),
+    photoCount:(ST.photos||[]).length,
+    mode:ST.mode||'',
+    livePol:ST.livePol||'',
+    raw,saved,
+    diffs:collectDiffs(saved,raw),
+    stat:stat&&typeof stat==='object'?stat:{},
+    sessions:tot.sessions,marks:(saved.marks||[]).length
+  });
+}
+function taipeiText(ms,fallback){
+  if(fallback)return fallback;
+  if(!ms)return '';
+  try{return new Date(ms).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})+' 台北'}catch(e){return String(ms)}
+}
+function downloadBlob(name,mime,text){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([text],{type:mime}));
+  a.download=name;a.click();
+  setTimeout(()=>{try{URL.revokeObjectURL(a.href)}catch(e){}},2000);
+}
+function csvEsc(v){const s=String(v==null?'':v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+function archiveToCsv(rec){
+  const p=(rec&&rec.saved)||{};
+  const rows=p.rows||{};
+  const reviewed=(rec&&rec.reviewedRows)||{};
+  const head=['序','包廂','進場','人數','結束','訂番幹部','編號','記號','紙本名字','名冊名字','已校對'];
+  const lines=[head.join(',')];
+  Object.keys(rows).sort((a,b)=>((+a)||0)-((+b)||0)).forEach(seq=>{
+    const r=rows[seq]||{};
+    const ms=(p.marks||[]).filter(m=>String(m[0])===String(seq));
+    if(!ms.length){
+      lines.push([seq,r.room,hmText(r.tm),r.guests,r.ended?'Y':'',r.orderStaff,'','','','',reviewed[seq]?'是':''].map(csvEsc).join(','));
+      return;
+    }
+    ms.forEach(m=>{
+      lines.push([seq,r.room,hmText(r.tm),r.guests,r.ended?'Y':'',r.orderStaff,m[1]||'',m[2]||'',m[5]||'',m[6]||'',(reviewed[seq]||reviewed[seq+':'+m[1]])?'是':''].map(csvEsc).join(','));
+    });
+  });
+  if(rec&&rec.diffs&&rec.diffs.length){
+    lines.push('');
+    lines.push(['差異種類','說明','序','編號'].map(csvEsc).join(','));
+    rec.diffs.forEach(d=>lines.push([d.kind,d.text,d.seq||'',d.id||''].map(csvEsc).join(',')));
+  }
+  return lines.join('\n');
+}
+async function openArchive(){
+  if(typeof needRole==='function'&&!needRole(2,'匯入校對'))return;
+  ARC.busy=true;ARC.err='';ARC.cur=null;ARC.photos=[];
+  renderArchiveList();
+  try{
+    if(!window.Cloud||typeof Cloud.listImportArchives!=='function'){ARC.err='雲端尚未就緒，請稍後再試。';ARC.busy=false;renderArchiveList();return}
+    ARC.list=await Cloud.listImportArchives();
+  }catch(e){ARC.err='讀取備份失敗：'+(e&&e.message||e)}
+  ARC.busy=false;renderArchiveList();
+}
+function renderArchiveList(){
+  const rows=(ARC.list||[]).map(r=>{
+    const st=r.status||'待校對';
+    const ok=st==='已校對';
+    const nDiff=(r.diffs||[]).length;
+    const who=esc(r.byName||'');
+    return `<div class=arc-card>
+      <div><b>${esc(r.day||'（無日期）')}</b><div class=hint>${esc(taipeiText(r.at,r.atTaipei))}　${who}　番數 ${r.sessions||0}${nDiff?'　差異 '+nDiff:''}</div></div>
+      <div class=row>
+        <span class="arc-st${ok?' ok':''}">${esc(st)}</span>
+        <button type=button data-open="${esc(r.id)}">打開校對</button>
+      </div>
+    </div>`}).join('')||'<p class=hint>尚無匯入備份。幹部以上匯入傳統排檯表並確認寫入後，會自動存到這裡。</p>';
+  pageArc(`<h2>匯入校對</h2>
+    <p class=hint>幹部以上可打開過去的匯入，對照原圖與已存資料、把列標成已校對，並下載 JSON／CSV。備份不會覆蓋或刪除既有帳單，金額也不會改。</p>
+    ${ARC.busy?'<p class=hint>讀取中…</p>':''}
+    ${ARC.err?`<p class=err>${esc(ARC.err)}</p>`:''}
+    <div class=arc-list>${rows}</div>
+    <div class=row>
+      <button type=button class=s id=arcReload>重新整理</button>
+      <button type=button class=s id=arcImp>匯入傳統排檯表</button>
+      <button type=button class=s id=arcBack>返回</button>
+    </div>`);
+  document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openArchiveDetail(b.getAttribute('data-open')));
+  const rel=document.getElementById('arcReload');if(rel)rel.onclick=()=>openArchive();
+  const imp=document.getElementById('arcImp');if(imp)imp.onclick=()=>open();
+  const back=document.getElementById('arcBack');if(back)back.onclick=backToSheet;
+}
+function pageArc(html){
+  ensureCss();
+  if(typeof pageOpen==='function')pageOpen(`<div class="pi arc">${html}</div>`);
+  else document.body.innerHTML=html;
+}
+async function openArchiveDetail(id){
+  if(typeof needRole==='function'&&!needRole(2,'匯入校對'))return;
+  ARC.busy=true;ARC.err='';ARC.cur=null;ARC.photos=[];
+  renderArchiveDetail();
+  try{
+    const rec=await Cloud.getImportArchive(id);
+    if(!rec){ARC.err='找不到這筆備份。';ARC.busy=false;renderArchiveList();return}
+    ARC.cur=rec;
+    if(rec.queueId&&typeof Cloud.getSheetImportPhotos==='function'){
+      ARC.photos=await Cloud.getSheetImportPhotos(rec.queueId);
+    }
+  }catch(e){ARC.err='讀取失敗：'+(e&&e.message||e)}
+  ARC.busy=false;renderArchiveDetail();
+}
+function renderArchiveDetail(){
+  const rec=ARC.cur;
+  if(!rec&&ARC.busy){pageArc('<h2>匯入校對</h2><p class=hint>讀取中…</p>');return}
+  if(!rec){renderArchiveList();return}
+  const saved=rec.saved||{};
+  const raw=rec.raw||{};
+  const reviewed=Object.assign({},rec.reviewedRows||{});
+  const diffs=rec.diffs||[];
+  const thumbs=(ARC.photos||[]).filter(p=>p.dataUrl).map((p,i)=>`<img class=big src="${p.dataUrl}" alt="${esc(p.name||('原圖'+(i+1)))}">`).join('')
+    ||'<p class=hint>這筆沒有可顯示的原圖（可能是試算表／CSV，或照片還未上傳）。</p>';
+  const seqs=Object.keys(saved.rows||{}).sort((a,b)=>((+a)||0)-((+b)||0));
+  const body=seqs.map(seq=>{
+    const r=saved.rows[seq]||{};
+    const rr=(raw.rows||{})[seq];
+    const changed=rr&&((rr.room||'')!==(r.room||'')||hmText(rr.tm)!==hmText(r.tm));
+    const ms=(saved.marks||[]).filter(m=>String(m[0])===String(seq));
+    const marksHtml=ms.map(m=>{
+      const paper=m[5]||'',sys=m[6]||'';
+      const np=String(paper).replace(/\s+/g,'').replace(/^\d+號?/,''),nr=String(sys).replace(/\s+/g,'').replace(/^\d+號?/,'');
+      const disagree=!!(paper&&sys&&np!==nr);
+      return `<td class="${disagree?'low':''}">${esc(m[1]||'？')} ${esc(m[2]||'')}${sys?' '+esc(sys):''}${disagree?`<br><small>紙本「${esc(paper)}」→ 名冊「${esc(sys)}」</small>`:paper&&!disagree?`<br><small>${esc(paper)}</small>`:''}</td>`;
+    }).join('')||'<td></td>';
+    const chk=reviewed[seq]?'checked':'';
+    return `<tr class="${changed?'diff':''}" data-seq="${esc(seq)}">
+      <th>${esc(seq)}</th>
+      <td>${esc(r.room||'')}</td>
+      <td>${esc(hmText(r.tm))}</td>
+      <td>${r.guests==null?'':esc(r.guests)}</td>
+      <td>${r.ended?'Y':''}</td>
+      <td>${esc(r.orderStaff||'')}</td>
+      ${marksHtml}
+      <td><label style="display:inline-flex;align-items:center;gap:6px;min-height:44px"><input type=checkbox data-rev="${esc(seq)}" ${chk}> 已校對</label></td>
+    </tr>`}).join('')||'<tr><td colspan=8>沒有已存列</td></tr>';
+  const diffHtml=diffs.length?`<ul>${diffs.map(d=>`<li><b>${esc(d.kind)}</b> ${esc(d.text)}</li>`).join('')}</ul>`:'<p class=hint>沒有標出的差異或待審項目。</p>';
+  const files=(rec.files||[]).map(f=>esc(f.name||'')).filter(Boolean).join('、');
+  pageArc(`<h2>匯入校對　${esc(rec.day||'')}</h2>
+    <p class=hint>${esc(taipeiText(rec.at,rec.atTaipei))}　${esc(rec.byName||'')}（${esc((typeof RL==='function'?RL(rec.byRole):rec.byRole)||rec.byRole||'')}）　狀態 <span class="arc-st${rec.status==='已校對'?' ok':''}">${esc(rec.status||'待校對')}</span></p>
+    ${files?`<p class=files>原始檔：${files}</p>`:''}
+    ${ARC.err?`<p class=err>${esc(ARC.err)}</p>`:''}
+    <div class=arc-split>
+      <div class="pane photo"><h3>原圖</h3><div class=thumbs>${thumbs}</div></div>
+      <div class=pane>
+        <h3>已存資料</h3>
+        <p class=tot>番數 ${esc(rec.sessions||Object.keys(saved.rows||{}).length)}　記號 ${(saved.marks||[]).length}</p>
+        <div class=tw style="overflow:auto"><table>
+          <tr><th>序</th><th>包廂</th><th>進場</th><th>人數</th><th>結束</th><th>訂番幹部</th><th colspan=8>記號</th><th>校對</th></tr>
+          ${body}
+        </table></div>
+        <h3>差異／待審</h3>
+        ${diffHtml}
+      </div>
+    </div>
+    <div class=row>
+      <button type=button id=arcMarkAll>全部標為已校對</button>
+      <button type=button id=arcSave>儲存校對標記</button>
+      <button type=button class=s id=arcJson>下載 JSON</button>
+      <button type=button class=s id=arcCsv>下載 CSV</button>
+      <button type=button class=s id=arcBackList>返回清單</button>
+    </div>`);
+  const collectRev=()=>{
+    const o={};
+    document.querySelectorAll('[data-rev]').forEach(el=>{if(el.checked)o[el.getAttribute('data-rev')]={ok:true}});
+    return o;
+  };
+  const all=document.getElementById('arcMarkAll');
+  if(all)all.onclick=()=>{document.querySelectorAll('[data-rev]').forEach(el=>el.checked=true)};
+  const sv=document.getElementById('arcSave');
+  if(sv)sv.onclick=async()=>{
+    const reviewedRows=collectRev();
+    const keys=Object.keys(reviewedRows);
+    const allDone=seqs.length>0&&seqs.every(s=>reviewedRows[s]);
+    try{
+      await Cloud.updateImportReview(rec.id,{reviewedRows,reviewed:allDone,status:allDone?'已校對':(keys.length?'校對中':'待校對')});
+      rec.reviewedRows=reviewedRows;rec.reviewed=allDone;rec.status=allDone?'已校對':(keys.length?'校對中':'待校對');
+      alert(allDone?'已全部標為已校對':'已儲存校對標記');
+      renderArchiveDetail();
+    }catch(e){alert('儲存失敗：'+(e&&e.message||e))}
+  };
+  const js=document.getElementById('arcJson');
+  if(js)js.onclick=()=>{
+    const out=Object.assign({},rec,{photos:(ARC.photos||[]).map(p=>({name:p.name,mime:p.mime,w:p.w,h:p.h,dataUrl:p.dataUrl||''}))});
+    downloadBlob('import-'+ (rec.day||'archive')+'-'+(rec.id||'')+'.json','application/json;charset=utf-8',JSON.stringify(out,null,2));
+  };
+  const cs=document.getElementById('arcCsv');
+  if(cs)cs.onclick=()=>downloadBlob('import-'+(rec.day||'archive')+'-'+(rec.id||'')+'.csv','text/csv;charset=utf-8','\ufeff'+archiveToCsv(rec));
+  const back=document.getElementById('arcBackList');if(back)back.onclick=()=>openArchive();
+}
+
+
+const PaperImport={open,openArchive,parseCsvText,parseWorkbook,mergeParsed,totals,emptyParsed,ingestFiles,ST,hookButtons};
 global.PaperImport=PaperImport;
 global.openPaperImport=open;
+global.openImportArchive=openArchive;
 // wrap openSheet if present (grid.js may also wrap)
 if(typeof global.openSheet==='function'&&!global.openSheet._piHook){
   const os=global.openSheet;

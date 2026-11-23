@@ -322,6 +322,24 @@ service cloud.firestore {
         allow delete: if lvl() >= 3;
       }
     }
+
+    // v12.25 匯入備份／校對（幹部以上可讀寫校對欄；不可刪、不可改原始辨識與已存列）
+    match /importArchive/{id} {
+      allow read: if lvl() >= 2;
+      allow create: if lvl() >= 2
+        && request.resource.data.day is string
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.status == '待校對';
+      allow update: if lvl() >= 2
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['reviewed', 'reviewedAt', 'reviewedBy', 'reviewedByName', 'reviewedRows', 'status', 'reviewNote'])
+        && request.resource.data.day == resource.data.day
+        && request.resource.data.by == resource.data.by
+        && request.resource.data.raw == resource.data.raw
+        && request.resource.data.saved == resource.data.saved;
+      allow delete: if false;
+    }
+
     match /audit/{id} {
       allow read: if lvl() >= 3;
       allow create: if staff() && request.resource.data.uid == request.auth.uid;

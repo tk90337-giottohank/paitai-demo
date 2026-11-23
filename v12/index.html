@@ -124,7 +124,7 @@ dialog input[type=text]{width:100%;box-sizing:border-box}#sugg{width:100%}#guest
 .punchcard{background:#1c1626;border:1px solid #3a3144;border-radius:14px;padding:10px 12px;margin:10px 0}
 .punchgeo{font-size:15px;line-height:1.45;margin-top:6px}
 </style>
-<link rel="stylesheet" href="theme.css?v=12.24"></head><body>
+<link rel="stylesheet" href="theme.css?v=12.25"></head><body>
 <header class="appbar">
 <div class="appbar-top">
  <h1 id="store"></h1>
@@ -194,17 +194,18 @@ function guestAvailList(viewRoom){return(S.girls||[]).map(g=>{const st=guestPick
  const item={id:g.id,name:gNick(g),...(g.photo?{photo:g.photo}:{})};
  if(st.st=='grey'){item.busy=true;item.reason=st.reason;if(st.room)item.room=st.room}
  return item}).filter(Boolean)}
-function sheetImportCheckin(p,d){if(!p||!d)return 0;const today=(typeof bizDay==='function'?bizDay(now()):'');if(d!=today)return 0;
+function sheetImportCheckin(p,d){if(!p||!d)return 0;
  const ids=new Set();(p.marks||[]).forEach(m=>{const id=String(m&&m[1]||'').trim();if(id)ids.add(id)});
  Object.values(p.rows||{}).forEach(r=>{if(!r)return;(r.girls||[]).forEach(id=>{if(id)ids.add(String(id))});Object.keys(r.marks||{}).forEach(id=>ids.add(String(id)))});
  (S.sheetLog||[]).forEach(e=>{if(e&&e.day==d)(e.girls||[]).forEach(id=>ids.add(String(id)))});
  Object.values(S.rooms||{}).forEach(x=>{(x.bans||[]).forEach(b=>(b||[]).forEach(id=>ids.add(String(id))))});
  return checkinSheetGirls(d,ids,'import')}
-function checkinSheetGirls(day,ids,src){S.checkin=S.checkin||{};S.att=S.att||{};S.checkin[day]=S.checkin[day]||[];S.att[day]=S.att[day]||{};let n=0;
+function checkinSheetGirls(day,ids,src){S.checkin=S.checkin||{};S.att=S.att||{};S.checkin[day]=S.checkin[day]||[];S.att[day]=S.att[day]||{};
+ const isToday=day==(typeof bizDay==='function'?bizDay(now()):'');let n=0;
  ids.forEach(id=>{id=String(id||'').trim();if(!id)return;const g=G(id);if(!g||g.gone)return;
-  if(!S.checkin[day].some(c=>c.id==id))S.checkin[day].push({order:S.checkin[day].length+1,id,t:now(),src:src||'import'});
-  S.att[day][id]='上班';if(!g.on)g.on=true;if(g.leave)g.leave=false;if(!g.clockAt)g.clockAt=now();
-  if(!g.status||g.status==='未到')g.status='休息室';n++});
+  if(!S.checkin[day].some(c=>c.id==id)){S.checkin[day].push({order:S.checkin[day].length+1,id,t:now(),src:src||'import'});n++}
+  S.att[day][id]='上班';
+  if(isToday){if(!g.on)g.on=true;if(g.leave)g.leave=false;if(!g.clockAt)g.clockAt=now();if(!g.status||g.status==='未到')g.status='休息室'}});
  return n}
 function renameGirl(id){if(staffLv()<2)return needRole(2,'改名');const g=G(id);if(!g)return;const old=gNick(g);
  let o=document.getElementById('rnOv');if(!o){o=document.createElement('div');o.id='rnOv';o.style.cssText='position:fixed;inset:0;background:#000a;z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px';document.body.appendChild(o)}
@@ -720,7 +721,7 @@ function liveConflict(r,st){const x=S.rooms[r.room];if(!x||st==null)return null;
 let MI={tab:'排檯表',parsed:null,grid:[],ck:[]};
 const TPL={'排檯表':`日期,${bizDay(now())}\n序,包廂,進場時間,人數,結束(Y/N)\n1,207,20:45,2,Y\n2,208,21:40,,N\n序,小姐編號,類型(紅/藍/訂番/私檯)\n1,26,訂番\n1,37,藍\n2,81,私檯\n2,30,紅`,'報班順序':`日期,${bizDay(now())}\n順序,編號,報到時間,下班時間(可空白)\n1,08,19:30,\n2,12,19:45,02:10`,'少爺排班':`月份,${bizDay(now()).slice(0,7)}\n編號,日,狀態(上班/休/請假/曠職),班別(可空白)\nS1,1,上班,晚\nS1,2,休,`};
 function openManualImport(){if(!needRole(2,'傳統排班表手動匯入'))return;const t=MI.tab;
- pageOpen(`<h2>傳統排班表手動匯入 <small style="font-size:13px">（${esc(S.cur.name)}・${S.cur.role}）</small></h2><p>${['排檯表','報班順序','少爺排班'].map(x=>`<button class="${x==t?'':'s'}" onclick="MI.tab='${x}';MI.parsed=null;openManualImport()">${x}</button>`).join(' ')} <button class=s onclick="openImpAudit()">匯入紀錄／復原</button></p>
+ pageOpen(`<h2>傳統排班表手動匯入 <small style="font-size:13px">（${esc(S.cur.name)}・${S.cur.role}）</small></h2><p>${['排檯表','報班順序','少爺排班'].map(x=>`<button class="${x==t?'':'s'}" onclick="MI.tab='${x}';MI.parsed=null;openManualImport()">${x}</button>`).join(' ')} <button class=s onclick="openImpAudit()">匯入紀錄／復原</button> <button class=s onclick="openPaperImport()">匯入傳統排檯表</button> <button class=s onclick="openImportArchive()">匯入校對</button></p>
  <label>人工干預原因（必填）<input id=miR style="width:100%" value="${esc(MI.reason||'')}" oninput="MI.reason=this.value" placeholder="例：感應器故障、系統當機改用紙本"></label>
  <label>日期 ${t=='少爺排班'?`<input id=miD type=month value="${MI.month||bizDay(now()).slice(0,7)}" onchange="MI.month=this.value">`:`<input id=miD type=date value="${MI.day||bizDay(now())}" onchange="MI.day=this.value">`}</label>
  <details ${t!='少爺排班'?'open':''}><summary><b>手動輸入（照紙本點選）</b></summary><div id=miGrid>${t=='排檯表'?gridSheetHTML():t=='報班順序'?gridCkHTML():'<p>少爺排班可直接在月曆上點格子：<button onclick="if(needRole(2))openSched()">開啟少爺排班表</button>（直接點選會即時存檔，也會記錄在事件紀錄；要整批匯入或可復原請用下方 CSV）</p>'}</div></details>
@@ -766,7 +767,7 @@ function applySheetA(p,pol){const d=p.day;const old=S.sheetLog.filter(e=>e.imp&&
 function applyCheckin(p){const d=p.day,isToday=d==bizDay(now());S.checkin[d]=p.list.map(c=>({order:c.order,id:c.id,t:c.tm?dayTs(d,...c.tm):null}));S.att[d]=S.att[d]||{};S.clockOut[d]=S.clockOut[d]||{};let off=0;
  p.list.forEach(c=>{S.att[d][c.id]='上班';const g=G(c.id);if(c.off){S.clockOut[d][c.id]=dayTs(d,...c.off);off++;if(isToday){g.offAt=S.clockOut[d][c.id]}}if(isToday&&c.tm){g.clockAt=dayTs(d,...c.tm)}});return{'報班':p.list.length,'下班':off,'略過編號':p.unk.length}}
 function applyStaff(p){const m=p.month;S.sched[m]=S.sched[m]||{};p.list.forEach(c=>{const row=(S.sched[m][c.sid]=S.sched[m][c.sid]||{});if(!c.st&&!c.sh)delete row[c.day];else row[c.day]={st:c.st,sh:c.sh}});return{'格數':p.list.length,'略過':p.unk.length}}
-function openImpAudit(){if(!needRole(2))return;pageOpen(`<h2>手動匯入紀錄</h2><p><button class=s onclick="openManualImport()">← 回匯入</button> ${S.impSnap?'<button onclick="undoImport()" style="background:#c33">復原最後一次匯入</button>':'（沒有可復原的匯入）'}</p><div class=tw><table class=sch><tr><th>時間</th><th>人員</th><th>角色</th><th>類型</th><th>日期</th><th>內容</th><th>原因</th></tr>${S.impAudit.map(a=>`<tr><td>${new Date(a.t).toLocaleString('zh-TW',{hour12:false})}</td><td>${esc(a.by)}</td><td>${a.role}</td><td>${a.type}</td><td>${esc(a.day||'')}</td><td style="white-space:normal;text-align:left">${Object.entries(a).filter(([k])=>!['t','by','role','type','day','reason','policy'].includes(k)).map(([k,v])=>k+' '+v).join('、')}${a.policy?'・衝突處理 '+a.policy:''}</td><td style="white-space:normal">${esc(a.reason)}</td></tr>`).join('')||'<tr><td colspan=7>尚無紀錄</td></tr>'}</table></div>`)}
+function openImpAudit(){if(!needRole(2))return;pageOpen(`<h2>手動匯入紀錄</h2><p><button class=s onclick="openManualImport()">← 回匯入</button> <button class=s onclick="openImportArchive()">匯入校對</button> ${S.impSnap?'<button onclick="undoImport()" style="background:#c33">復原最後一次匯入</button>':'（沒有可復原的匯入）'}</p><div class=tw><table class=sch><tr><th>時間</th><th>人員</th><th>角色</th><th>類型</th><th>日期</th><th>內容</th><th>原因</th></tr>${S.impAudit.map(a=>`<tr><td>${new Date(a.t).toLocaleString('zh-TW',{hour12:false})}</td><td>${esc(a.by)}</td><td>${a.role}</td><td>${a.type}</td><td>${esc(a.day||'')}</td><td style="white-space:normal;text-align:left">${Object.entries(a).filter(([k])=>!['t','by','role','type','day','reason','policy'].includes(k)).map(([k,v])=>k+' '+v).join('、')}${a.policy?'・衝突處理 '+a.policy:''}</td><td style="white-space:normal">${esc(a.reason)}</td></tr>`).join('')||'<tr><td colspan=7>尚無紀錄</td></tr>'}</table></div>`)}
 function undoImport(){if(!needRole(2)||!S.impSnap)return;if(!confirm('復原最後一次手動匯入？（匯入後在現場做的變更也會一起還原）'))return;const keep={impAudit:S.impAudit,log:S.log,users:S.users,cur:S.cur,usersExample:S.usersExample};const snap=S.impSnap;Object.keys(S).forEach(k=>delete S[k]);Object.assign(S,snap,keep);S.impSnap=null;S.impAudit.unshift({t:now(),by:S.cur.name,role:S.cur.role,type:'復原',day:'',reason:'復原上一次匯入'});log(`【復原匯入】${S.cur.name}`);save();render();openImpAudit()}
 
 // ===== v9：叫檯看板（仿磁鐵白板） =====
@@ -1186,4 +1187,4 @@ ${sug.ranked.length?`<ol class=slrank>${sug.ranked.map((r,i)=>`<li style="${sug.
 function sheetLearnRebuild(){const days=new Set((S.sheetLog||[]).filter(e=>e&&e.imp&&e.day).map(e=>e.day));Object.values(S.rooms||{}).forEach(x=>{if(x&&x.imp&&x.start&&typeof bizDay==='function')days.add(bizDay(x.start))});if(!days.size)days.add(S.openDay||bizDay(now()));[...days].forEach(d=>sheetLearnIngest(d));const lab=[...days].sort().join('、');log('自動排台學習：已納入 '+lab);save();toast('已重建學習資料（'+lab+'）');openSheetLearn()}
 
 document.getElementById('op').value=S.op||'';render();setInterval(tick,1000);
-</script><script src="grid.js?v=12.24"></script><script src="transfer.js?v=12.24"></script><script src="dayroll.js?v=12.24"></script><script src="nav.js?v=12.24"></script><script src="att.js?v=12.24"></script><script src="import-sheet.js?v=12.24"></script><script src="i18n-data.js?v=12.24"></script><script src="i18n.js?v=12.24"></script><script src="theme.js?v=12.24"></script><script type=module src="cloud.js?v=12.24"></script></body></html>
+</script><script src="grid.js?v=12.25"></script><script src="transfer.js?v=12.25"></script><script src="dayroll.js?v=12.25"></script><script src="nav.js?v=12.25"></script><script src="att.js?v=12.25"></script><script src="import-sheet.js?v=12.25"></script><script src="i18n-data.js?v=12.25"></script><script src="i18n.js?v=12.25"></script><script src="theme.js?v=12.25"></script><script type=module src="cloud.js?v=12.25"></script></body></html>

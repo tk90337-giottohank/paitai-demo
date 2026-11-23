@@ -1,4 +1,4 @@
-// v12.24 齒輪可切外觀；人員帳號管理改幹部以上
+// v12.25 匯入傳統排檯表與校對入口；v12.24 齒輪可切外觀；人員帳號管理改幹部以上
 // v12.22 主選單：五組功能，設定放齒輪；權限仍由原功能檢查
 (function(){
  const GROUPS=[
@@ -7,7 +7,9 @@
     {label:'今日排檯表',fn:'openSheet',min:0},
     {label:'傳統排檯表',fn:'openGrid',min:0},
     {label:'自動排台',fn:'openSheetLearn',min:0},
+    {label:'匯入傳統排檯表',fn:'openPaperImport',min:2,id:'pimpBtn'},
     {label:'手動匯入',fn:'openManualImport',min:2,id:'mimpBtn'},
+    {label:'匯入校對',fn:'openImportArchive',min:2,id:'iarcBtn'},
     {label:'客人點檯／QR',fn:'openGuest',min:0},
     {label:'控台大螢幕',fn:'openBoard',min:0},
     {label:'叫檯看板',fn:'openCallBoard',min:0},
@@ -36,6 +38,7 @@
   ]},
   {id:'reports',label:'報表',items:[
     {label:'歷史紀錄／日結／換日',fn:'openHistory',min:0},
+    {label:'匯入校對',fn:'openImportArchive',min:2},
     {label:'當月報表',fn:'openMonthReport',min:0},
     {label:'今日營收',fn:'openRevenue',min:0},
     {label:'小姐台數',fn:'openGirlPay',min:0},

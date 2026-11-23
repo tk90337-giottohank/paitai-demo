@@ -1,4 +1,4 @@
-// v12.24 登入畫面跟主題色
+// v12.25 匯入備份／校對；v12.24 登入畫面跟主題色
 // v12.23 Google 登入＋幹部改權限＋kt 與 Google 合併
 // v12.22 介面五組選單；換日重設離看板
 // v12.21.4 換日補跑＋交易鎖修正（不把複製的舊 dayRoll 當成已完成）
@@ -828,5 +828,86 @@ async function getSheetImport(id){
   return d.exists()?Object.assign({id:d.id},d.data()):null;
 }
 
-window.Cloud={ver:"v12.24",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
+
+async function getSheetImportPhotos(id){
+  if(!id||lv()<2)return [];
+  const qs=await getDocs(collection(db,'sheetImports',id,'photos'));
+  const out=[];
+  for(const d of qs.docs){
+    const p=d.data()||{};
+    let data=p.data||'';
+    const n=+p.chunkCount||0;
+    if(!data&&n>1){
+      const parts=[];
+      for(let c=0;c<n;c++){
+        const ch=await getDoc(doc(db,'sheetImports',id,'chunks',d.id+'-'+c));
+        if(ch.exists())parts.push((ch.data()||{}).data||'');
+      }
+      data=parts.join('');
+    }
+    out.push({id:d.id,name:p.name||('photo-'+d.id),mime:p.mime||'image/jpeg',w:p.w||0,h:p.h||0,dataUrl:data||''});
+  }
+  out.sort((a,b)=>String(a.id).localeCompare(String(b.id),undefined,{numeric:true}));
+  return out;
+}
+async function saveImportArchive(rec){
+  if(lv()<2)throw new Error('需幹部以上才能存匯入備份');
+  const clean=JSON.parse(JSON.stringify(rec||{}));
+  const docRec={
+    day:String(clean.day||''),
+    at:Date.now(),
+    atTaipei:taipeiNow(),
+    by:st.user?st.user.uid:'',
+    byName:(st.prof&&(st.prof.name||st.prof.staffId))||'',
+    byRole:(st.prof&&st.prof.role)||'',
+    queueId:String(clean.queueId||''),
+    files:Array.isArray(clean.files)?clean.files:[],
+    photoCount:+clean.photoCount||0,
+    mode:String(clean.mode||''),
+    livePol:String(clean.livePol||''),
+    raw:clean.raw||{},
+    saved:clean.saved||{},
+    diffs:Array.isArray(clean.diffs)?clean.diffs:[],
+    stat:clean.stat&&typeof clean.stat==='object'?clean.stat:{},
+    sessions:+clean.sessions||0,
+    marks:+clean.marks||0,
+    status:'待校對',
+    reviewed:false,
+    reviewedRows:{},
+    reviewedAt:null,
+    reviewedBy:'',
+    reviewedByName:'',
+    reviewNote:''
+  };
+  if(!docRec.day)throw new Error('備份缺少營業日');
+  const ref=await addDoc(collection(db,'importArchive'),docRec);
+  if(docRec.queueId){
+    try{await updateDoc(doc(db,'sheetImports',docRec.queueId),{archiveId:ref.id,archivedAt:Date.now()})}catch(e){}
+  }
+  return ref.id;
+}
+async function listImportArchives(){
+  if(lv()<2)return [];
+  const qs=await getDocs(query(collection(db,'importArchive'),orderBy('at','desc'),limit(200)));
+  return qs.docs.map(d=>Object.assign({id:d.id},d.data()));
+}
+async function getImportArchive(id){
+  if(!id||lv()<2)return null;
+  const d=await getDoc(doc(db,'importArchive',id));
+  return d.exists()?Object.assign({id:d.id},d.data()):null;
+}
+async function updateImportReview(id,patch){
+  if(!id||lv()<2)throw new Error('需幹部以上才能標記校對');
+  const allowed=['reviewed','reviewedAt','reviewedBy','reviewedByName','reviewedRows','status','reviewNote'];
+  const upd={};
+  allowed.forEach(k=>{if(patch&&patch[k]!==undefined)upd[k]=patch[k]});
+  upd.reviewedAt=Date.now();
+  upd.reviewedBy=st.user?st.user.uid:'';
+  upd.reviewedByName=(st.prof&&(st.prof.name||st.prof.staffId))||'';
+  if(upd.reviewed===true)upd.status='已校對';
+  else if(upd.reviewed===false&&upd.status==null)upd.status='待校對';
+  await updateDoc(doc(db,'importArchive',id),upd);
+}
+
+window.Cloud={ver:"v12.25",llF,llDel,openLoginLogs,logout:()=>signOut(auth),togglePw,copyPw,resetPw,push,audit,openAccount,openStaff,createStaff,createRoomTabs,setRole,setDisabled,migrate,changePw,status:()=>({...st,last:undefined}),auth,db,lv,isOps,canRoll,serverNow,syncServerTime,peekDay,tryDayRoll,markDayRollDone,followDayRoll,followDay,flushTo,setMyName,linkSocial,approveUser,writePunch,reviewPunch,askLeave,cancelLeave,decideLeave,canPunch:canPunchRole,prof:()=>st.prof,issueGuestToken,openGuestQr,reissueGuestQr,voidGuestQr,invalidateGuestTokens,extendGuestTokens,paintQrBtns,girlPageUrl,RL,queueSheetImport,getSheetImport,getSheetImportPhotos,saveImportArchive,listImportArchives,getImportArchive,updateImportReview,pushRoster:()=>{if(lv()>=2){const rec={names:J(S.rosterNames||{}),log:J(S.renameLog||[]),at:Date.now(),by:st.user&&st.user.uid};st.last.roster=J(rec);ok(setDoc(doc(db,'config','roster'),rec))}}};
 status();
